@@ -10,6 +10,11 @@
   No accounts. No cloud. Your files stay on your machine or your own server.
 </p>
 
+
+<p align="center">
+  <img src="apps/web/public/demo.png" width="800" alt="OpenRive logo" />
+</p>
+
 <p align="center">
   <a href="docs/running-locally.md">Run locally</a> ·
   <a href="docs/self-hosting.md">Self-host</a> ·
@@ -17,6 +22,7 @@
   <a href="CONTRIBUTING.md">Contribute</a> ·
   <a href="#donations">Donate</a>
 </p>
+
 
 ---
 
