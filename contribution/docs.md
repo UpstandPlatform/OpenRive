@@ -51,6 +51,9 @@ bun run wiki            # builds into .wiki/ and fails on broken wiki links
 The **Wiki** workflow (`.github/workflows/wiki.yml`) checks links on pull requests and publishes on every push to
 `main`. When you add a docs page, add it to `PAGES` and to `wiki/_Sidebar.md`.
 
+> **One-time setup:** GitHub creates the wiki's git repository only after the first page is saved from the Wiki tab.
+> Until someone does that, the publish step warns and skips instead of failing.
+
 To publish by hand, clone the wiki repo and copy the build output into it:
 
 ```bash

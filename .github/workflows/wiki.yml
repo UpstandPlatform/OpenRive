@@ -2,8 +2,9 @@
 # - pull requests: checks that every wiki link resolves
 # - pushes to main: publishes to https://github.com/<owner>/<repo>/wiki
 #
-# One-time setup: enable the wiki (Settings › Features › Wikis) and create any first page in the
-# web UI, so the wiki repository exists. After that, this workflow owns the wiki's content.
+# One-time setup: enable the wiki (Settings › Features › Wikis) and save any first page from the
+# Wiki tab, so the wiki repository exists — GitHub does not create it before that. After that, this
+# workflow owns the wiki's content and overwrites it on every push to main.
 name: Wiki
 
 on:
@@ -39,7 +40,13 @@ jobs:
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git clone --depth 1 "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" wiki-repo
+          # GitHub creates the wiki repository only after the first page is saved
+          # in the web UI (Wiki tab -> Create the first page). Until then there is
+          # nothing to clone, which is a setup step, not a build failure.
+          if ! git clone --depth 1 "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" wiki-repo 2>/dev/null; then
+            echo "::warning title=Wiki not initialised::Open https://github.com/${GITHUB_REPOSITORY}/wiki, create any page once, then re-run this workflow. Every later push publishes automatically."
+            exit 0
+          fi
           # replace the wiki content with the build (removed pages are deleted)
           find wiki-repo -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
           cp -r .wiki/. wiki-repo/
