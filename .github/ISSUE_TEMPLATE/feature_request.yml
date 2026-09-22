@@ -1,0 +1,64 @@
+name: Feature request
+description: Suggest a new feature or an improvement
+title: "[Feature]: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ideas are welcome! Describing the **problem** you're trying to solve helps us find the best solution.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what gets in the way?
+      placeholder: "When I animate a character I have to key every bone one by one…"
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How could OpenRive solve it? Mockups, examples from rive.app or other tools are welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - Design tools
+        - Animation / timeline
+        - State machines / interactivity
+        - Assets / import
+        - Theme colors
+        - Code panel / scripting
+        - Preview / export
+        - Files, users, sharing
+        - CLI / MCP / API
+        - Self-hosting / storage
+        - Docs
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: rive
+    attributes:
+      label: Is this a Rive runtime feature that OpenRive can't edit yet?
+      description: e.g. bones, meshes, constraints, nested artboards, layouts, data binding, events.
+      options:
+        - "No / not sure"
+        - "Yes — the runtime supports it, OpenRive lacks editing UI"
+  - type: dropdown
+    id: contribute
+    attributes:
+      label: Would you like to work on it?
+      options:
+        - "Maybe, with guidance"
+        - "Yes, I'd like to open a PR"
+        - "No"

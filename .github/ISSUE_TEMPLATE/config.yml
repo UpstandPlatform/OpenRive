@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📖 Documentation
+    url: https://github.com/<your-org>/openrive/tree/main/docs
+    about: Guides for running, self-hosting, using and automating OpenRive.
+  - name: 💬 Questions & ideas (Discussions)
+    url: https://github.com/<your-org>/openrive/discussions
+    about: Ask questions and share what you've made.
+  - name: 🔒 Security issue
+    url: https://github.com/<your-org>/openrive/security/advisories/new
+    about: Please report security vulnerabilities privately.

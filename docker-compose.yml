@@ -1,0 +1,48 @@
+# OpenRive + PostgreSQL
+#
+#   cp .env.example .env        # optional: set OPENRIVE_ACCESS_TOKEN / POSTGRES_PASSWORD
+#   docker compose up -d
+#   open http://localhost:3000
+#
+# Single container with file storage instead:  docker compose -f docker-compose.files.yml up -d
+# Full guide: docs/self-hosting.md
+services:
+  openrive:
+    build: .
+    image: openrive
+    restart: unless-stopped
+    ports:
+      - "${OPENRIVE_PORT:-3000}:3000"
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-openrive}:${POSTGRES_PASSWORD:-openrive}@db:5432/${POSTGRES_DB:-openrive}
+      # Strongly recommended when the server is reachable by others:
+      # every visitor must enter this password (any user name).
+      OPENRIVE_ACCESS_TOKEN: ${OPENRIVE_ACCESS_TOKEN:-}
+    volumes:
+      # still used for imports/exports done with the CLI inside the container
+      - openrive-data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-openrive}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-openrive}
+      POSTGRES_DB: ${POSTGRES_DB:-openrive}
+    volumes:
+      - openrive-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # uncomment to reach the database from the host (e.g. for backups or `openrive migrate`)
+    # ports:
+    #   - "5432:5432"
+
+volumes:
+  openrive-data:
+  openrive-db:

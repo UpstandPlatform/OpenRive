@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "openrive": {
+      "command": "node",
+      "args": ["bin/openrive.cjs", "mcp"]
+    }
+  }
+}

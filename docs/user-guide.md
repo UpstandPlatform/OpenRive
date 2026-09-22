@@ -1,0 +1,88 @@
+# User guide
+
+## Files page
+
+The home page lists the projects you can see. Each card plays its animation live on hover.
+
+- **Templates**: start from a template or example file (see [Templates](templates.md)).
+- **New file**: a blank file with artboard size presets (phone, tablet, desktop, social, icon…).
+- **Import**: drop `.riv` files anywhere on the page, or use the Import button.
+- Use a card's **⋯** menu to **rename, duplicate, share, download** or **delete** it; click to open it.
+
+## The editor
+
+```
+┌──────────────────────────── Top bar: menu, tools, Design/Animate, Code, Preview, Export ──────────┐
+│ Layers │ Theme │ Assets │                                                    │   Inspector        │
+│  hierarchy / theme      │                   Stage (canvas)                   │   properties of    │
+│  colors / assets        │                                                    │   the selection    │
+│                         ├────────────────────────────────────────────────────┤                    │
+│                         │ Code panel (Alt+C) · Timeline & state machine (Animate mode)              │
+└─────────────────────────┴────────────────────────────────────────────────────┴────────────────────┘
+```
+
+Changes save automatically. The title shows "Saving…" and then "All changes saved". If another tool (the CLI, MCP
+or another tab) changes the file while it's open, a banner lets you reload or keep your version.
+
+### Design mode
+
+| Tool | Key | Use |
+| --- | --- | --- |
+| Select | `V` | Click to select, `Shift` to add, drag to marquee. Drag handles to resize and rotate. |
+| Artboard | `A` | Drag to create an artboard |
+| Rectangle, Ellipse, Triangle, Polygon, Star | `R` `O` `Y` `Shift R` `Shift O` | Drag to draw. Hold `Shift` for equal sides. |
+| Pen | `P` | Click to add points, drag for curves, click the first point to close |
+| Text | `T` | Click to add text, then type. Double-click text to edit it later. |
+| Hand | `H` / hold `Space` | Pan. Scroll with `Ctrl` to zoom. |
+
+- **Groups**: `Ctrl G` / `Ctrl Shift G`. Double-click or press `Enter` to go inside a group.
+- **Paths**: double-click a shape, or press `Enter`, to edit its vertices.
+- **Arrange**: `Ctrl [` / `Ctrl ]` change draw order. In Rive, objects higher in the Layers list draw on top.
+- **Inspector**: position, size, rotation, scale, opacity, blend mode, fills and strokes (solid or gradient), corner
+  radius, trim path, text styling. Colors can link to [theme colors](theme-colors.md).
+- **Context menus**: right-click objects, layers, the canvas, keyframes, timelines, states and transitions.
+
+### Animate mode (`Tab`)
+
+- **Timelines**: create them in the timeline panel. Set duration, fps, speed and loop (one shot, loop, ping-pong).
+- **Auto-key**: in Animate mode, any property you change at the playhead gets a keyframe. `K` keys the selected
+  objects' transforms.
+- **Keyframes**: drag to move, `Shift`-click to select several, right-click to set interpolation (hold, linear, cubic
+  presets) or delete. The curve editor tweaks cubic easing.
+- **Playback**: `Enter` play/pause, `,` `.` step frames, `Alt ,` `Alt .` jump between keyframes, `Home`/`End`.
+
+### State machines
+
+State machines make files interactive:
+
+1. Add a state machine and **inputs** (number, boolean, trigger).
+2. Drag timelines onto the graph as **states**, and connect them with **transitions** from Entry/Any State.
+3. Add **conditions** to transitions (for example `hover == true`, or `press` fired).
+4. Add **listeners** that react to pointer events on shapes: set an input, fire a trigger, or align a target to the
+   pointer (follow the cursor).
+5. Press `Ctrl Enter` to preview the state machine on the stage and interact with it.
+
+### Preview
+
+**Preview** (`Ctrl P`) opens the file full-screen in the official runtime:
+
+- choose the artboard, state machine or timeline ("All timelines" plays every timeline together)
+- change inputs, and view model properties for data-bound files
+- watch fired events in the log, and switch backgrounds (dark, light, transparent)
+- download the `.riv`
+
+### Export
+
+**Export** (`Ctrl E`) downloads the `.riv`. Load it with any Rive runtime. The [Code panel](code-panel.md)'s Embed
+tab has ready-made snippets.
+
+## Preferences
+
+`Ctrl ,` opens editing defaults: new shape fill (cycle colors or a fixed color), default stroke, text color and size,
+interpolation for new keys, nudge distances and pixel snapping. Preferences are saved per browser.
+
+## Undo
+
+Every change can be undone (`Ctrl Z`) and redone (`Ctrl Shift Z` / `Ctrl Y`), including script runs and imports.
+
+See also: [Shortcuts](shortcuts.md) · [Theme colors](theme-colors.md) · [Text & assets](text-and-assets.md) · [Code panel](code-panel.md)
