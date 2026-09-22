@@ -65,6 +65,25 @@ body {
   overscroll-behavior: none;
 }
 
+/* This is an editor: dragging the timeline, a panel divider or the canvas must
+   never highlight the interface. Text stays selectable where it is content. */
+body {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+input,
+textarea,
+select,
+option,
+pre,
+code,
+[contenteditable='true'],
+.selectable {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 * {
   scrollbar-width: thin;
   scrollbar-color: #3a3a3a transparent;

@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "check-types": "tsc --noEmit",
+    "check-types": "next typegen && tsc --noEmit",
     "postinstall": "bun run ../../scripts/copy-wasm.ts"
   },
   "dependencies": {

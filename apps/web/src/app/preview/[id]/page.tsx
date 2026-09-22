@@ -181,7 +181,7 @@ export default function PreviewPage({ params }: PageProps<'/preview/[id]'>) {
               <>
                 <div className="panel-title mt-3">Events</div>
                 {events.map((e, k) => (
-                  <div key={k} className="font-mono text-[11px] text-t1">
+                  <div key={k} className="font-mono text-[11px] text-t1 selectable">
                     {e}
                   </div>
                 ))}
