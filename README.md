@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/openrive.png" width="800" alt="OpenRive logo" />
+  <img src="apps/web/public/openrive.png" width="800" alt="OpenRive logo" />
 </p>
 
 <h1 align="center">OpenRive</h1>
