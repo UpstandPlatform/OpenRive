@@ -27,5 +27,9 @@ Welcome, with the same bar as any PR. You're responsible for every line. See
 
 ## Releases
 
-Maintainers tag releases as `vX.Y.Z` (semver) and summarize changes in the release notes. Anything that changes stored
-data (the `doc.json` shape, the database schema) must stay backward compatible or include a migration.
+Releases come from the **Desktop** workflow (Actions › Desktop › Run workflow): it bumps the newest `vX.Y.Z` tag by
+patch, minor or major, builds the desktop app on all three platforms, creates the tag and publishes a GitHub release
+with the installers and generated notes. Pushing a `vX.Y.Z` tag by hand releases that exact version.
+
+Anything that changes stored data (the document shape, the database schema) must stay backward compatible or ship a
+migration — schema changes need `bun run db:generate` and both generated files committed.

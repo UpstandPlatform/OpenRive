@@ -5,7 +5,7 @@ editor, with the embedded PostgreSQL database in your user data folder. No brows
 
 ## Download
 
-Every tagged release has installers attached, built on GitHub Actions:
+Every release has installers attached, built on GitHub Actions:
 
 | Platform | File |
 | --- | --- |
@@ -13,7 +13,28 @@ Every tagged release has installers attached, built on GitHub Actions:
 | Windows | `win-x64-OpenRive-Setup.zip` |
 | Linux | `linux-x64-OpenRive-Setup.tar.gz` |
 
-Builds for a branch are available as workflow artifacts from the **Desktop** workflow run.
+Builds for a branch or pull request are available as workflow artifacts from the **Desktop** workflow run.
+
+## Releasing (maintainers)
+
+Releases are made from the **Desktop** workflow — no version-bump commit needed:
+
+1. **Actions › Desktop › Run workflow.**
+2. Choose what to release: `patch` (default), `minor`, `major`, or `none` for artifacts only.
+3. Optionally tick **pre-release** or **draft**, and pick the Electrobun channel.
+
+The workflow takes the newest `v*` tag, increases it, stamps that version into `electrobun.config.ts` and the
+package manifests, builds on macOS, Windows and Linux, creates the tag, and publishes a GitHub release with all
+installers attached and generated release notes.
+
+Pushing a tag by hand still works and releases exactly that version:
+
+```bash
+git tag v1.2.0 && git push origin v1.2.0
+```
+
+Version numbers therefore live in the tags; the `version` fields in the repository are only defaults for local
+builds.
 
 ## How it works
 
