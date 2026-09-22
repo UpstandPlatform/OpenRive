@@ -1,26 +1,46 @@
 {
-  "name": "rive-editor-tmp",
+  "name": "openrive",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "node scripts/copy-wasm.js",
+    "test": "tsx scripts/roundtrip.test.ts",
+    "test:corpus": "tsx scripts/corpus.test.ts",
+    "cli": "node bin/openrive.cjs",
+    "mcp": "node bin/openrive.cjs mcp",
+    "test:mcp": "node --import tsx scripts/mcp-smoke.test.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@rive-app/canvas-advanced": "^2.42.2",
+    "immer": "^11.1.18",
+    "lucide-react": "^1.47.0",
+    "nanoid": "^6.0.1",
     "next": "16.3.5",
+    "pg": "^8.23.0",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "server-only": "^0.0.1",
+    "tsx": "^4.23.15",
+    "zod": "^4.6.5",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "bin": {
+    "openrive": "bin/openrive.cjs"
   }
 }

@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+/data
+/scripts/test-out.riv
+/scripts/sm-demo.riv
+/scripts/mcp-smoke.riv
+!.env.example

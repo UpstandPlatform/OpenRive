@@ -1,0 +1,96 @@
+name: Bug report
+description: Something doesn't work, crashes, or a .riv file looks or behaves wrong
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Please search [existing issues](../issues) first.
+        **File problems?** Attach the `.riv` (zip it if GitHub refuses the extension) — it's the fastest way to a fix.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: A clear description of the bug.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Create a file from the "Toggle Switch" template
+        2. Select the knob and press Ctrl+D
+        3. …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - Editor – design (shapes, paths, text, inspector)
+        - Editor – animate (timeline, keyframes)
+        - State machines / listeners
+        - Assets / SVG import
+        - Theme colors
+        - Code panel
+        - Preview
+        - .riv import / export (file compatibility)
+        - Files page / users
+        - CLI
+        - MCP server
+        - Self-hosting / Docker / PostgreSQL
+        - Docs
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How do you run OpenRive?
+      options:
+        - npm run dev / npm start (local)
+        - Docker Compose (PostgreSQL)
+        - Docker single container (files)
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: OpenRive version or commit
+      placeholder: "v0.1.0 or git commit hash"
+  - type: input
+    id: browser
+    attributes:
+      label: Browser & OS
+      placeholder: "Chrome 140, Windows 11"
+    validations:
+      required: true
+  - type: textarea
+    id: validate
+    attributes:
+      label: "`openrive validate` output (for file issues)"
+      description: Run `npm run cli -- validate your-file.riv` and paste the output.
+      render: shell
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs, screenshots, files
+      description: Browser console errors, server logs (`docker compose logs openrive`), screenshots or recordings, and the `.riv` file.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+        - label: The attached files contain no confidential content (or I have the right to share them).

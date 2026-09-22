@@ -1,0 +1,13 @@
+import { readFileSync } from 'fs';
+import { exportRiv, importRiv } from '../src/lib/rive/document';
+import { newDoc } from '../src/lib/rive/factory';
+import { importSvg, parsePathData } from '../src/lib/rive/svg';
+const svg = readFileSync('public/logo.svg', 'utf8');
+const doc = newDoc('SVG test');
+const ab = doc.artboards[0];
+const { group, shapes } = importSvg(svg, { artboard: ab, x: 250, y: 250, width: 300, names: ['Letter', 'Eye', 'Iris', 'Glint'] });
+console.log('group scale', group.props.scaleX, 'shapes', shapes.map((s) => `${s.props.name}@${(s.props.x as number).toFixed(1)},${(s.props.y as number).toFixed(1)}`).join(' '));
+console.log('letter subpaths', parsePathData(svg.match(/d="([^"]+)"/)![1]).map((p) => `${p.verts.length}v closed=${p.closed}`).join(', '));
+const a = exportRiv(doc);
+const b = exportRiv(importRiv(a));
+console.log('riv', a.length, Buffer.from(a).equals(Buffer.from(b)) ? 'IDENTICAL' : 'DIFF');

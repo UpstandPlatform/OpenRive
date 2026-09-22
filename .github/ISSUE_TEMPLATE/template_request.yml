@@ -1,0 +1,54 @@
+name: Template request / proposal
+description: Suggest (or offer to build) a starter template or example animation
+title: "[Template]: "
+labels: ["template", "good first issue"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Templates are small files that each teach **one** Rive feature. See [contribution/templates.md](../blob/main/contribution/templates.md).
+  - type: input
+    id: name
+    attributes:
+      label: Template name
+      placeholder: "Like Button"
+    validations:
+      required: true
+  - type: textarea
+    id: teaches
+    attributes:
+      label: What does it teach?
+      placeholder: "Trigger inputs and one-shot timelines with overshoot easing."
+    validations:
+      required: true
+  - type: textarea
+    id: motion
+    attributes:
+      label: Describe the animation and interaction
+      description: Timelines, states, inputs, what happens on hover/click. Sketches or reference videos help.
+    validations:
+      required: true
+  - type: checkboxes
+    id: features
+    attributes:
+      label: Rive features used
+      options:
+        - label: Timelines & easing
+        - label: State machine inputs (number / boolean / trigger)
+        - label: Pointer listeners
+        - label: Theme colors
+        - label: Text
+        - label: Images / assets
+        - label: Clipping / constraints
+  - type: dropdown
+    id: build
+    attributes:
+      label: Will you build it?
+      options:
+        - "I'd like someone else to build it"
+        - "Yes, I'll open a PR"
+  - type: textarea
+    id: file
+    attributes:
+      label: Reference file (optional)
+      description: If you made it in the Rive editor or OpenRive, attach the `.riv` and confirm you own the rights and agree to license it under MIT.

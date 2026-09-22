@@ -1,0 +1,7 @@
+node_modules
+.next
+data
+.git
+.claude
+scripts/*.riv
+*.log
