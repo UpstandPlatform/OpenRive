@@ -27,9 +27,10 @@
   byte. This is checked against the runtime's 437 test files.
 - **Official rendering.** The canvas is drawn by the official Rive WASM runtime, served locally, so what you see is what
   your app shows.
-- **Local and login-free.** Projects live in `./data`, or in PostgreSQL if you prefer. Local users with roles replace
-  accounts. An optional access token protects a self-hosted server.
-- **Automatable.** A CLI, an MCP server for AI assistants, a REST API and in-editor scripts all share one editing API.
+- **Local and login-free.** Projects live in PostgreSQL — embedded on your machine, a server when you self-host. Local
+  users with roles replace accounts, and an optional access token protects a shared instance.
+- **Everywhere you work.** A web app, a desktop build (Electrobun), a terminal UI, an MCP server for AI assistants and
+  a REST API, all sharing one editing core.
 
 ## Features
 
@@ -45,21 +46,42 @@
 | **Productivity** | 60+ rebindable keyboard shortcuts, context menus everywhere, editing presets, undo/redo, copy/paste between files |
 | **Preview** | Full-screen preview with state machine inputs, view model (data binding) controls and an event log |
 | **Team** | Local users with Admin / Editor / Viewer roles, sharing, and a user manager page |
-| **Tools** | `openrive` CLI, MCP server (27 tools), REST API, Docker and PostgreSQL |
+| **Tools** | `openrive` terminal UI and CLI, MCP server (27 tools), REST API, Docker, desktop builds |
+| **Stack** | Bun · Next.js 16 · React 19 · Zustand · Drizzle ORM + PostgreSQL · zod · Turborepo ([Better-T-Stack](https://better-t-stack.dev)) |
 
 ## Quick start
 
 ```bash
-git clone https://github.com/<your-org>/openrive.git
-cd openrive
-npm install
-npm run dev
+git clone https://github.com/UpstandPlatform/OpenRive.git
+cd OpenRive
+bun install
+bun run dev
 ```
 
 Open http://localhost:3000. On first run you'll find an interactive **Welcome to OpenRive** project: move your mouse
-over the logo's eye.
+over the logo's eye. No database to set up — OpenRive runs an embedded PostgreSQL until you point `DATABASE_URL` at a
+server.
 
-Full guide: **[Running locally](docs/running-locally.md)**
+Needs [Bun](https://bun.sh) 1.4+. Full guide: **[Running locally](docs/running-locally.md)**
+
+## Desktop app
+
+Prebuilt installers for macOS, Windows and Linux are attached to every release, or build your own:
+
+```bash
+bun run build:desktop
+```
+
+Full guide: **[Desktop app](docs/desktop.md)**
+
+## Terminal UI
+
+```bash
+bun run cli            # or `openrive` after `bun link`
+```
+
+An [OpenTUI](https://opentui.com) interface for browsing, creating, exporting and deleting projects — plus the same
+scriptable commands (`openrive new`, `export`, `validate`, `users`, `db status`). See **[CLI](docs/cli.md)**.
 
 ## Self-hosting
 
@@ -69,7 +91,7 @@ docker compose up -d            # OpenRive + PostgreSQL
 ```
 
 Works with Docker Desktop on Windows, macOS and Linux, or any server running Docker. A single-container
-file-storage variant is also available (`docker-compose.files.yml`).
+file-storage variant is also available (`docker-compose.standalone.yml`).
 
 Full guide: **[Self-hosting](docs/self-hosting.md)**
 
@@ -77,9 +99,9 @@ Full guide: **[Self-hosting](docs/self-hosting.md)**
 
 All docs live in [`docs/`](docs/README.md):
 
-- [Running locally](docs/running-locally.md) · [Self-hosting](docs/self-hosting.md) · [Configuration](docs/configuration.md) · [Storage & PostgreSQL](docs/storage.md)
+- [Running locally](docs/running-locally.md) · [Self-hosting](docs/self-hosting.md) · [Desktop app](docs/desktop.md) · [Configuration](docs/configuration.md) · [Storage & PostgreSQL](docs/storage.md)
 - [User guide](docs/user-guide.md) · [Keyboard shortcuts](docs/shortcuts.md) · [Templates](docs/templates.md) · [Theme colors](docs/theme-colors.md) · [Text & assets](docs/text-and-assets.md) · [Code panel](docs/code-panel.md)
-- [CLI](docs/cli.md) · [MCP server](docs/mcp.md) · [REST API](docs/rest-api.md)
+- [CLI & terminal UI](docs/cli.md) · [MCP server](docs/mcp.md) · [REST API](docs/rest-api.md)
 - [Architecture](docs/architecture.md) · [The .riv format](docs/file-format.md) · [Troubleshooting](docs/troubleshooting.md)
 
 ## Contributing
@@ -108,5 +130,5 @@ OpenRive is released under the [MIT License](LICENSE).
 
 OpenRive is an independent project and is not affiliated with or endorsed by Rive Inc. "Rive" is a trademark of
 its owner. The bundled Rive WASM runtime and the example files in `public/examples` are © Rive and distributed under
-the MIT license (see `public/examples/LICENSE-rive-runtime.txt`). The Inter font is distributed under the SIL Open Font
-License (`public/fonts/OFL.txt`).
+the MIT license (see `apps/web/public/examples/LICENSE-rive-runtime.txt`). The Inter font is distributed under the SIL Open Font
+License (`apps/web/public/fonts/OFL.txt`).

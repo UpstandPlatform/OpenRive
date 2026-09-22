@@ -1,0 +1,17 @@
+{
+  "name": "@openrive/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:server": "bun run ../../scripts/bundle-desktop-server.ts",
+    "dev": "bun run build:server && electrobun dev",
+    "build": "bun run build:server && electrobun build --env=stable"
+  },
+  "devDependencies": {
+    "@openrive/config": "workspace:*",
+    "@types/bun": "catalog:",
+    "electrobun": "2.0.1",
+    "typescript": "catalog:"
+  }
+}

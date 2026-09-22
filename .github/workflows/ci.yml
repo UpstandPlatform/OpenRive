@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - run: bun install --frozen-lockfile
+
+      - name: Types
+        run: bun run check-types
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Tests (round-trip + SVG importer)
+        run: bun run test
+
+      - name: MCP server
+        run: bun run test:mcp
+        env:
+          OPENRIVE_DATA_DIR: ${{ runner.temp }}/openrive-mcp
+
+      - name: Build
+        run: bun run build
+
+  database:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: openrive
+          POSTGRES_PASSWORD: openrive
+          POSTGRES_DB: openrive
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U openrive" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgres://openrive:openrive@localhost:5432/openrive
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - run: bun install --frozen-lockfile
+
+      - name: Drizzle migrations are up to date
+        run: |
+          bun run db:generate
+          git diff --exit-code packages/db/src/migrations || {
+            echo "::error::Schema changed without a migration. Run 'bun run db:generate' and commit the result."
+            exit 1
+          }
+
+      - name: CLI against PostgreSQL
+        run: |
+          bun run cli db status
+          bun run cli new "CI check" --template bouncing-ball
+          bun run cli export "CI check" /tmp/ci.riv
+          bun run cli validate /tmp/ci.riv
+          bun run cli delete "CI check"

@@ -5,7 +5,7 @@ Templates are small, well-named Rive files built in code, each teaching one idea
 
 ## 1. Define it
 
-Add a `Template` to `src/lib/rive/templates.ts`, or to a new file for bigger ones, like `templates-brand.ts`:
+Add a `Template` to `packages/rive/src/templates.ts`, or to a new file for bigger ones, like `templates-brand.ts`:
 
 ```ts
 export const pulseDot: Template = {
@@ -41,8 +41,8 @@ Register it in the `TEMPLATES` array. Order matters: simpler templates come firs
 ## 3. Test
 
 ```bash
-npm test                                   # the template must round-trip byte-identical
-npm run cli -- new "Try" --template pulse-dot
+bun run test                                   # the template must round-trip byte-identical
+bun run cli new "Try" --template pulse-dot
 ```
 
 Open it, press Preview, and interact.
@@ -53,5 +53,5 @@ Add a row to [docs/templates.md](../docs/templates.md).
 
 ## Example files
 
-Real-world `.riv` files can be added as examples (`src/lib/rive/examples.ts`, files in `public/examples/`) **only if
-their license allows redistribution**. Record the source and license in `public/examples/README.md`.
+Real-world `.riv` files can be added as examples (`packages/rive/src/examples.ts`, files in `apps/web/public/examples/`) **only if
+their license allows redistribution**. Record the source and license in `apps/web/public/examples/README.md`.

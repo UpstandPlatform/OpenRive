@@ -37,7 +37,7 @@ All functions take `doc` first. Objects, timelines, state machines and inputs ca
 | Assets | `fileAssets(doc)`, `addImageAsset`, `addFontAsset`, `placeImage`, `removeAsset` |
 | Colors | `parseColor('#rrggbb' / 'rgba(…)' / 'hsl(…)')`, `formatColor` |
 
-Full signatures: [`src/lib/rive/api.ts`](../src/lib/rive/api.ts). They match the [MCP tools](mcp.md) one to one.
+Full signatures: [`packages/rive/src/api.ts`](../packages/rive/src/api.ts). They match the [MCP tools](mcp.md) one to one.
 
 ### Example
 

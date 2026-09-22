@@ -1,0 +1,7 @@
+# Bun does not auto-load .env into every tool; the app reads it explicitly.
+env = false
+
+[install]
+# hoisted keeps node_modules free of symlinks, which Next.js standalone output
+# and the desktop bundle need (symlinked packages break the copied app)
+linker = "hoisted"

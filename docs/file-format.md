@@ -37,7 +37,7 @@ right is the core of lossless editing.
 3. On export, ids are turned back into indices, objects are written in array order (which is **draw order**: earlier
    drawables draw on top), and the original ToC and property order are reused.
 
-Unmodified files round-trip **byte for byte**. `openrive validate file.riv` checks any file, and `npm run test:corpus`
+Unmodified files round-trip **byte for byte**. `openrive validate file.riv` checks any file, and `bun run test:corpus`
 checks Rive's test suite.
 
 ## Editor-only data

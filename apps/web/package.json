@@ -1,0 +1,40 @@
+{
+  "name": "@openrive/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "check-types": "tsc --noEmit",
+    "postinstall": "bun run ../../scripts/copy-wasm.ts"
+  },
+  "dependencies": {
+    "@openrive/db": "workspace:*",
+    "@openrive/rive": "workspace:*",
+    "@openrive/shared": "workspace:*",
+    "@openrive/ui": "workspace:*",
+    "@rive-app/canvas-advanced": "^2.42.2",
+    "immer": "^11.1.18",
+    "lucide-react": "catalog:",
+    "nanoid": "catalog:",
+    "next": "16.3.5",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "zod": "catalog:",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@openrive/config": "workspace:*",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.5",
+    "tailwindcss": "^4",
+    "typescript": "catalog:"
+  }
+}

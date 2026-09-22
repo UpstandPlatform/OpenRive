@@ -1,0 +1,20 @@
+// Better-T-Stack project metadata (https://better-t-stack.dev/docs)
+// Add addons later with: bunx create-better-t-stack@latest add
+{
+  "$schema": "https://r2.better-t-stack.dev/schema.json",
+  "version": "3.44.1",
+  "database": "postgres",
+  "orm": "drizzle",
+  "backend": "self",
+  "runtime": "bun",
+  "frontend": ["next"],
+  "addons": ["turborepo"],
+  "examples": [],
+  "auth": "none",
+  "payments": "none",
+  "packageManager": "bun",
+  "dbSetup": "docker",
+  "api": "none",
+  "webDeploy": "none",
+  "serverDeploy": "none"
+}

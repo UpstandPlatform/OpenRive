@@ -7,10 +7,11 @@ it and working on it.
 
 | Guide | For |
 | --- | --- |
-| [Running locally](running-locally.md) | Run OpenRive on your own computer with Node.js |
+| [Running locally](running-locally.md) | Run OpenRive on your own computer with Bun |
 | [Self-hosting](self-hosting.md) | Run it for a team with Docker / Docker Desktop, PostgreSQL, a reverse proxy and backups |
+| [Desktop app](desktop.md) | Install or build the macOS / Windows / Linux app |
 | [Configuration](configuration.md) | Every environment variable |
-| [Storage & PostgreSQL](storage.md) | File vs. PostgreSQL storage, migration and backups |
+| [Storage & PostgreSQL](storage.md) | Embedded vs. server PostgreSQL, Drizzle migrations, backups |
 
 ## Use the editor
 
@@ -28,7 +29,7 @@ it and working on it.
 
 | Guide | For |
 | --- | --- |
-| [CLI](cli.md) | The `openrive` command |
+| [CLI & terminal UI](cli.md) | The `openrive` command and its OpenTUI interface |
 | [MCP server](mcp.md) | Let AI assistants (Claude, Cursor, …) build animations |
 | [REST API](rest-api.md) | The HTTP API used by the web app |
 

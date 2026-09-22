@@ -2,11 +2,11 @@
 
 Run OpenRive on a server, NAS or your own Docker Desktop so a team can share it. Three options:
 
-| Option | Storage | Best for |
+| Option | Database | Best for |
 | --- | --- | --- |
-| [Docker Compose + PostgreSQL](#option-a-docker-compose--postgresql-recommended) | PostgreSQL | Teams and servers (recommended) |
-| [Docker, single container](#option-b-single-container-file-storage) | Files in a volume | Personal use, NAS, quick trials |
-| [Node.js without Docker](#option-c-nodejs-without-docker) | Files or PostgreSQL | Servers where you manage Node yourself |
+| [Docker Compose + PostgreSQL](#option-a-docker-compose--postgresql-recommended) | PostgreSQL service | Teams and servers (recommended) |
+| [Docker, single container](#option-b-single-container-embedded-database) | Embedded (PGlite) in a volume | Personal use, NAS, quick trials |
+| [Bun without Docker](#option-c-bun-without-docker) | Either | Servers where you manage the runtime yourself |
 
 ## Before you start: protecting access
 
@@ -28,8 +28,8 @@ Requires [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Wind
 with the Compose plugin.
 
 ```bash
-git clone https://github.com/<your-org>/openrive.git
-cd openrive
+git clone https://github.com/UpstandPlatform/OpenRive.git
+cd OpenRive
 cp .env.example .env
 ```
 
@@ -53,10 +53,10 @@ What runs:
 
 | Service | Image | Data |
 | --- | --- | --- |
-| `openrive` | built from the `Dockerfile` | volume `openrive-data` (CLI imports/exports) |
+| `openrive` | built from the `Dockerfile` (Bun) | volume `openrive-data` (CLI imports/exports) |
 | `db` | `postgres:17-alpine` | volume `openrive-db` |
 
-OpenRive creates its tables automatically on first start.
+Drizzle migrations run automatically when the app starts.
 
 ### With Docker Desktop's UI
 
@@ -76,10 +76,12 @@ docker compose exec openrive openrive users add Sam --role editor
 
 ---
 
-## Option B: single container, file storage
+## Option B: single container, embedded database
+
+No database service: OpenRive runs PostgreSQL (PGlite) inside the `/data` volume.
 
 ```bash
-docker compose -f docker-compose.files.yml up -d
+docker compose -f docker-compose.standalone.yml up -d
 ```
 
 Or with plain Docker:
@@ -91,21 +93,22 @@ docker run -d --name openrive -p 3000:3000 \
   -v openrive-data:/data openrive
 ```
 
-Projects are stored as files in the `openrive-data` volume, mounted at `/data`.
+Projects live in the embedded database inside the `openrive-data` volume, mounted at `/data`.
 
 To use an existing PostgreSQL database instead, add `-e DATABASE_URL=postgres://user:pass@host:5432/openrive`.
 
 ---
 
-## Option C: Node.js without Docker
+## Option C: Bun without Docker
 
 ```bash
-npm ci
-npm run build
-OPENRIVE_ACCESS_TOKEN=... npm run cli -- serve --host 0.0.0.0 --port 3000
+bun install --frozen-lockfile
+bun run build
+OPENRIVE_ACCESS_TOKEN=... bun run cli serve --host 0.0.0.0 --port 3000
 ```
 
-Add `DATABASE_URL=postgres://…` to use PostgreSQL. Keep it running with a process manager, for example systemd:
+Add `DATABASE_URL=postgres://…` to use a PostgreSQL server instead of the embedded database. Keep it running with a
+process manager, for example systemd:
 
 ```ini
 # /etc/systemd/system/openrive.service
@@ -119,7 +122,7 @@ Environment=NODE_ENV=production
 Environment=PORT=3000
 Environment=OPENRIVE_DATA_DIR=/var/lib/openrive
 Environment=OPENRIVE_ACCESS_TOKEN=change-me
-ExecStart=/usr/bin/npm start
+ExecStart=/usr/local/bin/bun run start
 Restart=always
 User=openrive
 
@@ -127,7 +130,7 @@ User=openrive
 WantedBy=multi-user.target
 ```
 
-To build a standalone server bundle, which is what the Docker image uses, run `NEXT_OUTPUT=standalone npm run build`,
+To build a standalone server bundle, which is what the Docker image uses, run `NEXT_OUTPUT=standalone bun run build`,
 then `node .next/standalone/server.js` (copy `public/` and `.next/static/` next to it).
 
 ---
@@ -163,27 +166,18 @@ server {
 
 ## Backups
 
-| Storage | Backup | Restore |
+| Mode | Backup | Restore |
 | --- | --- | --- |
 | PostgreSQL (compose) | `docker compose exec db pg_dump -U openrive openrive > openrive.sql` | `docker compose exec -T db psql -U openrive openrive < openrive.sql` |
-| Files (volume) | `docker run --rm -v openrive-data:/data -v $PWD:/b alpine tar czf /b/openrive.tgz -C /data .` | extract back into the volume |
-| Files (Node) | copy `OPENRIVE_DATA_DIR` | copy it back |
+| Embedded (volume) | `docker run --rm -v openrive-data:/data -v $PWD:/b alpine tar czf /b/openrive.tgz -C /data .` | extract back into the volume |
+| Embedded (Bun) | copy `OPENRIVE_DATA_DIR` | copy it back |
 
-You can also export a portable copy of everything to a folder at any time:
+Single projects travel as `.riv` files: `openrive export <project> file.riv` and `openrive import file.riv`.
 
-```bash
-openrive migrate --from postgres://… --to ./openrive-backup
-```
+## Upgrading from the old file storage
 
-## Moving from file storage to PostgreSQL
-
-```bash
-# with the database reachable from where you run the command
-npm run cli -- migrate --from ./data --to postgres://openrive:secret@localhost:5432/openrive
-```
-
-For the compose setup, uncomment the `ports` section of the `db` service to reach it from the host. See
-[Storage](storage.md#migrating).
+Projects stored by older versions in `data/projects/<id>/` are imported automatically the first time the new version
+starts with an empty database, or by hand with `openrive db import`. See [Storage](storage.md#importing-the-old-file-storage).
 
 ## Health check
 

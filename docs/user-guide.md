@@ -56,10 +56,12 @@ or another tab) changes the file while it's open, a banner lets you reload or ke
 State machines make files interactive:
 
 1. Add a state machine and **inputs** (number, boolean, trigger).
-2. Drag timelines onto the graph as **states**, and connect them with **transitions** from Entry/Any State.
-3. Add **conditions** to transitions (for example `hover == true`, or `press` fired).
-4. Add **listeners** that react to pointer events on shapes: set an input, fire a trigger, or align a target to the
-   pointer (follow the cursor).
+2. Add **states** with **Add state** (or right-click the graph) and pick a timeline for each. Drag from one state's
+   edge to another state to create a **transition**. Connect Entry (or Any State) to your first state.
+3. Select a transition to add **conditions** (for example `hover == true`, or `press` fired) and set its duration.
+4. Add **listeners** (Listeners tab): choose a target shape and a pointer event (down, up, enter, exit, move), then
+   actions that set a boolean, change a number or fire a trigger. Align-to-pointer ("follow the cursor") listeners
+   are available through the API and templates, and are preserved in the editor.
 5. Press `Ctrl Enter` to preview the state machine on the stage and interact with it.
 
 ### Preview

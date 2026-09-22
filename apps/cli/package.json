@@ -1,0 +1,29 @@
+{
+  "name": "@openrive/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": { "openrive": "./src/index.ts" },
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "start": "bun src/index.ts",
+    "mcp": "bun src/mcp-server.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@openrive/db": "workspace:*",
+    "@openrive/rive": "workspace:*",
+    "@openrive/shared": "workspace:*",
+    "@opentui/core": "^0.5.12",
+    "@opentui/react": "^0.5.12",
+    "nanoid": "catalog:",
+    "react": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@openrive/config": "workspace:*",
+    "@types/bun": "catalog:",
+    "@types/react": "catalog:",
+    "typescript": "catalog:"
+  }
+}

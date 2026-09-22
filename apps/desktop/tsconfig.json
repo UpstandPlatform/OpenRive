@@ -1,0 +1,9 @@
+{
+  "extends": "@openrive/config/tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM"],
+    "types": ["bun"],
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.ts", "electrobun.config.ts"]
+}

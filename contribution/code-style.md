@@ -10,8 +10,10 @@ The goal: code that reads like the code around it.
 - **Names over comments.** Comment the *why* (format quirks, runtime behavior), not the *what*. Match the existing
   comment density: short `//` lines and `/** */` on exported functions.
 - **No new dependencies** without discussing them in the issue. The runtime bundle matters.
+- **Bun is the package manager and runtime**: `bun install`, `bun run <script>`, `bun x`. Don't add npm, pnpm or yarn
+  lockfiles.
 - Format with the existing style: 2 spaces, single quotes, semicolons, trailing commas, about 160 columns. Run
-  `npm run lint`.
+  `bun run lint`.
 
 ## React
 

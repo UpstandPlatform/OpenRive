@@ -30,3 +30,32 @@ Put images in `docs/images/` as PNG or WebP, under 300 KB, with descriptive file
 ## Checking
 
 Preview Markdown in your editor or on GitHub, click every relative link, and run the commands you documented.
+
+## The GitHub wiki
+
+The [wiki](https://github.com/UpstandPlatform/OpenRive/wiki) is **generated** from this repository. Don't edit it on
+GitHub, because the next publish overwrites your changes.
+
+| Source | Becomes |
+| --- | --- |
+| `docs/*.md`, `contribution/*.md`, `CONTRIBUTING.md` | Wiki pages (the mapping is in `PAGES` in `scripts/build-wiki.mjs`) |
+| `wiki/*.md` | Wiki-only pages: `Home`, `_Sidebar`, `_Footer`, `Getting-Started`, tutorials, `FAQ`, `Glossary`, `Roadmap` |
+
+Links between docs become wiki links, links to other repo files become GitHub URLs, and each generated page gets a
+"Suggest an edit" footer that points at its source.
+
+```bash
+bun run wiki            # builds into .wiki/ and fails on broken wiki links
+```
+
+The **Wiki** workflow (`.github/workflows/wiki.yml`) checks links on pull requests and publishes on every push to
+`main`. When you add a docs page, add it to `PAGES` and to `wiki/_Sidebar.md`.
+
+To publish by hand, clone the wiki repo and copy the build output into it:
+
+```bash
+bun run wiki
+git clone https://github.com/UpstandPlatform/OpenRive.wiki.git ../OpenRive.wiki
+cp -r .wiki/. ../OpenRive.wiki/
+cd ../OpenRive.wiki && git add -A && git commit -m "Update wiki" && git push
+```

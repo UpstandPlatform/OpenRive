@@ -12,7 +12,7 @@
 
 ## Checklist
 
-- [ ] `npx tsc --noEmit`, `npm run lint` and `npm test` pass
+- [ ] `bun run check-types`, `bun run lint` and `bun run test` pass
 - [ ] Extra checks for my area ([contribution/testing.md](../contribution/testing.md)): corpus / MCP / build / browser
 - [ ] Unmodified `.riv` files still round-trip byte-identical
 - [ ] New commands are in the action registry (shortcut + menu), work with undo, and respect read-only mode

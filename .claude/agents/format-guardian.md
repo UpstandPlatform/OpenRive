@@ -1,6 +1,6 @@
 ---
 name: format-guardian
-description: Reviews changes to OpenRive's .riv format layer (src/lib/rive/binary.ts, riv-format.ts, document.ts, schema.ts, ops.ts, core-defs.json) for round-trip safety, index reference spaces and draw order. Use before merging any change that reads, writes or restructures Rive objects.
+description: Reviews changes to OpenRive's .riv format layer (packages/rive/src/binary.ts, riv-format.ts, document.ts, schema.ts, ops.ts, core-defs.json) for round-trip safety, index reference spaces and draw order. Use before merging any change that reads, writes or restructures Rive objects.
 tools: Read, Grep, Glob, Bash
 ---
 
@@ -25,9 +25,9 @@ user files.
 ## Run
 
 ```bash
-npx tsc --noEmit
-npm test
-npm run test:corpus -- ../rive-runtime/tests   # if available
+bun run check-types
+bun run test
+bun run test:corpus -- ../rive-runtime/tests   # if available
 ```
 
 Report findings ranked by severity, each with file:line, a concrete failure scenario, and a suggested fix. If

@@ -1,87 +1,108 @@
 # Architecture
 
-OpenRive is a Next.js app (App Router, React 19, TypeScript, Tailwind, Zustand + Immer). The browser does all editing
-and rendering. The server only stores documents.
+OpenRive is a [Better-T-Stack](https://better-t-stack.dev) monorepo: Bun workspaces, Turborepo, Next.js 16 (App
+Router, React 19), Drizzle ORM on PostgreSQL, zod for validation and Zustand for state. The browser does all editing
+and rendering; the server only stores documents.
 
 ```
                  ┌───────────── browser ─────────────────────────────────────┐
-                 │  React UI (src/components)                                │
+                 │  React UI (apps/web/src/components, packages/ui)          │
                  │     │ actions / shortcuts / menus                         │
                  │     ▼                                                     │
-                 │  Zustand store (src/lib/store/editor.ts)                  │
+                 │  Zustand store (apps/web/src/lib/store/editor.ts)         │
                  │   doc: RiveDoc ── undo history, auto-keying               │
                  │     │                 │                                   │
                  │     ▼                 ▼                                   │
-                 │  exportRiv()      StageEngine (src/lib/rive/engine.ts)    │
+                 │  exportRiv()      StageEngine (apps/web/src/lib/engine.ts)│
                  │     │             official Rive WASM renders the stage    │
                  └─────┼─────────────────────────────────────────────────────┘
-                       │ REST (src/app/api)
+                       │ REST + zod (apps/web/src/app/api)
                  ┌─────▼──────── server / tools ──────────────┐
-                 │ storage-core → driver: file | postgres     │◄── CLI (tools/cli.ts)
-                 │                                            │◄── MCP (tools/mcp-server.ts)
-                 └────────────────────────────────────────────┘
+                 │ @openrive/db  (Drizzle → PostgreSQL)       │◄── CLI + TUI (apps/cli)
+                 │   embedded PGlite, or DATABASE_URL         │◄── MCP server (apps/cli/src/mcp-server.ts)
+                 └────────────────────────────────────────────┘◄── desktop (apps/desktop)
 ```
+
+## Workspace layout
+
+| Package | Role |
+| --- | --- |
+| `apps/web` | The editor: pages, panels, stage, and the REST API |
+| `apps/cli` | `openrive` command: OpenTUI terminal UI, scriptable commands, MCP server |
+| `apps/desktop` | Electrobun app that runs the standalone server in a native window |
+| `packages/rive` | The `.riv` format and editing core (DOM-free) |
+| `packages/db` | Drizzle schema, migrations, and every database query |
+| `packages/shared` | zod schemas and types (domain, API payloads, environment) |
+| `packages/ui` | React components shared between panels and pages |
+| `packages/config` | The base TypeScript configuration |
+
+Turborepo runs `dev`, `build`, `lint` and `check-types` across them (`turbo.json`).
 
 ## Layers
 
-### Format layer: `src/lib/rive/`
+### Format core: `packages/rive`
 
 | File | Role |
 | --- | --- |
-| `core-defs.json`, `schema.ts` | Every Rive object type and property, generated from rive-runtime's `dev/defs` (`scripts/generate-core-defs.js`) |
-| `binary.ts`, `riv-format.ts` | Low-level reader/writer: header, table of contents, varuint/float/string/bytes/color fields, unknown-property preservation |
-| `document.ts` | `importRiv` / `exportRiv`: turns the flat object stream into a tree (`RiveDoc` → artboards → objects, animations, state machines). Index references become stable ids and back again. |
-| `ops.ts` | Structural edits: insert, delete, reparent, group, reorder, duplicate, copy/paste, keyframes, interpolation |
-| `scene.ts` | Transforms, path geometry, bounds, hit testing (for the editor overlay) |
+| `core-defs.json`, `schema.ts` | Every Rive object type and property, generated from rive-runtime's `dev/defs` |
+| `binary.ts`, `riv-format.ts` | Low-level reader/writer: header, table of contents, field encodings, unknown-property preservation |
+| `document.ts` | `importRiv` / `exportRiv`: flat object stream ⇄ tree, index references ⇄ stable ids |
+| `ops.ts` | Structural edits: insert, delete, reparent, group, reorder, duplicate, keyframes |
+| `scene.ts` | Transforms, path geometry, bounds, hit testing |
 | `api.ts` | High-level, name-addressable API used by templates, CLI, MCP and the Code panel |
-| `theme.ts`, `text.ts`, `assets.ts`, `svg.ts` | Theme colors, text objects and fonts, file assets, SVG import |
+| `theme.ts`, `text.ts`, `assets.ts`, `svg.ts` | Theme colors, text and fonts, file assets, SVG import |
 | `templates*.ts`, `examples.ts` | Starter content |
-| `engine.ts`, `runtime.ts` | Loading the WASM runtime and drawing artboards on the stage |
 
-Everything in this folder except `engine.ts`/`runtime.ts` is **DOM-free**, so it runs in Node for the CLI, MCP and
-tests.
+Everything here is DOM-free, so it runs in the browser, in Bun and in tests.
 
-### Editor UI: `src/components/editor/`
+### Validation: `packages/shared`
+
+`types.ts` defines the domain with zod (`userSchema`, `projectMetaSchema`, `idSchema`) and infers the TypeScript types
+from it. `api.ts` holds the request schemas the route handlers parse. `env.ts` validates the environment once and
+resolves the data folder. Because both sides share these schemas, the API, the CLI and the database agree on shapes.
+
+### Data: `packages/db`
+
+`schema.ts` is the Drizzle schema (`users`, `projects`, `settings`); `repository.ts` is the only module that queries;
+`client.ts` opens PostgreSQL (node-postgres) or the embedded PGlite and applies migrations at startup;
+`legacy.ts` imports pre-Drizzle file storage. Migrations are generated by drizzle-kit and embedded by
+`scripts/embed-migrations.ts` so they survive bundling.
+
+### Editor UI: `apps/web/src/components/editor`
 
 `Editor.tsx` lays out the panels. `Stage.tsx` holds the canvas, SVG overlay, tools and inline text editing.
 `Inspector.tsx`, `Hierarchy.tsx`, `ThemePanel.tsx`, `AssetsPanel.tsx`, `CodePanel.tsx`, `Timeline.tsx` and
 `StateMachinePanel.tsx` are the other panels. `actions.ts` is the registry of commands (label, shortcut, enabled
-state, run), used by shortcuts, menus and the shortcuts dialog. `ContextMenu.tsx` renders context menus from the
-registry.
+state, run) used by shortcuts, menus and the shortcuts dialog. Shared shells — `Modal`, `Tabs`, `ListRow`,
+`PanelHeader` — live in `packages/ui`.
 
-### State: `src/lib/store/editor.ts`
+### State: `apps/web/src/lib/store/editor.ts`
 
-A single Zustand store holds the `RiveDoc` plus editor state (selection, tool, mode, playhead…). Mutations go
-through `commit(recipe)` (Immer). Each commit is an undo step, and drags use gestures so one drag is one step. In
-Animate mode, `setProps` keys animatable properties at the playhead.
+A single Zustand store holds the `RiveDoc` plus editor state (selection, tool, mode, playhead…). Mutations go through
+`commit(recipe)` (Immer): each commit is an undo step, and drags group into one. Preferences, the session, context
+menus and toasts are small Zustand stores of their own.
 
 ### Rendering
 
 The stage re-exports the document to `.riv` bytes on change and loads them into the official runtime
-(`@rive-app/canvas-advanced`), so the canvas is exactly what users will ship. Selection outlines and handles are an SVG
-overlay computed by `scene.ts`.
+(`@rive-app/canvas-advanced`), so the canvas is exactly what users ship. Selection overlays are SVG computed by
+`scene.ts`.
 
-### Persistence
+### Tools: `apps/cli`
 
-The editor autosaves `doc` (JSON with editor-only data such as theme links and scripts) together with the exported
-`.riv` and a thumbnail through `PUT /api/projects/:id`. `src/lib/server/storage-core.ts` delegates to a driver:
-`drivers/file.ts` (default) or `drivers/postgres.ts` (`DATABASE_URL`).
-
-### Tools: `tools/`
-
-`project-store.ts` wraps storage for Node. `cli.ts` is the `openrive` command, and `mcp-server.ts` is the MCP server
-(`@modelcontextprotocol/sdk`, zod schemas). Both use `api.ts`. `bin/openrive.cjs` launches them with `tsx`.
+`project-store.ts` wraps the database for Bun processes; `commands.ts` holds the scriptable commands; `tui/app.tsx` is
+the OpenTUI interface; `mcp-server.ts` exposes 27 MCP tools. All of them go through `packages/rive`'s API.
 
 ### Access control
 
-`src/proxy.ts` (Next 16's replacement for middleware) enforces `OPENRIVE_ACCESS_TOKEN` with HTTP Basic auth. Roles
-(admin/editor/viewer) are enforced in the UI, since OpenRive assumes a trusted environment behind the token.
+`apps/web/src/proxy.ts` (Next 16's replacement for middleware) enforces `OPENRIVE_ACCESS_TOKEN` with HTTP Basic auth.
+Roles are enforced in the UI, since OpenRive assumes a trusted environment behind that token.
 
 ## Tests
 
 | Command | Checks |
 | --- | --- |
-| `npm test` | Round-trip of generated files and every template (byte-identical re-export) |
-| `npm run test:corpus -- <rive-runtime>/tests` | Round-trip of Rive's own 437 test files |
-| `npm run test:mcp` | MCP server end to end |
-| `npx tsx scripts/svg.test.ts` | SVG importer |
+| `bun run test` | Round-trip of generated files and every template, plus the SVG importer |
+| `bun run test:corpus -- <rive-runtime>/tests` | Round-trip of Rive's 437 test files |
+| `bun run test:mcp` | MCP server end to end |
+| `bun run check-types`, `bun run lint` | Types and lint across the workspace |

@@ -35,5 +35,5 @@ open right away. Delete it any time. It won't come back.
 
 ## Adding a template
 
-Templates are code in `src/lib/rive/templates*.ts`, built with the same API as the CLI and MCP. See
+Templates are code in `packages/rive/src/templates*.ts`, built with the same API as the CLI and MCP. See
 [contribution/templates.md](../contribution/templates.md).

@@ -1,6 +1,6 @@
-// Regenerates src/lib/rive/core-defs.json from a checkout of rive-runtime:
+// Regenerates packages/rive/src/core-defs.json from a checkout of rive-runtime:
 //   git clone --depth 1 https://github.com/rive-app/rive-runtime
-//   node scripts/generate-core-defs.js ../rive-runtime
+//   bun scripts/generate-core-defs.js ../rive-runtime
 // Every Rive object type, its typeKey, parent type and properties (key,
 // backing type, default, runtime vs editor-only) come from the generated
 // C++ headers, so the editor always matches the official file format.
@@ -8,11 +8,11 @@ const fs = require('fs');
 const path = require('path');
 const runtimeDir = process.argv[2];
 if (!runtimeDir) {
-  console.error('usage: node scripts/generate-core-defs.js <path-to-rive-runtime>');
+  console.error('usage: bun scripts/generate-core-defs.js <path-to-rive-runtime>');
   process.exit(1);
 }
 const root = path.join(runtimeDir, 'include', 'rive', 'generated');
-const out = path.join(__dirname, '..', 'src', 'lib', 'rive', 'core-defs.json');
+const out = path.join(__dirname, '..', 'packages', 'rive', 'src', 'core-defs.json');
 
 function walk(d, acc = []) {
   for (const f of fs.readdirSync(d)) {

@@ -1,0 +1,31 @@
+{
+  "name": "@openrive/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@openrive/rive": "workspace:*",
+    "@openrive/shared": "workspace:*",
+    "drizzle-orm": "catalog:",
+    "nanoid": "catalog:",
+    "pg": "catalog:"
+  },
+  "devDependencies": {
+    "@openrive/config": "workspace:*",
+    "@types/node": "catalog:",
+    "@types/pg": "catalog:",
+    "drizzle-kit": "catalog:",
+    "typescript": "catalog:"
+  }
+}

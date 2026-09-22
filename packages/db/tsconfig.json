@@ -1,0 +1,10 @@
+{
+  "extends": "@openrive/config/tsconfig.base.json",
+  "compilerOptions": {
+    // @openrive/rive ships TypeScript sources and optionally measures text with
+    // a canvas, so its DOM types are needed while checking this package too
+    "lib": ["ESNext", "DOM"],
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "drizzle.config.ts"]
+}

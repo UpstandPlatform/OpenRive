@@ -1,0 +1,17 @@
+# PostgreSQL for local development:  bun run db:up
+# Then run the app against it:
+#   DATABASE_URL=postgres://openrive:openrive@localhost:5432/openrive bun run dev
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: openrive
+      POSTGRES_PASSWORD: openrive
+      POSTGRES_DB: openrive
+    ports:
+      - "5432:5432"
+    volumes:
+      - openrive-dev-db:/var/lib/postgresql/data
+volumes:
+  openrive-dev-db:

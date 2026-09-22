@@ -1,77 +1,86 @@
 # Storage & PostgreSQL
 
-OpenRive has two interchangeable storage backends. The web app, CLI and MCP server all use the same one, chosen at
-startup:
+OpenRive keeps users and projects in **PostgreSQL**, through [Drizzle ORM](https://orm.drizzle.team). There is one
+schema and one set of migrations; only the connection differs:
 
-| Backend | Selected when | Good for |
+| Mode | Selected when | Good for |
 | --- | --- | --- |
-| **File** | default | Single user, laptops, NAS, easy backups |
-| **PostgreSQL** | `DATABASE_URL` is set | Teams, servers, managed databases, concurrent tools |
+| **Embedded** ([PGlite](https://pglite.dev)) | no `DATABASE_URL` | Local use and the desktop app: real PostgreSQL inside `data/pgdata`, no server to run |
+| **Server** | `DATABASE_URL` is set | Teams, Docker, managed databases, several processes at once |
 
 Check which one is active:
 
 ```bash
-openrive storage
-# Backend:  postgres
-# Location: postgres://openrive:***@localhost:5432/openrive
+bun run cli db status
+# Database: embedded PostgreSQL (PGlite)
+# Location: D:\OpenRive\data\pgdata
 # Users:    3
 # Projects: 42
 ```
 
-or `GET /api/health` → `{"ok":true,"storage":"postgres"}`.
+or `GET /api/health` → `{"ok":true,"storage":"embedded"}`.
 
-## File storage
+> The embedded database allows a single process. Run either the app or the CLI against one data folder at a time. A
+> `DATABASE_URL` server has no such limit.
 
-```
-$OPENRIVE_DATA_DIR (default ./data)
-├── users.json
-├── .seeded                     marks that the welcome project was created
-└── projects/<id>/
-    ├── meta.json               name, owner, sharing, stats, thumbnail
-    ├── doc.json                editor document (objects + editor-only data: theme colors, scripts)
-    └── file.riv                exported Rive file (what previews and downloads serve)
-```
+## Tables
 
-Writes are atomic (write to a temp file, then rename), so a crash never leaves a half-written file.
-
-## PostgreSQL
-
-```bash
-DATABASE_URL=postgres://user:password@host:5432/openrive npm start
-```
-
-Any PostgreSQL 12+ works: the Docker Compose service, a local install, or managed services (Neon, Supabase, RDS,
-Cloud SQL, …). Add `?sslmode=require` or `OPENRIVE_DB_SSL=true` for TLS.
-
-Tables are created automatically, all prefixed `openrive_` so they can share a database:
+Created by the migrations in `packages/db/src/migrations`:
 
 | Table | Columns |
 | --- | --- |
-| `openrive_users` | `id` text PK, `position` int, `data` jsonb |
-| `openrive_projects` | `id` text PK, `meta` jsonb, `doc` text, `riv` bytea, `updated_at` bigint |
-| `openrive_settings` | `key` text PK, `value` jsonb |
+| `users` | `id`, `name`, `color`, `role`, `created_at`, `position` |
+| `projects` | `id`, `name`, `owner_id`, `created_at`, `updated_at`, `thumbnail`, `artboards`, `animations`, `state_machines`, `shared_with` (jsonb), `doc` (text), `riv` (bytea) |
+| `settings` | `key`, `value` (jsonb) — first-run marker and housekeeping |
+| `drizzle.__drizzle_migrations` | applied migrations |
 
-## Migrating
+`doc` is the editor document (JSON with base64 byte fields, including theme colors and scripts); `riv` is the exported
+Rive file that previews and downloads serve.
 
-`openrive migrate` copies all users and projects between any two stores. It never deletes anything from the source.
+## Connecting to a server
 
 ```bash
-# files → PostgreSQL
-openrive migrate --from ./data --to postgres://openrive:secret@localhost:5432/openrive
-
-# PostgreSQL → files (a portable backup)
-openrive migrate --from postgres://… --to ./openrive-backup
-
-# with npm instead of a global install
-npm run cli -- migrate --from ./data --to postgres://…
+DATABASE_URL=postgres://user:password@host:5432/openrive bun run start
 ```
 
-Projects with the same id in the target are overwritten. After migrating, start OpenRive with `DATABASE_URL` pointing
-at the new database.
+Any PostgreSQL 14+ works: the Docker Compose service, a local install, or a managed one (Neon, Supabase, RDS, Cloud
+SQL…). Add `?sslmode=require` or `OPENRIVE_DB_SSL=true` for TLS. Migrations are applied automatically at startup.
 
-## Adding a backend
+For local development against a server instead of the embedded database:
 
-Backends implement the small `StorageDriver` interface in
-[`src/lib/server/drivers/types.ts`](../src/lib/server/drivers/types.ts): read/write users, list/read/write/delete
-projects, and a first-run flag. See `file.ts` and `postgres.ts` for reference, and
-[contribution/development.md](../contribution/development.md).
+```bash
+bun run db:up      # PostgreSQL in Docker (docker-compose.dev.yml)
+DATABASE_URL=postgres://openrive:openrive@localhost:5432/openrive bun run dev
+bun run db:down
+```
+
+## Changing the schema
+
+```bash
+# edit packages/db/src/schema.ts, then:
+bun run db:generate     # drizzle-kit generate + embeds the SQL for bundled runtimes
+```
+
+Commit both `packages/db/src/migrations/*` and `packages/db/src/migrations.generated.ts` (the embedded copy that
+works inside the Next.js standalone build, the Docker image and the desktop bundle). CI fails if schema and
+migrations disagree. `bun run db:migrate` and `bun run db:studio` are there for manual work.
+
+## Importing the old file storage
+
+Versions before the Drizzle refactor stored projects as files in `data/projects/<id>/`. They are imported
+**automatically** the first time an empty database starts with that folder present. To run it by hand:
+
+```bash
+bun run cli db import            # uses the data folder
+bun run cli db import ./old-data
+```
+
+Nothing is deleted: the folder stays as a backup.
+
+## Backups
+
+| Mode | Backup | Restore |
+| --- | --- | --- |
+| Embedded | copy the `data/` folder | copy it back |
+| Server | `pg_dump -U openrive openrive > openrive.sql` | `psql -U openrive openrive < openrive.sql` |
+| Either | `openrive export <project> file.riv` per project | `openrive import file.riv` |

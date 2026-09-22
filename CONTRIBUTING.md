@@ -7,9 +7,9 @@ and features.
 
 | You want to… | Start here |
 | --- | --- |
-| Report a bug or a file that renders wrong | [Bug report](https://github.com/<your-org>/openrive/issues/new?template=bug_report.yml) |
-| Suggest a feature | [Feature request](https://github.com/<your-org>/openrive/issues/new?template=feature_request.yml) |
-| Propose or build a template | [Template request](https://github.com/<your-org>/openrive/issues/new?template=template_request.yml) · [contribution/templates.md](contribution/templates.md) |
+| Report a bug or a file that renders wrong | [Bug report](https://github.com/UpstandPlatform/OpenRive/issues/new?template=bug_report.yml) |
+| Suggest a feature | [Feature request](https://github.com/UpstandPlatform/OpenRive/issues/new?template=feature_request.yml) |
+| Propose or build a template | [Template request](https://github.com/UpstandPlatform/OpenRive/issues/new?template=template_request.yml) · [contribution/templates.md](contribution/templates.md) |
 | Improve docs | [contribution/docs.md](contribution/docs.md) |
 | Write code | [contribution/development.md](contribution/development.md) |
 | Work with AI agents | [contribution/ai-collaboration.md](contribution/ai-collaboration.md) |
@@ -17,8 +17,8 @@ and features.
 ## Quick start for code contributions
 
 ```bash
-git clone https://github.com/<your-org>/openrive.git
-cd openrive
+git clone https://github.com/UpstandPlatform/OpenRive.git
+cd OpenRive
 npm install
 npm run dev                 # http://localhost:3000
 ```

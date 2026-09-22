@@ -1,0 +1,17 @@
+# OpenRive in a single container, using the embedded PostgreSQL (PGlite) that
+# lives in the data volume. No database server to run.
+#   docker compose -f docker-compose.standalone.yml up -d
+# Full guide: docs/self-hosting.md
+services:
+  openrive:
+    build: .
+    image: openrive
+    restart: unless-stopped
+    ports:
+      - "${OPENRIVE_PORT:-3000}:3000"
+    volumes:
+      - openrive-data:/data
+    environment:
+      OPENRIVE_ACCESS_TOKEN: ${OPENRIVE_ACCESS_TOKEN:-}
+volumes:
+  openrive-data:

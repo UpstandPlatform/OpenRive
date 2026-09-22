@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs';
-import { readRiv, typeNameOf } from '../src/lib/rive/riv-format';
-import { propDefByKey } from '../src/lib/rive/schema';
+import { readRiv, typeNameOf } from '@openrive/rive/riv-format';
+import { propDefByKey } from '@openrive/rive/schema';
 const raw = readRiv(new Uint8Array(readFileSync(process.argv[2])));
 const from = Number(process.argv[3] ?? 0), to = Number(process.argv[4] ?? 60);
 raw.objects.slice(from, to).forEach((o, i) =>

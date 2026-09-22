@@ -1,5 +1,5 @@
-import { newDoc, newParametricShape } from '../src/lib/rive/factory';
-import { exportRiv, importRiv } from '../src/lib/rive/document';
+import { newDoc, newParametricShape } from '@openrive/rive/factory';
+import { exportRiv, importRiv } from '@openrive/rive/document';
 import { writeFileSync } from 'fs';
 const doc = newDoc('Main');
 const ab = doc.artboards[0];
@@ -15,8 +15,8 @@ console.log(JSON.stringify(back.artboards[0].stateMachines[0], null, 0));
 
 // every starter template must export, re-import and re-export identically
 import { readFileSync as readFont } from 'fs';
-import { TEMPLATES } from '../src/lib/rive/templates';
-const font = { name: 'Inter', bytes: new Uint8Array(readFont('public/fonts/Inter-Regular.ttf')) };
+import { TEMPLATES } from '@openrive/rive/templates';
+const font = { name: 'Inter', bytes: new Uint8Array(readFont('apps/web/public/fonts/Inter-Regular.ttf')) };
 for (const t of TEMPLATES) {
   const a = exportRiv(t.build(font));
   const b = exportRiv(importRiv(a));

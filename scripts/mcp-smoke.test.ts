@@ -2,10 +2,14 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { readFileSync } from 'fs';
-import { importRiv } from '../src/lib/rive/document';
+import { importRiv } from '@openrive/rive/document';
 
 (async () => {
-  const transport = new StdioClientTransport({ command: process.execPath, args: ['--import', 'tsx', 'tools/mcp-server.ts'], env: { ...process.env } as Record<string, string> });
+  const transport = new StdioClientTransport({
+    command: 'bun',
+    args: ['apps/cli/src/mcp-server.ts'],
+    env: { ...process.env, OPENRIVE_DATA_DIR: process.env.OPENRIVE_DATA_DIR ?? './data' } as Record<string, string>,
+  });
   const client = new Client({ name: 'smoke', version: '1.0.0' });
   await client.connect(transport);
   const tools = await client.listTools();

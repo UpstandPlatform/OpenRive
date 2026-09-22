@@ -1,0 +1,55 @@
+# Builds the GitHub wiki from docs/, contribution/ and wiki/ (scripts/build-wiki.mjs).
+# - pull requests: checks that every wiki link resolves
+# - pushes to main: publishes to https://github.com/<owner>/<repo>/wiki
+#
+# One-time setup: enable the wiki (Settings › Features › Wikis) and create any first page in the
+# web UI, so the wiki repository exists. After that, this workflow owns the wiki's content.
+name: Wiki
+
+on:
+  push:
+    branches: [main]
+    paths: ['docs/**', 'contribution/**', 'wiki/**', 'CONTRIBUTING.md', 'scripts/build-wiki.mjs', '.github/workflows/wiki.yml']
+  pull_request:
+    paths: ['docs/**', 'contribution/**', 'wiki/**', 'CONTRIBUTING.md', 'scripts/build-wiki.mjs']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wiki
+  cancel-in-progress: true
+
+jobs:
+  wiki:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - name: Build wiki
+        run: bun scripts/build-wiki.mjs .wiki
+
+      - name: Publish wiki
+        if: github.event_name != 'pull_request'
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git clone --depth 1 "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" wiki-repo
+          # replace the wiki content with the build (removed pages are deleted)
+          find wiki-repo -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -r .wiki/. wiki-repo/
+          cd wiki-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Wiki is up to date."
+          else
+            git commit -m "Update wiki from ${GITHUB_SHA::7}"
+            git push
+          fi

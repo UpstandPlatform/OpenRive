@@ -57,7 +57,7 @@ body:
     attributes:
       label: How do you run OpenRive?
       options:
-        - npm run dev / npm start (local)
+        - bun run dev / bun run start (local)
         - Docker Compose (PostgreSQL)
         - Docker single container (files)
         - Other
@@ -79,7 +79,7 @@ body:
     id: validate
     attributes:
       label: "`openrive validate` output (for file issues)"
-      description: Run `npm run cli -- validate your-file.riv` and paste the output.
+      description: Run `bun run cli validate your-file.riv` and paste the output.
       render: shell
   - type: textarea
     id: logs

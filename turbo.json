@@ -1,0 +1,26 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "tui",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "outputs": [".next/**", "!.next/cache/**", "dist/**", "artifacts/**"]
+    },
+    "dev": { "cache": false, "persistent": true },
+    "start": { "cache": false, "persistent": true },
+    "lint": {},
+    "check-types": { "dependsOn": ["^check-types"] }
+  },
+  "globalEnv": [
+    "CI",
+    "NODE_ENV",
+    "DATABASE_URL",
+    "OPENRIVE_DATA_DIR",
+    "OPENRIVE_ACCESS_TOKEN",
+    "OPENRIVE_URL",
+    "OPENRIVE_USER",
+    "PORT"
+  ],
+  "globalDependencies": [".env*"]
+}

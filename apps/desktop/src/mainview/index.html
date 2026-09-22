@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>OpenRive</title>
+    <style>
+      body { font-family: system-ui, sans-serif; background: #131316; color: #e9e9ee; display: grid; place-items: center; height: 100vh; margin: 0; }
+      .card { text-align: center; max-width: 34rem; padding: 2rem; }
+      button { margin-top: 1rem; padding: 0.5rem 1rem; border-radius: 6px; border: 1px solid #333; background: #1d1d22; color: inherit; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>OpenRive could not start</h1>
+      <p>The local editor server did not respond. Close the window and open OpenRive again, or run it from a terminal to see the error.</p>
+      <button id="retry">Retry</button>
+    </div>
+    <script type="module" src="views://mainview/index.js"></script>
+  </body>
+</html>

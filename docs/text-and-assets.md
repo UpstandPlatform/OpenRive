@@ -51,4 +51,4 @@ api.importSvg('<svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#0068f
   { artboard: ab, x: 250, y: 250, width: 200, name: 'Dot' });
 ```
 
-The importer lives in `src/lib/rive/svg.ts` and is DOM-free, so it also works in Node (CLI/MCP).
+The importer lives in `packages/rive/src/svg.ts` and is DOM-free, so it also works in Node (CLI/MCP).

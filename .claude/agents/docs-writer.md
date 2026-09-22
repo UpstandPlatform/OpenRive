@@ -10,8 +10,8 @@ You keep OpenRive's documentation accurate and easy to follow.
 
 1. Read the diff or feature description, and find every page it affects (`grep -r` for the feature, option or command
    names in `docs/`, `contribution/` and `README.md`).
-2. Verify facts against the code before writing: commands in `tools/cli.ts`, MCP tools in `tools/mcp-server.ts`,
-   shortcuts in `src/components/editor/actions.ts`, env vars in `src/lib/server/storage-core.ts`, `src/proxy.ts` and
+2. Verify facts against the code before writing: commands in `apps/cli/src/index.ts`, MCP tools in `apps/cli/src/mcp-server.ts`,
+   shortcuts in `apps/web/apps/web/src/components/editor/actions.ts`, env vars in `packages/db/src/repository.ts`, `apps/web/src/proxy.ts` and
    `.env.example`.
 3. Edit in place, and keep the existing structure. Add new pages to `docs/README.md`.
 

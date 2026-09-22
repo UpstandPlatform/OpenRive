@@ -1,10 +1,11 @@
 # OpenRive + PostgreSQL
 #
-#   cp .env.example .env        # optional: set OPENRIVE_ACCESS_TOKEN / POSTGRES_PASSWORD
+#   cp .env.example .env        # set OPENRIVE_ACCESS_TOKEN and POSTGRES_PASSWORD
 #   docker compose up -d
 #   open http://localhost:3000
 #
-# Single container with file storage instead:  docker compose -f docker-compose.files.yml up -d
+# Single container with the embedded database instead:
+#   docker compose -f docker-compose.standalone.yml up -d
 # Full guide: docs/self-hosting.md
 services:
   openrive:
@@ -19,7 +20,7 @@ services:
       # every visitor must enter this password (any user name).
       OPENRIVE_ACCESS_TOKEN: ${OPENRIVE_ACCESS_TOKEN:-}
     volumes:
-      # still used for imports/exports done with the CLI inside the container
+      # used by the CLI inside the container for imports and exports
       - openrive-data:/data
     depends_on:
       db:
@@ -39,7 +40,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
-    # uncomment to reach the database from the host (e.g. for backups or `openrive migrate`)
+    # uncomment to reach the database from the host (backups, drizzle-kit studio)
     # ports:
     #   - "5432:5432"
 

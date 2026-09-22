@@ -21,8 +21,8 @@ Add a server entry (adjust the path):
 {
   "mcpServers": {
     "openrive": {
-      "command": "node",
-      "args": ["/path/to/openrive/bin/openrive.cjs", "mcp"],
+      "command": "bun",
+      "args": ["/path/to/OpenRive/apps/cli/src/mcp-server.ts"],
       "env": { "OPENRIVE_DATA_DIR": "/path/to/openrive/data" }
     }
   }
@@ -34,7 +34,7 @@ With PostgreSQL, set `DATABASE_URL` in `env` instead of `OPENRIVE_DATA_DIR`.
 Using Docker? Run it inside the container:
 
 ```json
-{ "command": "docker", "args": ["compose", "-f", "/path/to/openrive/docker-compose.yml", "exec", "-T", "openrive", "openrive", "mcp"] }
+{ "command": "docker", "args": ["compose", "-f", "/path/to/OpenRive/docker-compose.yml", "exec", "-T", "openrive", "openrive", "mcp"] }
 ```
 
 ## Tools (27)
@@ -60,5 +60,5 @@ Objects, timelines, states and inputs can be referenced **by name**, so assistan
 ## Test
 
 ```bash
-npm run test:mcp        # starts the server, creates a project, animates it and exports it
+bun run test:mcp        # starts the server, creates a project, animates it and exports it
 ```

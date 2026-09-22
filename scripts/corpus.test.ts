@@ -1,8 +1,8 @@
 // Round-trips every .riv in a folder through import -> export -> import.
 import { readdirSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
-import { exportRiv, importRiv } from '../src/lib/rive/document';
-import { readRiv } from '../src/lib/rive/riv-format';
+import { exportRiv, importRiv } from '@openrive/rive/document';
+import { readRiv } from '@openrive/rive/riv-format';
 
 const dir = process.argv[2];
 let ok = 0, identical = 0, sameCounts = 0, total = 0, danglingFiles = 0;

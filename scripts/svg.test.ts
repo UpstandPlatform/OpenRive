@@ -1,8 +1,8 @@
 import { readFileSync } from 'fs';
-import { exportRiv, importRiv } from '../src/lib/rive/document';
-import { newDoc } from '../src/lib/rive/factory';
-import { importSvg, parsePathData } from '../src/lib/rive/svg';
-const svg = readFileSync('public/logo.svg', 'utf8');
+import { exportRiv, importRiv } from '@openrive/rive/document';
+import { newDoc } from '@openrive/rive/factory';
+import { importSvg, parsePathData } from '@openrive/rive/svg';
+const svg = readFileSync('apps/web/public/logo.svg', 'utf8');
 const doc = newDoc('SVG test');
 const ab = doc.artboards[0];
 const { group, shapes } = importSvg(svg, { artboard: ab, x: 250, y: 250, width: 300, names: ['Letter', 'Eye', 'Iris', 'Glint'] });

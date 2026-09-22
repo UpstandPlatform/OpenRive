@@ -1,0 +1,10 @@
+{
+  "extends": "@openrive/config/tsconfig.base.json",
+  "compilerOptions": {
+    // the core is DOM-free at run time, but measures text/paths through an
+    // optional canvas when one exists (browser), so it needs the DOM types
+    "lib": ["ESNext", "DOM"],
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"]
+}

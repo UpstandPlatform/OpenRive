@@ -14,7 +14,7 @@
 /coverage
 
 # next.js
-/.next/
+.next/
 /out/
 
 # production
@@ -40,7 +40,18 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 /data
+.turbo/
+apps/desktop/build/
+apps/desktop/artifacts/
+apps/desktop/.hutch/
 /scripts/test-out.riv
 /scripts/sm-demo.riv
 /scripts/mcp-smoke.riv
 !.env.example
+.wiki/
+
+# Bun keeps bun.lock committed; other package managers are not used
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+apps/desktop/.cottontail-tmp/

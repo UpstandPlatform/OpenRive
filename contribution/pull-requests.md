@@ -3,7 +3,7 @@
 ## Before opening
 
 - [ ] Linked issue (or a clear description of the problem)
-- [ ] `npx tsc --noEmit`, `npm run lint`, `npm test` pass
+- [ ] `bun run check-types`, `bun run lint`, `bun run test` pass
 - [ ] Extra tests for your area (see [testing](testing.md))
 - [ ] Docs updated
 - [ ] Screenshots or a recording for UI changes

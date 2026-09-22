@@ -2,34 +2,43 @@
 
 ### The canvas is blank or shows "Failed to load the Rive runtime"
 
-The WASM runtime is copied to `public/rive/rive.wasm` on `npm install`. Run `node scripts/copy-wasm.js` (or
-`npm install` again) and reload. Behind a proxy, make sure `/rive/rive.wasm` is served with
+The WASM runtime is copied to `apps/web/public/rive/rive.wasm` on `bun install`. Run `bun scripts/copy-wasm.ts` (or
+`bun install` again) and reload. Behind a proxy, make sure `/rive/rive.wasm` is served with
 `Content-Type: application/wasm`.
 
-### `npm install` fails
+### `bun install` fails
 
-Use Node 20.9+ (`node -v`). On Windows, run the terminal as a normal user in a folder you own, not in `C:\Program Files`.
+Use Bun 1.4+ (`bun --version`). On Windows, run the terminal as a normal user in a folder you own, not in
+`C:\Program Files`.
 
 ### Port 3000 is already in use
 
-`npm run cli -- serve --port 4000`, or set `PORT=4000`. With Docker Compose, set `OPENRIVE_PORT=4000` in `.env`.
+`bun run cli serve --port 4000`, or set `PORT=4000`. With Docker Compose, set `OPENRIVE_PORT=4000` in `.env`.
 
 ### The browser keeps asking for a password
 
 `OPENRIVE_ACCESS_TOKEN` is set. Enter any user name and the token as the password. To disable it, unset the variable
 and restart.
 
-### "Could not connect to PostgreSQL"
+### "Could not open the database"
 
+- **Embedded mode**: only one process may use a data folder at a time. Stop the web app before running the CLI against
+  it, or pass `--data` / `--db` to the CLI.
 - Check `DATABASE_URL` (`postgres://user:password@host:5432/db`). Special characters in the password must be
   URL-encoded.
 - Managed databases usually need TLS: add `?sslmode=require` or `OPENRIVE_DB_SSL=true`.
 - With Docker Compose, the app waits for the `db` health check. Look at `docker compose logs db`.
 - `openrive storage` shows what the CLI connects to.
 
-### My projects disappeared after switching to PostgreSQL
+### My projects disappeared after an upgrade
 
-They're still in `./data`. Copy them over: `openrive migrate --from ./data --to $DATABASE_URL`.
+Older versions stored projects as files in `data/projects/`. They are imported automatically into an empty database;
+run it by hand with `openrive db import`. Nothing is deleted, so the folder is still there.
+
+### The desktop app opens "OpenRive could not start"
+
+The bundled server did not answer in time. Run the app from a terminal to see its output, and make sure no other
+process is using the same data folder.
 
 ### Keyboard shortcuts don't work
 
@@ -52,4 +61,5 @@ Start Docker Desktop and wait until it says "Engine running", then retry `docker
 
 ### Resetting everything (local)
 
-Stop the app and delete (or move) the `data/` folder. The next start creates a fresh Admin and the welcome project.
+Stop the app and delete (or move) the `data/` folder — that includes `data/pgdata`, the embedded database. The next
+start creates a fresh Admin and the welcome project.
