@@ -55,7 +55,8 @@ values only.
 | Images, SVG import, fonts | Assets tab |
 | Timelines, keyframes, interpolation | Full editing |
 | State machines, inputs, transitions, conditions, pointer listeners | Full editing |
-| Clipping, distance constraints, listener align-target | Via API/templates; preserved in the editor |
+| Masks (clipping) | Full editing (toolbar action and the inspector's Mask section) |
+| Distance constraints, listener align-target | Via API/templates; preserved in the editor |
 | Bones & skinning, meshes, other constraints, nested artboards, blend states, layouts, data binding, events, audio, scripts | **Preserved** and playable; no dedicated editing UI yet |
 
 ## Not supported

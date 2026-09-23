@@ -59,7 +59,7 @@ export function objectMenu(): MenuItem[] {
     return items;
   }
   items.push(act('edit.cut'), act('edit.copy'), act('edit.paste'), act('edit.pasteInPlace'), act('edit.duplicate'), act('edit.delete', { danger: true }), sep);
-  items.push(act('object.group'), act('object.ungroup'));
+  items.push(act('object.group'), act('object.ungroup'), act('object.mask'), act('object.removeMask'));
   if (one?.type === 'Text') items.push(act('object.enter', { label: 'Edit text' }));
   else if (one?.type === 'Shape') items.push(act('object.enter', { label: 'Edit vertices' }));
   else if (one?.type === 'Node') items.push(act('object.enter', { label: 'Select children' }));

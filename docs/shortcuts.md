@@ -23,7 +23,7 @@ Custom bindings are saved in your browser. On macOS, `Ctrl` means `⌘`.
 | Duplicate | `Ctrl D` |
 | Delete | `Delete`, `Backspace` |
 | Select all | `Ctrl A` |
-| Deselect / exit | `Esc` |
+| Deselect / step out of a group | `Esc` |
 | Rename | `F2` |
 
 ## Object
@@ -31,6 +31,7 @@ Custom bindings are saved in your browser. On macOS, `Ctrl` means `⌘`.
 | Action | Keys |
 | --- | --- |
 | Group / Ungroup | `Ctrl G` / `Ctrl Shift G` |
+| Use front shape as mask | `Ctrl Alt M` |
 | Enter group / edit path or text | `Enter` |
 | Select parent | `Shift Enter` |
 | Show / hide | `Ctrl Shift H` |
@@ -67,6 +68,7 @@ Custom bindings are saved in your browser. On macOS, `Ctrl` means `⌘`.
 | Zoom 100% / fit / selection | `Shift 0` / `Shift 1` / `Shift 2` |
 | Design ⇄ Animate | `Tab` |
 | Cycle Layers / Theme / Assets | `Alt T` |
+| Click selects groups (on/off) | `Alt G` |
 | Code panel | `Alt C` |
 
 ## Animate

@@ -526,9 +526,29 @@ export function addDistanceConstraint(
 export function addClip(doc: RiveDoc, c: { artboard?: string; object: string; source: string }) {
   const { ab, o } = getObject(doc, c.object, c.artboard);
   const source = getObject(doc, c.source, ab.id).o;
+  if (source.id === o.id) throw new ApiError('An object cannot be its own mask');
+  // the mask must live outside what it clips, or the runtime clips it away too
+  for (let parent: CoreObj | undefined = source; parent; parent = findObj(ab, String(parent.props.parentId ?? ''))) {
+    if (parent.id === o.id) throw new ApiError('The mask cannot be inside the object it masks');
+  }
+  const existing = clipsOf(ab, o.id).find((x) => x.props.sourceId === source.id);
+  if (existing) return existing;
   const clip = obj('ClippingShape', { name: 'Clip', parentId: o.id, sourceId: source.id, fillRule: 0, isVisible: true });
   ab.objects.push(clip);
   return clip;
+}
+
+/** The masks applied to an object. */
+export function clipsOf(ab: ArtboardDoc, objectId: string): CoreObj[] {
+  return ab.objects.filter((c) => c.type === 'ClippingShape' && c.props.parentId === objectId);
+}
+
+/** Removes one mask, or every mask of an object when no clip id is given. */
+export function removeClip(doc: RiveDoc, c: { artboard?: string; object: string; clipId?: string }) {
+  const { ab, o } = getObject(doc, c.object, c.artboard);
+  const doomed = new Set(clipsOf(ab, o.id).filter((x) => !c.clipId || x.id === c.clipId).map((x) => x.id));
+  ab.objects = ab.objects.filter((x) => !doomed.has(x.id));
+  return doomed.size;
 }
 
 // ---------------------------------------------------------------------------

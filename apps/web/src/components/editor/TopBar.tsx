@@ -29,6 +29,7 @@ import { Tool, useEditor } from '@/lib/store/editor';
 import { useCurrentUser } from '@/lib/client/session';
 import { Avatar } from '../Avatar';
 import { AppIcon } from '../AppHeader';
+import { usePrefs } from '@/lib/client/prefs';
 
 const SHAPE_TOOLS: { tool: Tool; label: string; key: string; icon: React.ReactNode }[] = [
   { tool: 'rectangle', label: 'Rectangle', key: 'R', icon: <Square size={15} /> },
@@ -42,6 +43,8 @@ export function TopBar({ onSave, onExport, saveState }: { onSave: () => void; on
   const tool = useEditor((s) => s.tool);
   const mode = useEditor((s) => s.mode);
   const codeOpen = useEditor((s) => s.codeOpen);
+  const selectMode = usePrefs((p) => p.prefs.selectMode);
+  const updatePrefs = usePrefs((p) => p.update);
   const readOnly = useEditor((s) => s.readOnly);
   const canUndo = useEditor((s) => s.past.length > 0);
   const canRedo = useEditor((s) => s.future.length > 0);
@@ -146,6 +149,24 @@ export function TopBar({ onSave, onExport, saveState }: { onSave: () => void; on
         <FolderPlus size={15} />
       </button>
       {toolBtn('hand', <Hand size={15} />, 'Hand (H, or hold Space)')}
+      <label
+        className="flex items-center gap-1.5 h-8 px-2 rounded-md hover:bg-bg3 cursor-pointer select-none"
+        title={
+          selectMode === 'group'
+            ? 'Clicking selects whole groups. Double-click a group to select inside it. (Alt G)'
+            : 'Clicking selects the object under the cursor, even inside groups. (Alt G)'
+        }
+      >
+        <input
+          type="checkbox"
+          checked={selectMode === 'group'}
+          onChange={(e) => {
+            updatePrefs({ selectMode: e.target.checked ? 'group' : 'object' });
+            s.set('selectionContext', null);
+          }}
+        />
+        <span className="text-[11px] text-t1">Groups</span>
+      </label>
       <div className="w-px h-5 bg-line2 mx-1" />
       <button className="icon-btn w-8 h-8" disabled={!canUndo || readOnly} onClick={() => s.undo()} title="Undo">
         <Undo2 size={15} />

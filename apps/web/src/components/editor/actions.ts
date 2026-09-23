@@ -19,9 +19,10 @@ import {
   ungroup,
   allKeyframes,
 } from '@openrive/rive/ops';
+import { addClip, clipsOf, removeClip } from '@openrive/rive/api';
 import { artboardPos, buildScene, invert, isEmpty, objectBounds, pathsOfShape, prop, sampleAnimation, setArtboardPos } from '@openrive/rive/scene';
 import { isA } from '@openrive/rive/schema';
-import { getPrefs } from '@/lib/client/prefs';
+import { getPrefs, usePrefs } from '@/lib/client/prefs';
 import { animationFrames, getActive, Tool, useEditor } from '@/lib/store/editor';
 import { deleteSmSelection } from './StateMachinePanel';
 
@@ -195,6 +196,43 @@ function group() {
   });
   if (g) s.select([g]);
 }
+
+/**
+ * Masks with the front-most selected shape: every other selected object is
+ * clipped to it. In Rive the mask keeps painting, so it is hidden as well —
+ * exactly what "use as mask" does in other editors.
+ */
+function maskWithSelection() {
+  const s = st();
+  const { ab } = getActive();
+  if (!ab || s.selection.length < 2) return;
+  // objects earlier in the array draw on top: the front-most one is the mask
+  const ordered = ab.objects.filter((o) => s.selection.includes(o.id)).map((o) => o.id);
+  const [sourceId, ...targets] = ordered;
+  if (!sourceId || !targets.length) return;
+  s.commit((d) => {
+    const artboard = findArtboard(d, ab.id);
+    if (!artboard) return;
+    for (const target of targets) addClip(d, { artboard: ab.id, object: target, source: sourceId });
+    const source = findObj(artboard, sourceId);
+    if (source) source.props.drawableFlags = (Number(source.props.drawableFlags ?? 0) | 1) >>> 0;
+  });
+  s.select(targets);
+}
+
+function removeMaskFromSelection() {
+  const s = st();
+  const { ab } = getActive();
+  if (!ab) return;
+  s.commit((d) => {
+    for (const id of s.selection) removeClip(d, { artboard: ab.id, object: id });
+  });
+}
+
+const selectionHasMask = () => {
+  const { ab } = getActive();
+  return !!ab && st().selection.some((id) => clipsOf(ab, id).length > 0);
+};
 
 function ungroupSelection() {
   const groups = selectedObjects().filter((o) => o.type === 'Node');
@@ -426,7 +464,14 @@ export const ACTIONS: Action[] = [
       if (s.editTextId) s.set('editTextId', null);
       else if (s.editPathId) s.set('editPathId', null);
       else if (s.previewing) s.set('previewing', false);
-      else s.select([]);
+      else if (s.selectionContext) {
+        // step out one group level, selecting the group we were inside
+        const { ab } = getActive();
+        const group = ab ? findObj(ab, s.selectionContext) : undefined;
+        const parent = ab && group ? parentIdOf(ab, group) : null;
+        s.set('selectionContext', parent && parent !== ab?.artboard.id ? parent : null);
+        s.select(group ? [group.id] : []);
+      } else s.select([]);
       s.set('tool', 'select');
     },
   },
@@ -434,6 +479,24 @@ export const ACTIONS: Action[] = [
 
   // Object
   { id: 'object.group', label: 'Group selection', category: 'Object', keys: ['Ctrl+G'], edits: true, run: group, enabled: hasSelection },
+  {
+    id: 'object.mask',
+    label: 'Use front shape as mask',
+    category: 'Object',
+    keys: ['Ctrl+Alt+M'],
+    edits: true,
+    run: maskWithSelection,
+    enabled: () => st().selection.length >= 2,
+  },
+  {
+    id: 'object.removeMask',
+    label: 'Remove mask',
+    category: 'Object',
+    edits: true,
+    keys: [],
+    run: removeMaskFromSelection,
+    enabled: selectionHasMask,
+  },
   { id: 'object.ungroup', label: 'Ungroup', category: 'Object', keys: ['Ctrl+Shift+G'], edits: true, run: ungroupSelection, enabled: () => selectedObjects().some((o) => o.type === 'Node') },
   { id: 'object.enter', label: 'Enter group / edit path or text', category: 'Object', keys: ['Enter'], when: 'design', run: enterSelection, enabled: () => st().selection.length === 1 },
   { id: 'object.selectParent', label: 'Select parent', category: 'Object', keys: ['Shift+Enter'], run: selectParent, enabled: hasSelection },
@@ -498,6 +561,17 @@ export const ACTIONS: Action[] = [
     category: 'View',
     keys: ['Alt+T'],
     run: () => st().set('leftTab', st().leftTab === 'layers' ? 'theme' : st().leftTab === 'theme' ? 'assets' : 'layers'),
+  },
+  {
+    id: 'view.selectGroups',
+    label: 'Click selects groups',
+    category: 'View',
+    keys: ['Alt+G'],
+    run: () => {
+      const prefs = getPrefs();
+      usePrefs.getState().update({ selectMode: prefs.selectMode === 'group' ? 'object' : 'group' });
+      st().set('selectionContext', null);
+    },
   },
   { id: 'view.codePanel', label: 'Toggle code panel', category: 'View', keys: ['Alt+C'], run: () => st().set('codeOpen', !st().codeOpen) },
 

@@ -35,11 +35,21 @@ or another tab) changes the file while it's open, a banner lets you reload or ke
 | Text | `T` | Click to add text, then type. Double-click text to edit it later. |
 | Hand | `H` / hold `Space` | Pan. Scroll with `Ctrl` to zoom. |
 
-- **Groups**: `Ctrl G` / `Ctrl Shift G`. Double-click or press `Enter` to go inside a group.
+- **Groups**: `Ctrl G` / `Ctrl Shift G`.
+- **What a click selects** is set by the **Groups** checkbox in the toolbar (`Alt G`):
+  - **on** (default): a click selects the whole group. **Double-click** enters the group and selects the item under the
+    cursor; double-clicking a nested group goes one level deeper. A chip at the top of the canvas shows which group you
+    are inside, and `Esc` steps back out one level.
+  - **off**: a click selects the exact object under the cursor, however deeply it is nested.
+  Either way, `Enter` goes inside the selection and `Shift Enter` selects the parent.
 - **Paths**: double-click a shape, or press `Enter`, to edit its vertices.
 - **Arrange**: `Ctrl [` / `Ctrl ]` change draw order. In Rive, objects higher in the Layers list draw on top.
 - **Inspector**: position, size, rotation, scale, opacity, blend mode, fills and strokes (solid or gradient), corner
   radius, trim path, text styling. Colors can link to [theme colors](theme-colors.md).
+- **Masks (clipping)**: draw the mask shape on top, select it together with what it should mask, and choose
+  **Use front shape as mask** (`Ctrl Alt M`, also in the right-click menu). The masked objects are drawn only inside
+  that shape, and the mask itself is hidden. The **Mask** section of the inspector lists every mask on the selection,
+  where you can turn one off with the eye, remove it, or add another shape as an extra mask.
 - **Context menus**: right-click objects, layers, the canvas, keyframes, timelines, states and transitions.
 
 ### Animate mode (`Tab`)

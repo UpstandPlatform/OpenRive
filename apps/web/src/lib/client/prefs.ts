@@ -19,6 +19,8 @@ export interface Prefs {
   bigNudge: number;
   /** round positions to whole pixels while dragging */
   snapToPixel: boolean;
+  /** what a click on the canvas picks: the whole group, or the object under the cursor */
+  selectMode: 'group' | 'object';
   /** action id -> key combos, overriding the defaults */
   shortcuts: Record<string, string[]>;
 }
@@ -36,6 +38,7 @@ export const DEFAULT_PREFS: Prefs = {
   nudge: 1,
   bigNudge: 10,
   snapToPixel: false,
+  selectMode: 'group',
   shortcuts: {},
 };
 

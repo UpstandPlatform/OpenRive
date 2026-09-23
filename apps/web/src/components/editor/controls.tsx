@@ -467,15 +467,18 @@ export function Select<T extends string | number>({
   options,
   onChange,
   className = '',
+  disabled,
 }: {
   value: T;
   options: { value: T; label: string }[];
   onChange: (v: T) => void;
   className?: string;
+  disabled?: boolean;
 }) {
   return (
     <select
       className={`field ${className}`}
+      disabled={disabled}
       value={String(value)}
       onChange={(e) => {
         const o = options.find((x) => String(x.value) === e.target.value);

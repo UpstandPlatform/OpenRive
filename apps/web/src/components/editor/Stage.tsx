@@ -28,7 +28,7 @@ import { isA } from '@openrive/rive/schema';
 import { findArtboard, findObj, insertObjects, isAncestor, parentIdOf } from '@openrive/rive/ops';
 import { newArtboard, newParametricShape, newPenShape, PenPoint, ShapeKind, solidStroke } from '@openrive/rive/factory';
 import { ensureFontAsset, newTextObjects, textBox, textRuns, textStyles } from '@openrive/rive/text';
-import { getPrefs } from '@/lib/client/prefs';
+import { getPrefs, usePrefs } from '@/lib/client/prefs';
 import { loadBundledFont } from '@/lib/client/fonts';
 import { openContextMenu } from './ContextMenu';
 import { canvasMenu, objectMenu } from './menus';
@@ -104,6 +104,8 @@ export function Stage() {
   const frame = useEditor((s) => s.frame);
   const previewing = useEditor((s) => s.previewing);
   const editPathId = useEditor((s) => s.editPathId);
+  const selectionContext = useEditor((s) => s.selectionContext);
+  const selectMode = usePrefs((s) => s.prefs.selectMode);
   const readOnly = useEditor((s) => s.readOnly);
   const editTextId = useEditor((s) => s.editTextId);
 
@@ -578,15 +580,32 @@ export function Stage() {
     if (ab.id !== activeArtboardId) s.setActiveArtboard(ab.id);
     const scene = scenes.get(ab.id)!;
     const p = abPos(ab);
-    let hit = hitTestShape(scene, sx - p.x, sy - p.y, 4 / view.zoom);
-    if (hit) {
-      hit = resolveSelectable(ab, hit, s.selection, e.detail >= 2);
-      if (e.detail >= 2 && findObj(ab, hit)?.type === 'Text') {
+    const rawHit = hitTestShape(scene, sx - p.x, sy - p.y, 4 / view.zoom);
+    if (rawHit) {
+      let hit = rawHit;
+      const doubleClick = e.detail >= 2;
+      // clicking outside the entered group leaves it
+      const context = s.selectionContext && ancestorChain(ab, rawHit).includes(s.selectionContext) ? s.selectionContext : null;
+      if (context !== s.selectionContext) s.set('selectionContext', context);
+      if (doubleClick && selectMode === 'group') {
+        // double click steps one level into the group under the cursor; doing it
+        // again on a nested group steps in further
+        const chain = ancestorChain(ab, rawHit);
+        const floor = context ? chain.indexOf(context) + 1 : 0;
+        if (chain.length > floor + 1 && isEnterable(ab, chain[floor]!)) {
+          s.set('selectionContext', chain[floor]!);
+          s.select([chain[floor + 1]!]);
+          beginMove(ab, scene, [chain[floor + 1]!], sx, sy);
+          return;
+        }
+      }
+      hit = resolveSelectable(ab, hit, { selection: s.selection, drill: doubleClick, mode: selectMode, context });
+      if (doubleClick && findObj(ab, hit)?.type === 'Text') {
         s.select([hit]);
         s.set('editTextId', hit);
         return;
       }
-      if (e.detail >= 2) {
+      if (doubleClick) {
         const o = findObj(ab, hit);
         const paths = o?.type === 'Shape' ? pathsOfShape(scene, hit) : [];
         const pts = paths.find((pp) => pp.type === 'PointsPath');
@@ -606,7 +625,10 @@ export function Stage() {
       }
       beginMove(ab, scene, sel, sx, sy);
     } else {
-      if (!e.shiftKey) s.select([]);
+      if (!e.shiftKey) {
+        s.select([]);
+        s.set('selectionContext', null);
+      }
       setDrag({ kind: 'marquee', abId: ab.id, x0: sx, y0: sy, x1: sx, y1: sy, additive: e.shiftKey });
     }
   };
@@ -664,7 +686,9 @@ export function Stage() {
         if (ab) {
           const p = abPos(ab);
           hit = hitTestShape(scenes.get(ab.id)!, sx - p.x, sy - p.y, 4 / view.zoom);
-          if (hit) hit = resolveSelectable(ab, hit, s.selection, false);
+          if (hit) {
+            hit = resolveSelectable(ab, hit, { selection: s.selection, drill: false, mode: selectMode, context: s.selectionContext });
+          }
         }
         if (hit !== s.hoverId) s.set('hoverId', hit);
       }
@@ -907,7 +931,9 @@ export function Stage() {
       if (ab) {
         const p = abPos(ab);
         const hit = hitTestShape(scenes.get(ab.id)!, sx - p.x, sy - p.y, 4 / view.zoom);
-        if (hit && s.selection.length > 1) s.select([resolveSelectable(ab, hit, [], false)]);
+        if (hit && s.selection.length > 1) {
+          s.select([resolveSelectable(ab, hit, { selection: [], drill: false, mode: selectMode, context: s.selectionContext })]);
+        }
       }
     }
     if (drag.kind !== 'pan' && drag.kind !== 'marquee' && drag.kind !== 'create' && drag.kind !== 'penHandle') s.endGesture();
@@ -933,7 +959,7 @@ export function Stage() {
       const p = abPos(ab);
       let hit = hitTestShape(scenes.get(ab.id)!, sx - p.x, sy - p.y, 4 / view.zoom);
       if (hit) {
-        hit = resolveSelectable(ab, hit, s.selection, false);
+        hit = resolveSelectable(ab, hit, { selection: s.selection, drill: false, mode: selectMode, context: s.selectionContext });
         if (!s.selection.includes(hit)) s.select([hit]);
         openContextMenu(e, objectMenu());
         return;
@@ -1290,6 +1316,18 @@ export function Stage() {
       {editTextId && activeAb && activeScene && (
         <InlineTextEditor ab={activeAb} scene={activeScene} textId={editTextId} toScreen={toScreen} zoom={view.zoom} />
       )}
+      {selectionContext && !editPathId && activeAb && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-bg3 text-t1 text-[11px]">
+          Inside <b className="text-t0">{String(findObj(activeAb, selectionContext)?.props.name ?? 'group')}</b>. Clicks select its contents.{' '}
+          <button
+            className="text-accent ml-1"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => useEditor.getState().set('selectionContext', null)}
+          >
+            Exit (Esc)
+          </button>
+        </div>
+      )}
       {editPathId && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-bg3 text-t1 text-[11px]">
           Editing vertices. Drag points and handles.{' '}
@@ -1337,30 +1375,64 @@ export function Stage() {
  * Rive-style selection: clicking selects the top-level object under the
  * artboard (or inside the currently selected group); double click drills in.
  */
-function resolveSelectable(ab: ArtboardDoc, hitId: string, selection: string[], drill: boolean): string {
+/** Ancestors of an object, outermost first, ending with the object itself. */
+function ancestorChain(ab: ArtboardDoc, id: string): string[] {
   const chain: string[] = [];
-  let cur: string | null = hitId;
+  let cur: string | null = id;
   while (cur && cur !== ab.artboard.id) {
     chain.unshift(cur);
     const o = findObj(ab, cur);
     cur = o ? parentIdOf(ab, o) : null;
   }
-  // chain: [topLevel, ..., hit]
+  return chain;
+}
+
+export interface SelectOptions {
+  selection: string[];
+  /** double click: go one level deeper */
+  drill: boolean;
+  /** 'group' picks the outermost group, 'object' picks what is under the cursor */
+  mode: 'group' | 'object';
+  /** group the user entered: selection starts one level inside it */
+  context: string | null;
+}
+
+/**
+ * Decides what a click selects. In group mode a click picks the outermost group,
+ * and double-clicking enters it so the next click picks inside. In object mode a
+ * click picks the shape itself, whatever it is nested in.
+ */
+function resolveSelectable(ab: ArtboardDoc, hitId: string, o: SelectOptions): string {
+  const chain = ancestorChain(ab, hitId);
   if (!chain.length) return hitId;
-  for (let i = chain.length - 1; i >= 0; i--) {
-    if (selection.includes(chain[i])) {
+  if (o.mode === 'object') return hitId;
+
+  // inside an entered group, treat its children as the top level
+  const contextIndex = o.context ? chain.indexOf(o.context) : -1;
+  const floor = contextIndex >= 0 ? contextIndex + 1 : 0;
+
+  for (let i = chain.length - 1; i >= floor; i--) {
+    if (o.selection.includes(chain[i]!)) {
       // clicking inside a selected group: keep it, or drill one level deeper on double click
-      return drill && i + 1 < chain.length ? chain[i + 1] : chain[i];
+      return o.drill && i + 1 < chain.length ? chain[i + 1]! : chain[i]!;
     }
   }
   // if a sibling inside a group is selected, stay at that depth
-  for (const sel of selection) {
-    const o = findObj(ab, sel);
-    const parent = o ? parentIdOf(ab, o) : null;
+  for (const sel of o.selection) {
+    const selected = findObj(ab, sel);
+    const parent = selected ? parentIdOf(ab, selected) : null;
     const idx = parent ? chain.indexOf(parent) : -1;
-    if (idx >= 0 && idx + 1 < chain.length) return chain[idx + 1];
+    if (idx >= floor - 1 && idx + 1 < chain.length && idx >= 0) return chain[idx + 1]!;
   }
-  return chain[0];
+  const pick = chain[Math.min(floor, chain.length - 1)]!;
+  return o.drill && floor + 1 < chain.length ? chain[floor + 1]! : pick;
+}
+
+/** True when the object can be entered (a group with children). */
+function isEnterable(ab: ArtboardDoc, id: string): boolean {
+  const o = findObj(ab, id);
+  if (!o || !isA(o.type, 'Node') || o.type === 'Shape' || o.type === 'Text') return false;
+  return ab.objects.some((c) => parentIdOf(ab, c) === id);
 }
 
 const round2 = (v: number) => Math.round(v * 100) / 100;

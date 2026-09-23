@@ -69,6 +69,8 @@ interface EditorState {
   playDir: 1 | -1;
   /** text object being edited inline on the stage */
   editTextId: string | null;
+  /** group the user entered by double-clicking: clicks select inside it */
+  selectionContext: string | null;
   leftTab: 'layers' | 'theme' | 'assets';
   /** the Code panel (scripts + embed snippets) is open */
   codeOpen: boolean;
@@ -129,6 +131,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   timelineHeight: 280,
   playDir: 1,
   editTextId: null,
+  selectionContext: null,
   leftTab: 'layers',
   codeOpen: false,
 
@@ -225,6 +228,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       smSelection: null,
       editPathId: null,
       editTextId: null,
+      selectionContext: null,
     });
   },
   setProjectName(name) {

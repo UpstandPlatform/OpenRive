@@ -69,6 +69,20 @@ export function PreferencesDialog({ onClose }: { onClose: () => void }) {
             )}
           </div>
           <div className="flex flex-col gap-1.5">
+            <div className="panel-title">Selecting</div>
+            <Row label="Click">
+              <Select
+                value={prefs.selectMode}
+                options={[
+                  { value: 'group', label: 'Selects the whole group' },
+                  { value: 'object', label: 'Selects the object' },
+                ]}
+                onChange={(v) => update({ selectMode: v })}
+              />
+            </Row>
+            <p className="text-t3 text-[11px]">Double-click a group to select inside it; Esc steps back out.</p>
+          </div>
+          <div className="flex flex-col gap-1.5">
             <div className="panel-title">Moving</div>
             <Row label="Nudge">
               <NumberField value={prefs.nudge} min={0.01} onChange={(v) => update({ nudge: v })} suffix="px" />

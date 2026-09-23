@@ -11,6 +11,8 @@ import {
   EyeOff,
   Minus,
   Plus,
+  Scissors,
+  Trash2,
 } from 'lucide-react';
 import { ArtboardDoc, CoreObj } from '@openrive/rive/document';
 import { obj } from '@openrive/rive/factory';
@@ -26,6 +28,7 @@ import {
   upsertKeyframe,
 } from '@openrive/rive/ops';
 import { artboardPos, buildScene, isEmpty, objectBounds, prop, sampleAnimation, Overrides, invert, apply, setArtboardPos } from '@openrive/rive/scene';
+import { addClip, clipsOf, removeClip } from '@openrive/rive/api';
 import { isA, propDef } from '@openrive/rive/schema';
 import { useEditor } from '@/lib/store/editor';
 import { ColorSwatch, KeyButton, NumberField, Row, Select, TextField } from './controls';
@@ -234,6 +237,7 @@ export function Inspector() {
           {o.type === 'PointsPath' && <PointsPathSection o={o} b={b} ab={ab} />}
           {o.type === 'Text' && <TextSection o={o} b={b} ab={ab} />}
           {isA(o.type, 'WorldTransformComponent') && <DrawableSection o={o} b={b} />}
+          {isA(o.type, 'Node') && o.type !== 'Artboard' && <MaskSection ab={ab} o={o} b={b} />}
           {shapePaintOwner && <PaintsSection ab={ab} owner={shapePaintOwner} b={b} />}
         </>
       )}
@@ -332,6 +336,66 @@ function DrawableSection({ o, b }: { o: CoreObj; b: Binding }) {
           <Select value={b.get(o, 'blendModeValue')} options={BLEND_MODES} onChange={(v) => b.set(o, { blendModeValue: v })} />
         </Row>
       )}
+    </div>
+  );
+}
+
+/**
+ * Masks (Rive clipping shapes): the selected object is drawn only inside the
+ * shapes listed here. A mask may be any shape or group outside this object.
+ */
+function MaskSection({ ab, o, b }: { ab: ArtboardDoc; o: CoreObj; b: Binding }) {
+  const s = useEditor.getState();
+  const clips = clipsOf(ab, o.id);
+  const inside = (id: string) => {
+    for (let p: CoreObj | undefined = findObj(ab, id); p; p = findObj(ab, String(p.props.parentId ?? ''))) if (p.id === o.id) return true;
+    return false;
+  };
+  const candidates = ab.objects.filter(
+    (c) => c.id !== o.id && (c.type === 'Shape' || (c.type === 'Node' && childrenOf(ab, c.id).length > 0)) && !inside(c.id),
+  );
+
+  return (
+    <div className="section flex flex-col gap-1.5">
+      <div className="flex items-center gap-2">
+        <span className="panel-title flex-1">Mask</span>
+        <Scissors size={12} className="text-t2" />
+      </div>
+      {clips.map((clip) => {
+        const source = findObj(ab, String(clip.props.sourceId ?? ''));
+        return (
+          <div key={clip.id} className="flex items-center gap-2 h-7">
+            <span className="flex-1 truncate" title="The shape this object is clipped to">
+              {source ? displayName(source) : 'Missing shape'}
+            </span>
+            <button
+              className="icon-btn"
+              disabled={b.readOnly}
+              title={b.get<boolean>(clip, 'isVisible') ? 'Turn the mask off' : 'Turn the mask on'}
+              onClick={() => b.set(clip, { isVisible: !b.get<boolean>(clip, 'isVisible') })}
+            >
+              {b.get<boolean>(clip, 'isVisible') ? <Eye size={13} /> : <EyeOff size={13} />}
+            </button>
+            <button
+              className="icon-btn"
+              disabled={b.readOnly}
+              title="Remove the mask"
+              onClick={() => s.commit((d) => void removeClip(d, { artboard: ab.id, object: o.id, clipId: clip.id }))}
+            >
+              <Trash2 size={13} />
+            </button>
+          </div>
+        );
+      })}
+      <Select
+        value=""
+        disabled={b.readOnly || !candidates.length}
+        options={[{ value: '', label: candidates.length ? (clips.length ? '+ Add another mask…' : '+ Mask with a shape…') : 'No other shapes yet' }, ...candidates.map((c) => ({ value: c.id, label: displayName(c) }))]}
+        onChange={(v) => {
+          if (v) s.commit((d) => void addClip(d, { artboard: ab.id, object: o.id, source: v }));
+        }}
+      />
+      {clips.length > 0 && <p className="text-t3 text-[11px]">Only the parts inside the mask are drawn. The mask shape itself still paints, so hide it (Ctrl Shift H) to show just the masked artwork.</p>}
     </div>
   );
 }
