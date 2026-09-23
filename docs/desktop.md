@@ -64,11 +64,28 @@ To run it in development:
 bun run desktop        # builds the server bundle, then electrobun dev
 ```
 
+## App icon
+
+The icon is the OpenRive logo (`apps/web/public/logo.svg`) on a white rounded square, the same badge the web app
+shows in its header:
+
+| Path | Used for |
+| --- | --- |
+| `apps/desktop/assets/icon.png` (512×512) | Windows (Hutch converts it to `.ico` for the installer, shortcuts and taskbar) and Linux |
+| `apps/desktop/assets/icon.iconset/` | macOS, converted to `.icns` by `iconutil` on the macOS runner |
+
+To regenerate them after changing the logo, render `logo.svg` onto a white rounded square (corner radius 22% of the
+size, logo at 70%) and export PNGs at 16, 32, 48, 64, 128, 256, 512 and 1024 px. The `.iconset` folder needs
+`icon_16x16.png`, `icon_16x16@2x.png`, `icon_32x32.png`, `icon_32x32@2x.png`, `icon_128x128.png`,
+`icon_128x128@2x.png`, `icon_256x256.png`, `icon_256x256@2x.png`, `icon_512x512.png` and `icon_512x512@2x.png`, where
+each `@2x` file is the next size up.
+
 ## Files
 
 | Path | What |
 | --- | --- |
 | `apps/desktop/src/bun/index.ts` | Main process: starts the server, opens the window |
+| `apps/desktop/assets/` | Application icons |
 | `apps/desktop/src/mainview/` | Fallback view shown if the server does not start |
 | `apps/desktop/electrobun.config.ts` | App name, identifier, bundle contents |
 | `scripts/bundle-desktop-server.ts` | Builds and stages the standalone server |

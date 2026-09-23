@@ -19,9 +19,10 @@ export default {
       // produced by `bun run build:server` (Next.js standalone output)
       'build/server': 'server',
     },
-    mac: { bundleCEF: false },
-    win: { bundleCEF: false },
-    linux: { bundleCEF: false },
+    // app icons rendered from apps/web/public/logo.svg (see docs/desktop.md)
+    mac: { bundleCEF: false, icons: 'assets/icon.iconset' },
+    win: { bundleCEF: false, icon: 'assets/icon.png' },
+    linux: { bundleCEF: false, icon: 'assets/icon.png' },
   },
   runtime: { exitOnLastWindowClosed: true },
 } satisfies ElectrobunConfig;
