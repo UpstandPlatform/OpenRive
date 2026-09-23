@@ -19,9 +19,11 @@ export default {
       // produced by `bun run build:server` (Next.js standalone output)
       'build/server': 'server',
     },
-    // app icons rendered from apps/web/public/logo.svg (see docs/desktop.md)
+    // app icons rendered from apps/web/public/logo.svg (see docs/desktop.md).
+    // Windows needs 256x256: the ICO format cannot hold anything larger, and
+    // Hutch rejects a bigger PNG with "invalid Windows PNG icon: PngTooLarge".
     mac: { bundleCEF: false, icons: 'assets/icon.iconset' },
-    win: { bundleCEF: false, icon: 'assets/icon.png' },
+    win: { bundleCEF: false, icon: 'assets/icon-win.png' },
     linux: { bundleCEF: false, icon: 'assets/icon.png' },
   },
   runtime: { exitOnLastWindowClosed: true },

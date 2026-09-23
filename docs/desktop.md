@@ -71,8 +71,12 @@ shows in its header:
 
 | Path | Used for |
 | --- | --- |
-| `apps/desktop/assets/icon.png` (512×512) | Windows (Hutch converts it to `.ico` for the installer, shortcuts and taskbar) and Linux |
+| `apps/desktop/assets/icon-win.png` (256×256) | Windows: Hutch converts it to the `.ico` used by the installer, shortcuts and taskbar |
+| `apps/desktop/assets/icon.png` (512×512) | Linux |
 | `apps/desktop/assets/icon.iconset/` | macOS, converted to `.icns` by `iconutil` on the macOS runner |
+
+> Windows must be **256×256 at most** — that is the largest image an `.ico` can hold, and a bigger PNG fails the build
+> with `invalid Windows PNG icon: PngTooLarge`.
 
 To regenerate them after changing the logo, render `logo.svg` onto a white rounded square (corner radius 22% of the
 size, logo at 70%) and export PNGs at 16, 32, 48, 64, 128, 256, 512 and 1024 px. The `.iconset` folder needs
