@@ -11,6 +11,11 @@ bun run dev
 
 Useful URLs: `/` (files), `/users`, `/editor/<id>`, `/preview/<id>`, `/api/health`.
 
+The Rive SDKs are vendored as git submodules in `vendor/`, but nothing needs them for day-to-day work: the editor
+renders with the `@rive-app/canvas-advanced` npm package that `bun install` copies into `apps/web/public/rive`. Run
+`bun run rive:init` when you want them, and see [Rive SDK submodules](../docs/rive-sdk.md) for updating the forks or
+rendering with your own build.
+
 In development, the editor store is exposed as `window.__riveEditor` for debugging in the browser console:
 
 ```js

@@ -17,6 +17,7 @@
 - [Theme Colors](Theme-Colors)
 - [Text and Assets](Text-and-Assets)
 - [Code Panel](Code-Panel)
+- [Preview Bundles](Preview-Bundles)
 - [Users and Roles](Users-and-Roles)
 
 **Self-hosting**
@@ -34,6 +35,7 @@
 **Under the hood**
 - [Architecture](Architecture)
 - [File Format](File-Format)
+- [Rive SDK Submodules](Rive-SDK-Submodules)
 - [Glossary](Glossary)
 - [Roadmap](Roadmap)
 

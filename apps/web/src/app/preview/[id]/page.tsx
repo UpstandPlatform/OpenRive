@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { use, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Download, RotateCcw } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Download, Package, RotateCcw } from 'lucide-react';
 import { PlayerApi, PlayerInput, PlayerProperty, RivePlayer } from '@/components/RivePlayer';
 import { importRiv, RiveDoc } from '@openrive/rive/document';
 import { NumberField } from '@/components/editor/controls';
@@ -20,6 +20,7 @@ export default function PreviewPage({ params }: PageProps<'/preview/[id]'>) {
   const [vmName, setVmName] = useState<string | null>(null);
   const [events, setEvents] = useState<string[]>([]);
   const [bg, setBg] = useState<'dark' | 'light' | 'checker'>('dark');
+  const [bundleMenu, setBundleMenu] = useState(false);
   const api = useRef<PlayerApi | null>(null);
 
   useEffect(() => {
@@ -86,9 +87,34 @@ export default function PreviewPage({ params }: PageProps<'/preview/[id]'>) {
         <button className="btn h-7" onClick={() => api.current?.restart()}>
           <RotateCcw size={13} /> Restart
         </button>
-        <a className="btn btn-primary h-7" href={`/api/projects/${id}/riv`}>
+        <a className="btn h-7" href={`/api/projects/${id}/riv`}>
           <Download size={13} /> .riv
         </a>
+        <div className="relative">
+          <button
+            className="btn btn-primary h-7"
+            onClick={() => setBundleMenu((v) => !v)}
+            title="Download this preview as a standalone folder: index.html, index.js and the .riv file"
+          >
+            <Package size={13} /> Bundle <ChevronDown size={12} />
+          </button>
+          {bundleMenu && (
+            <div className="menu absolute right-0 top-9 w-72 text-left" onMouseLeave={() => setBundleMenu(false)}>
+              <a className="menu-item" href={`/api/projects/${id}/bundle`} onClick={() => setBundleMenu(false)}>
+                <span>
+                  With the Rive runtime
+                  <span className="block text-t3 text-[11px]">Plays offline, no network needed</span>
+                </span>
+              </a>
+              <a className="menu-item" href={`/api/projects/${id}/bundle?runtime=cdn`} onClick={() => setBundleMenu(false)}>
+                <span>
+                  Runtime from CDN
+                  <span className="block text-t3 text-[11px]">A few KB; loads the runtime from unpkg</span>
+                </span>
+              </a>
+            </div>
+          )}
+        </div>
       </header>
       <div className="flex-1 flex min-h-0">
         <div className={`flex-1 relative ${bgClass}`}>

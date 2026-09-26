@@ -23,6 +23,7 @@ import {
   Settings,
   Keyboard,
   Braces,
+  Package,
 } from 'lucide-react';
 import { runAction } from './actions';
 import { Tool, useEditor } from '@/lib/store/editor';
@@ -77,7 +78,7 @@ export function TopBar({ onSave, onExport, saveState }: { onSave: () => void; on
           <Menu size={13} className="text-t2" />
         </button>
         {menu === 'file' && (
-          <div className="menu absolute left-0 top-10 w-60">
+          <div className="menu absolute left-0 top-10 w-72">
             <Link href="/" className="menu-item">
               Back to files
             </Link>
@@ -87,6 +88,13 @@ export function TopBar({ onSave, onExport, saveState }: { onSave: () => void; on
             </button>
             <button className="menu-item" onClick={() => (onExport(), setMenu(null))}>
               <Download size={13} /> Export .riv <span className="shortcut">Ctrl E</span>
+            </button>
+            <button
+              className="menu-item whitespace-nowrap"
+              onClick={() => (runAction('file.exportBundle'), setMenu(null))}
+              title="A zip with index.html, index.js and the runtime that plays this file anywhere"
+            >
+              <Package size={13} /> Export preview bundle <span className="shortcut">Ctrl Shift E</span>
             </button>
             <div className="menu-sep" />
             <button className="menu-item" disabled={!canUndo} onClick={() => (s.undo(), setMenu(null))}>

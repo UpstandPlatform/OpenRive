@@ -57,3 +57,8 @@ package-lock.json
 pnpm-lock.yaml
 yarn.lock
 apps/desktop/.cottontail-tmp/
+
+# a Rive runtime built from vendor/rive-wasm (bun run rive:sync)
+apps/web/public/rive/local/
+apps/web/public/rive/runtime.json
+/scripts/bundle-test-out.zip

@@ -55,6 +55,7 @@ Scripts and pipes still get plain commands: with no TTY, `openrive` prints its h
 | `templates` | List templates and example files |
 | `import <file.riv…> [--name <name>]` | Import `.riv` files as projects |
 | `export <project> [out.riv]` | Write a project's `.riv` |
+| `export <project> [out.zip] --bundle [--cdn]` | Write a standalone [preview bundle](preview-bundles.md): `index.html`, `index.js`, the `.riv` and (without `--cdn`) the Rive runtime |
 | `info <project \| file.riv> [--json]` | Show artboards, objects, timelines, state machines and theme colors |
 | `delete <project>` | Delete a project |
 | `validate <file.riv…>` | Check files round-trip losslessly |
@@ -90,6 +91,7 @@ Projects can be referenced by id or name.
 openrive new "Onboarding" --template interactive-button
 openrive info "Onboarding"
 openrive export "Onboarding" ./onboarding.riv
+openrive export "Onboarding" --bundle                # a zip that plays the animation anywhere
 openrive import ~/Downloads/*.riv
 openrive validate ./assets/*.riv                     # CI check that files are intact
 openrive info some.riv --json | jq '.artboards[0].stateMachines'

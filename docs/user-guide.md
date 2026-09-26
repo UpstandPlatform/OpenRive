@@ -81,12 +81,17 @@ State machines make files interactive:
 - choose the artboard, state machine or timeline ("All timelines" plays every timeline together)
 - change inputs, and view model properties for data-bound files
 - watch fired events in the log, and switch backgrounds (dark, light, transparent)
-- download the `.riv`
+- download the `.riv`, or **Bundle** this whole screen as a folder you can ship — see
+  [preview bundles](preview-bundles.md)
 
 ### Export
 
 **Export** (`Ctrl E`) downloads the `.riv`. Load it with any Rive runtime. The [Code panel](code-panel.md)'s Embed
 tab has ready-made snippets.
+
+**Export preview bundle** (`Ctrl Shift E`, in the OpenRive menu) downloads a zip that plays the file on its own:
+`index.html`, an `index.js` player, the `.riv` and the Rive runtime. Unzip it, serve the folder, and you have the
+preview screen without OpenRive — see [preview bundles](preview-bundles.md).
 
 ## Preferences
 

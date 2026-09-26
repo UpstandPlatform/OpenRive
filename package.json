@@ -32,7 +32,7 @@
     "start": "turbo run start -F @openrive/web",
     "check-types": "turbo run check-types",
     "lint": "turbo run lint",
-    "test": "bun scripts/roundtrip.test.ts && bun scripts/svg.test.ts",
+    "test": "bun scripts/roundtrip.test.ts && bun scripts/svg.test.ts && bun scripts/bundle.test.ts",
     "test:corpus": "bun scripts/corpus.test.ts",
     "db:generate": "bun run --cwd packages/db drizzle-kit generate && bun scripts/embed-migrations.ts",
     "db:migrate": "bun run --cwd packages/db drizzle-kit migrate",
@@ -44,6 +44,12 @@
     "desktop": "bun run --cwd apps/desktop dev",
     "wiki": "bun scripts/build-wiki.mjs",
     "test:mcp": "bun scripts/mcp-smoke.test.ts",
+    "rive:status": "bun scripts/rive-sdk.ts status",
+    "rive:init": "bun scripts/rive-sdk.ts init",
+    "rive:update": "bun scripts/rive-sdk.ts update",
+    "rive:build": "bun scripts/rive-sdk.ts build",
+    "rive:sync": "bun scripts/rive-sdk.ts sync",
+    "rive:npm": "bun scripts/rive-sdk.ts npm",
     "build:desktop": "bun run --cwd apps/desktop build"
   },
   "devDependencies": {

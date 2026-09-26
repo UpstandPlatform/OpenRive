@@ -1,0 +1,8 @@
+[submodule "vendor/rive-wasm"]
+	path = vendor/rive-wasm
+	url = https://github.com/UpstandPlatform/rive-wasm.git
+	branch = master
+[submodule "vendor/rive-runtime"]
+	path = vendor/rive-runtime
+	url = https://github.com/UpstandPlatform/rive-runtime.git
+	branch = main

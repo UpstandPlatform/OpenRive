@@ -32,7 +32,8 @@
   [rive-runtime](https://github.com/rive-app/rive-runtime)'s type definitions, and unmodified files round-trip byte for
   byte. This is checked against the runtime's 437 test files.
 - **Official rendering.** The canvas is drawn by the official Rive WASM runtime, served locally, so what you see is what
-  your app shows.
+  your app shows. Rive's SDKs are also vendored as git submodules, so you can patch and build the runtime yourself
+  ([docs](docs/rive-sdk.md)).
 - **Local and login-free.** Projects live in PostgreSQL — embedded on your machine, a server when you self-host. Local
   users with roles replace accounts, and an optional access token protects a shared instance.
 - **Everywhere you work.** A web app, a desktop build (Electrobun), a terminal UI, an MCP server for AI assistants and
@@ -50,7 +51,7 @@
 | **Code** | Automation scripts (JavaScript on the OpenRive API) and ready-to-paste embed code for Web, React, Flutter, iOS and Android |
 | **Templates** | Interactive OpenRive logo, Upstand logo, bouncing ball, button, toggle, spinner, star, text and themes, plus two example files (off-road car, death knight) |
 | **Productivity** | 60+ rebindable keyboard shortcuts, context menus everywhere, editing presets, undo/redo, copy/paste between files |
-| **Preview** | Full-screen preview with state machine inputs, view model (data binding) controls and an event log |
+| **Preview** | Full-screen preview with state machine inputs, view model (data binding) controls and an event log; export it as a standalone bundle (`index.html` + `index.js` + runtime) that plays anywhere ([docs](docs/preview-bundles.md)) |
 | **Team** | Local users with Admin / Editor / Viewer roles, sharing, and a user manager page |
 | **Tools** | `openrive` terminal UI and CLI, MCP server (27 tools), REST API, Docker, desktop builds |
 | **Stack** | Bun · Next.js 16 · React 19 · Zustand · Drizzle ORM + PostgreSQL · zod · Turborepo ([Better-T-Stack](https://better-t-stack.dev)) |

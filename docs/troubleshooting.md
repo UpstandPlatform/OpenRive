@@ -6,6 +6,13 @@ The WASM runtime is copied to `apps/web/public/rive/rive.wasm` on `bun install`.
 `bun install` again) and reload. Behind a proxy, make sure `/rive/rive.wasm` is served with
 `Content-Type: application/wasm`.
 
+### A preview bundle shows nothing, or "Could not read …riv"
+
+Browsers block module imports and `fetch` on `file://` URLs, so opening `index.html` by double-clicking it cannot
+work. Serve the unzipped folder instead: `npx --yes serve .` (or `python3 -m http.server 8000`), then open the
+printed URL. A bundle exported with *Runtime from CDN* also needs internet — re-export it with the runtime included
+to play offline. See [preview bundles](preview-bundles.md).
+
 ### `bun install` fails
 
 Use Bun 1.4+ (`bun --version`). On Windows, run the terminal as a normal user in a folder you own, not in
@@ -54,6 +61,12 @@ round-trips.
 ### A `.rev` file won't open
 
 `.rev` is Rive's private editor format. Export a `.riv` from rive.app (File › Export › For runtime) and import that.
+
+### The Rive SDK submodules are empty
+
+`vendor/rive-wasm` and `vendor/rive-runtime` are git submodules, so a plain `git clone` leaves them empty. Run
+`bun run rive:init`. Nothing else needs them — the editor renders with the npm runtime either way. See
+[Rive SDK submodules](rive-sdk.md).
 
 ### Docker Desktop: "cannot connect to the Docker daemon"
 

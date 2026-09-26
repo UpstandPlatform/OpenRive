@@ -45,6 +45,7 @@ export interface Action {
 export const editorHandlers: {
   save?: () => void;
   exportFile?: () => void;
+  exportBundle?: (runtime?: 'offline' | 'cdn') => void;
   openShortcuts?: () => void;
   openPrefs?: () => void;
   preview?: () => void;
@@ -423,6 +424,7 @@ export const ACTIONS: Action[] = [
   // File
   { id: 'file.save', label: 'Save', category: 'File', keys: ['Ctrl+S'], run: () => editorHandlers.save?.() },
   { id: 'file.export', label: 'Export .riv', category: 'File', keys: ['Ctrl+E'], run: () => editorHandlers.exportFile?.() },
+  { id: 'file.exportBundle', label: 'Export preview bundle (.zip)', category: 'File', keys: ['Ctrl+Shift+E'], run: () => editorHandlers.exportBundle?.() },
   { id: 'file.preview', label: 'Open preview', category: 'File', keys: ['Ctrl+P'], run: () => editorHandlers.preview?.() },
   { id: 'file.shortcuts', label: 'Keyboard shortcuts', category: 'File', keys: ['Shift+/', 'Ctrl+/'], run: () => editorHandlers.openShortcuts?.() },
   { id: 'file.prefs', label: 'Preferences', category: 'File', keys: ['Ctrl+,'], run: () => editorHandlers.openPrefs?.() },

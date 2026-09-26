@@ -22,6 +22,7 @@ Projects
   templates                                        List starter templates and example files
   import <file.riv...> [--name <name>]             Import .riv files as projects
   export <project> [out.riv]                       Export a project to a .riv file
+  export <project> [out.zip] --bundle [--cdn]      Export a standalone preview bundle (index.html + index.js)
   info <project | file.riv> [--json]               Show artboards, objects, timelines, state machines
   delete <project>                                 Delete a project
   validate <file.riv...>                           Check files round-trip losslessly
@@ -87,7 +88,7 @@ async function main() {
     case 'import':
       return commands.importProjects(args, options);
     case 'export':
-      return commands.exportProject(args);
+      return commands.exportProject(args, options);
     case 'info':
       return commands.info(args, options);
     case 'delete':

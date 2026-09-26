@@ -3,6 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { importLegacyDataDir } from '@openrive/db';
 import { outline } from '@openrive/rive/api';
+import { buildBundle, bundleFileName, type BundleFile } from '@openrive/rive/bundle';
 import { exportRiv, importRiv } from '@openrive/rive/document';
 import { roleSchema, USER_COLORS } from '@openrive/shared';
 import { env } from '@openrive/shared/env';
@@ -102,13 +103,49 @@ export async function importProjects(args: string[], opts: Options) {
   }
 }
 
-export async function exportProject(args: string[]) {
-  if (!args[0]) throw new StoreError('Usage: export <project> [out.riv]');
+export async function exportProject(args: string[], opts: Options = {}) {
+  if (!args[0]) throw new StoreError('Usage: export <project> [out.riv] [--bundle] [--cdn]');
   const { meta, doc } = await loadDoc(args[0]);
-  const out = args[1] ?? `${meta.name.replace(/[^\w\- ]+/g, '').trim() || meta.id}.riv`;
-  const bytes = exportRiv(doc);
-  writeFileSync(out, bytes);
-  console.log(`Wrote ${out} (${bytes.length} bytes)`);
+  const riv = exportRiv(doc);
+  if (!opts.bundle) {
+    const out = args[1] ?? `${meta.name.replace(/[^\w\- ]+/g, '').trim() || meta.id}.riv`;
+    writeFileSync(out, riv);
+    return console.log(`Wrote ${out} (${riv.length} bytes)`);
+  }
+  const runtime = opts.cdn ? 'cdn' : 'offline';
+  const zip = buildBundle({
+    name: meta.name,
+    riv,
+    doc,
+    runtime,
+    runtimeVersion: runtimeVersion(),
+    runtimeFiles: runtime === 'offline' ? runtimeFiles() : undefined,
+  });
+  // tolerate `--bundle out.zip`, where the parser reads the path as the flag's value
+  const out = args[1] ?? (typeof opts.bundle === 'string' ? opts.bundle : bundleFileName(meta.name));
+  writeFileSync(out, zip);
+  console.log(`Wrote ${out} (${Math.round(zip.length / 1024)} KB) — unzip it, then: npx --yes serve .`);
+}
+
+/** The runtime the editor renders with, for offline preview bundles. */
+function runtimeDir() {
+  const local = path.join(PROJECT_ROOT, 'apps', 'web', 'public', 'rive', 'local');
+  return existsSync(path.join(local, 'canvas_advanced.mjs')) ? local : path.join(PROJECT_ROOT, 'apps', 'web', 'public', 'rive');
+}
+
+function runtimeVersion() {
+  const file = path.join(PROJECT_ROOT, 'apps', 'web', 'public', 'rive', 'runtime.json');
+  if (!existsSync(file)) return undefined;
+  return (JSON.parse(readFileSync(file, 'utf8')) as { version?: string }).version;
+}
+
+function runtimeFiles(): BundleFile[] {
+  const dir = runtimeDir();
+  return ['canvas_advanced.mjs', 'rive.wasm'].map((name) => {
+    const file = path.join(dir, name);
+    if (!existsSync(file)) throw new StoreError(`Missing the Rive runtime file ${name}. Run "bun install" in the repo, or export with --cdn.`);
+    return { name, data: new Uint8Array(readFileSync(file)) };
+  });
 }
 
 export async function info(args: string[], opts: Options) {

@@ -35,6 +35,7 @@ and rendering; the server only stores documents.
 | `packages/shared` | zod schemas and types (domain, API payloads, environment) |
 | `packages/ui` | React components shared between panels and pages |
 | `packages/config` | The base TypeScript configuration |
+| `vendor/*` | Git submodules: the forked Rive SDKs (see [Rive SDK submodules](rive-sdk.md)) |
 
 Turborepo runs `dev`, `build`, `lint` and `check-types` across them (`turbo.json`).
 
@@ -88,6 +89,14 @@ The stage re-exports the document to `.riv` bytes on change and loads them into 
 (`@rive-app/canvas-advanced`), so the canvas is exactly what users ship. Selection overlays are SVG computed by
 `scene.ts`.
 
+`apps/web/src/lib/runtime.ts` loads that runtime from `public/rive`, which `scripts/copy-wasm.ts` fills on install.
+A runtime built from the `vendor/rive-wasm` submodule can take its place — see [Rive SDK submodules](rive-sdk.md).
+
+`packages/rive/src/bundle.ts` turns a file plus that runtime into a standalone
+[preview bundle](preview-bundles.md): a zip with an `index.html` and an `index.js` player that reproduces the preview
+screen anywhere. `apps/web/src/app/api/projects/[id]/bundle/route.ts` serves it, and `openrive export --bundle`
+writes it from the CLI.
+
 ### Tools: `apps/cli`
 
 `project-store.ts` wraps the database for Bun processes; `commands.ts` holds the scriptable commands; `tui/app.tsx` is
@@ -102,7 +111,7 @@ Roles are enforced in the UI, since OpenRive assumes a trusted environment behin
 
 | Command | Checks |
 | --- | --- |
-| `bun run test` | Round-trip of generated files and every template, plus the SVG importer |
+| `bun run test` | Round-trip of generated files and every template, the SVG importer, and preview bundles |
 | `bun run test:corpus -- <rive-runtime>/tests` | Round-trip of Rive's 437 test files |
 | `bun run test:mcp` | MCP server end to end |
 | `bun run check-types`, `bun run lint` | Types and lint across the workspace |

@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // plain Node (CommonJS) build scripts
     "scripts/*.js",
+    // the Rive runtime copied in by scripts/copy-wasm.ts and scripts/rive-sdk.ts
+    "public/rive/**",
   ]),
 ]);
 

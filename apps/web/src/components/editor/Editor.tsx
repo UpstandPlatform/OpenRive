@@ -22,6 +22,7 @@ import { ContextMenuHost } from './ContextMenu';
 import { AssetsPanel } from './AssetsPanel';
 import { CodePanel } from './CodePanel';
 import { Toaster } from '@/components/Toaster';
+import { toast } from '@/lib/client/toast';
 import { imageSizes } from '@openrive/rive/assets';
 import { registerImageSizes } from '@openrive/rive/scene';
 import { editorHandlers, handleKey } from './actions';
@@ -86,6 +87,23 @@ export function Editor() {
     downloadBytes(exportRiv(s.doc), `${s.projectName.replace(/[^\w\- ]+/g, '').trim() || 'file'}.riv`);
   }, []);
 
+  // The bundle is built server side from the saved .riv, so save first.
+  const exportBundle = useCallback(
+    async (runtime: 'offline' | 'cdn' = 'offline') => {
+      const s = useEditor.getState();
+      if (!s.projectId) return;
+      if (s.version !== s.savedVersion && !s.readOnly) await save();
+      toast(runtime === 'cdn' ? 'Building preview bundle…' : 'Building preview bundle with the Rive runtime…');
+      const a = document.createElement('a');
+      a.href = `/api/projects/${s.projectId}/bundle${runtime === 'cdn' ? '?runtime=cdn' : ''}`;
+      a.download = '';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    },
+    [save],
+  );
+
   const reloadFromDisk = useCallback(async () => {
     const s = useEditor.getState();
     if (!s.projectId) return;
@@ -102,13 +120,14 @@ export function Editor() {
   useEffect(() => {
     editorHandlers.save = save;
     editorHandlers.exportFile = exportFile;
+    editorHandlers.exportBundle = exportBundle;
     editorHandlers.openShortcuts = () => setDialog('shortcuts');
     editorHandlers.openPrefs = () => setDialog('prefs');
     editorHandlers.preview = () => {
       const id = useEditor.getState().projectId;
       if (id) window.open(`/preview/${id}`, '_blank');
     };
-  }, [save, exportFile]);
+  }, [save, exportFile, exportBundle]);
 
   // autosave
   useEffect(() => {

@@ -23,6 +23,7 @@ it and working on it.
 | [Theme colors](theme-colors.md) | Color variables and switchable themes |
 | [Text & assets](text-and-assets.md) | Text objects, fonts, images and SVG import |
 | [Code panel](code-panel.md) | Automation scripts, embed snippets, and a note on Rive scripting |
+| [Preview bundles](preview-bundles.md) | Export the preview as a standalone folder that plays anywhere |
 | [Users & roles](users.md) | Local users, roles and sharing (no login) |
 
 ## Automate
@@ -39,6 +40,7 @@ it and working on it.
 | --- | --- |
 | [Architecture](architecture.md) | How the code is organized |
 | [The .riv format](file-format.md) | How OpenRive reads and writes Rive files |
+| [Rive SDK submodules](rive-sdk.md) | The forked Rive runtimes in `vendor/`, and rendering with your own build |
 | [Troubleshooting](troubleshooting.md) | Common problems and fixes |
 
 Want to help? See [CONTRIBUTING.md](../CONTRIBUTING.md) and the [contribution guides](../contribution/README.md).

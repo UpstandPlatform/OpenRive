@@ -23,6 +23,7 @@ Base URL: `http://localhost:3000/api`
 | `DELETE /projects/:id` | – | `{ ok: true }` |
 | `POST /projects/:id/duplicate` | `{ ownerId }` | `201 ProjectMeta` |
 | `GET /projects/:id/riv` | – | the `.riv` file (`application/octet-stream`) |
+| `GET /projects/:id/bundle` | – | a [preview bundle](preview-bundles.md) zip (`application/zip`); `?runtime=cdn` leaves the Rive runtime out |
 
 - `doc` is the editor document serialized as a **string** (see `src/lib/serialize.ts`: binary data is base64 tagged).
 - `riv` is a **base64** string of the exported file.
