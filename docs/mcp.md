@@ -37,17 +37,22 @@ Using Docker? Run it inside the container:
 { "command": "docker", "args": ["compose", "-f", "/path/to/OpenRive/docker-compose.yml", "exec", "-T", "openrive", "openrive", "mcp"] }
 ```
 
-## Tools (27)
+## Tools (30)
 
 | Area | Tools |
 | --- | --- |
 | Projects | `list_projects`, `list_templates`, `create_project`, `get_project`, `import_riv`, `export_riv`, `delete_project`, `inspect_riv` |
 | Design | `add_artboard`, `add_shape`, `add_path`, `add_text`, `add_group`, `set_properties`, `delete_objects` |
 | Animation | `add_timeline`, `add_keyframes` |
-| State machines | `add_state_machine`, `add_input`, `add_state`, `add_transition`, `add_listener` |
+| State machines | `add_state_machine`, `add_state`, `add_transition`, `add_listener` |
+| Data binding | `add_property`, `set_property_value`, `convert_inputs_to_data_binding` (and the deprecated `add_input`) |
 | Theme colors | `define_theme_color`, `use_theme_color`, `set_theme_color_value`, `add_theme`, `switch_theme` |
 
-Objects, timelines, states and inputs can be referenced **by name**, so assistants don't need to track ids.
+Objects, timelines, states and properties can be referenced **by name**, so assistants don't need to track ids.
+
+Assistants are told to use data binding properties rather than state machine inputs, which Rive deprecated:
+transitions read a property, listeners set one, and `convert_inputs_to_data_binding` migrates an older file.
+See [data binding](data-binding.md).
 `get_project` returns a compact outline of the file for the model to reason about.
 
 ## Tips for prompting

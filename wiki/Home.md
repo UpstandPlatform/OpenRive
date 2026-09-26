@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/UpstandPlatform/OpenRive/main/public/logo.svg" width="88" alt="OpenRive logo" />
+  <img src="https://raw.githubusercontent.com/UpstandPlatform/OpenRive/main/apps/web/public/logo.svg" width="88" alt="OpenRive logo" />
 </p>
 
 <h1 align="center">OpenRive wiki</h1>

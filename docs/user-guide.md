@@ -65,7 +65,9 @@ or another tab) changes the file while it's open, a banner lets you reload or ke
 
 State machines make files interactive:
 
-1. Add a state machine and **inputs** (number, boolean, trigger).
+1. Add a state machine, and **properties** in the Data tab (number, boolean, trigger, string, color).
+   Properties are what your app sets at runtime; they replace state machine inputs, which Rive deprecated
+   (see [data binding](data-binding.md)).
 2. Add **states** with **Add state** (or right-click the graph) and pick a timeline for each. Drag from one state's
    edge to another state to create a **transition**. Connect Entry (or Any State) to your first state.
 3. Select a transition to add **conditions** (for example `hover == true`, or `press` fired) and set its duration.

@@ -62,3 +62,6 @@ apps/desktop/.cottontail-tmp/
 apps/web/public/rive/local/
 apps/web/public/rive/runtime.json
 /scripts/bundle-test-out.zip
+/scripts/databind-test-out.riv
+/scripts/databind-converted.riv
+/scripts/tmp/

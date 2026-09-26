@@ -27,6 +27,7 @@ const PAGES = {
   'docs/shortcuts.md': 'Keyboard-Shortcuts',
   'docs/templates.md': 'Templates',
   'docs/theme-colors.md': 'Theme-Colors',
+  'docs/data-binding.md': 'Data-Binding',
   'docs/text-and-assets.md': 'Text-and-Assets',
   'docs/code-panel.md': 'Code-Panel',
   'docs/preview-bundles.md': 'Preview-Bundles',

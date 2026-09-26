@@ -15,6 +15,7 @@
 - [Keyboard Shortcuts](Keyboard-Shortcuts)
 - [Templates](Templates)
 - [Theme Colors](Theme-Colors)
+- [Data Binding](Data-Binding)
 - [Text and Assets](Text-and-Assets)
 - [Code Panel](Code-Panel)
 - [Preview Bundles](Preview-Bundles)

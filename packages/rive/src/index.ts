@@ -8,6 +8,7 @@ export * from './api';
 export * from './assets';
 export * from './text';
 export * from './theme';
+export * from './databind';
 export * from './svg';
 export * from './templates';
 export * from './examples';

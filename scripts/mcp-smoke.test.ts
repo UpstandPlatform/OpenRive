@@ -33,10 +33,23 @@ import { importRiv } from '@openrive/rive/document';
   await call('add_state', { project: p, stateMachine: 'Interact', timeline: 'Pulse' });
   await call('add_transition', { project: p, stateMachine: 'Interact', from: 'entry', to: 'Pulse' });
   await call('add_listener', { project: p, stateMachine: 'Interact', target: 'Dot', event: 'click', actions: [{ input: 'on', value: 'toggle' }] });
+
+  // data binding: the properties that replace state machine inputs
+  await call('add_property', { project: p, type: 'boolean', name: 'isHover' });
+  await call('add_property', { project: p, type: 'number', name: 'level', value: 2 });
+  await call('add_property', { project: p, type: 'trigger', name: 'ping' });
+  await call('add_property', { project: p, type: 'color', name: 'tint', value: '#ff7a2b' });
+  await call('set_property_value', { project: p, property: 'level', value: 5 });
+  await call('add_transition', { project: p, stateMachine: 'Interact', from: 'Pulse', to: 'exit', conditions: [{ property: 'isHover', value: true }, { property: 'level', op: '>', value: 3 }] });
+  await call('add_listener', { project: p, stateMachine: 'Interact', target: 'Dot', event: 'enter', actions: [{ property: 'isHover', value: true }] });
+  const converted = JSON.parse(await call('convert_inputs_to_data_binding', { project: p }));
+  console.log('converted inputs:', JSON.stringify(converted));
   await call('add_theme', { project: p, name: 'Warm' });
   await call('set_theme_color_value', { project: p, theme: 'Warm', name: 'Brand', color: '#ff7a2b' });
   await call('switch_theme', { project: p, theme: 'Warm' });
   const outline = JSON.parse(await call('get_project', { project: p }));
+  console.log('properties:', JSON.stringify(outline.artboards[0].properties));
+  console.log('inputs left:', JSON.stringify(outline.artboards[0].stateMachines.map((m: { name: string; inputs: unknown[] }) => `${m.name}:${m.inputs.length}`)));
   console.log('outline:', JSON.stringify(outline.artboards[0].children), JSON.stringify(outline.themeColors));
   const out = 'scripts/mcp-smoke.riv';
   console.log(await call('export_riv', { project: p, path: out }));

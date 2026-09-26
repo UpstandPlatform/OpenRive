@@ -122,6 +122,7 @@ export function canvasMenu(): MenuItem[] {
     act('view.toggleMode', { label: s.mode === 'design' ? 'Switch to Animate' : 'Switch to Design' }),
     act('file.preview'),
     act('file.exportBundle'),
+    act('file.convertInputs'),
     act('file.prefs'),
     act('file.shortcuts'),
   ];

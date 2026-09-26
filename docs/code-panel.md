@@ -32,7 +32,8 @@ All functions take `doc` first. Objects, timelines, state machines and inputs ca
 | Create | `addArtboard`, `addShape({kind, x, y, width, height, fill, stroke, cornerRadius…})`, `addPath({points, closed})`, `addText({text, fontSize, color…})`, `addGroup`, `importSvg(svg, {artboard, x, y, width})` |
 | Edit | `setProperties(doc, ref, {x, y, rotationDegrees, opacity, fill…})`, `setText`, `deleteObjectsByRef` |
 | Animate | `addAnimation({name, duration, fps, loop})`, `addKeyframes({animation, object, property, keys: [{time, value, ease}]})` |
-| Interactivity | `addStateMachine`, `addInput`, `addState`, `addTransition`, `addListener`, `addDistanceConstraint`, `addClip` |
+| Interactivity | `addStateMachine`, `addState`, `addTransition`, `addListener`, `addDistanceConstraint`, `addClip` |
+| Data binding | `addDataProperty`, `setDataProperty`, `convertInputs` (see [data binding](data-binding.md)) |
 | Theme | `defineColor(doc, name, color)`, `applyThemeColor(doc, ref, name)`, `addTheme`, `applyTheme` |
 | Assets | `fileAssets(doc)`, `addImageAsset`, `addFontAsset`, `placeImage`, `removeAsset` |
 | Colors | `parseColor('#rrggbb' / 'rgba(…)' / 'hsl(…)')`, `formatColor` |

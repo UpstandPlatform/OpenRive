@@ -7,6 +7,7 @@ import * as themeApi from '@openrive/rive/theme';
 import { importSvg } from '@openrive/rive/svg';
 import { deepClone, newId, RiveDoc } from '@openrive/rive/document';
 import { findArtboard } from '@openrive/rive/ops';
+import { properties as dataProperties } from '@openrive/rive/databind';
 import { isA } from '@openrive/rive/schema';
 import { ensureEditorMeta } from '@openrive/rive/theme';
 import { ListRow, Tabs } from '@openrive/ui';
@@ -244,17 +245,50 @@ function useEmbedInfo() {
       .filter((c) => isA(c.type, 'StateMachineInput'))
       .map((c) => ({ name: String(c.props.name ?? ''), type: c.type === 'StateMachineBool' ? 'bool' : c.type === 'StateMachineTrigger' ? 'trigger' : 'number' }));
     const file = `${(projectName || 'animation').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'animation'}.riv`;
+    const props = doc && ab ? dataProperties(doc, ab).map((x) => ({ name: x.name, type: x.type })) : [];
     return {
       file,
       artboard: String(ab?.artboard.props.name ?? 'Artboard'),
       stateMachine: sm ? String(sm.props.name ?? 'State Machine 1') : null,
       animation: ab?.animations[0] ? String(ab.animations[0].props.name ?? 'Timeline 1') : null,
       inputs,
+      properties: props,
     };
   }, [doc, projectName, activeArtboardId]);
 }
 
 type Info = ReturnType<typeof useEmbedInfo>;
+
+const ident = (name: string, fallback: string) => name.replace(/[^A-Za-z0-9]/g, '') || fallback;
+
+/** JS that reads and writes this file's data binding properties. */
+function webDataBinding(i: Info) {
+  if (!i.properties.length) return '';
+  const lines = i.properties.map((p) =>
+    p.type === 'trigger'
+      ? `vm.trigger('${p.name}')?.trigger();`
+      : p.type === 'boolean'
+        ? `vm.boolean('${p.name}').value = true;`
+        : p.type === 'number'
+          ? `vm.number('${p.name}').value = 1;`
+          : p.type === 'string'
+            ? `vm.string('${p.name}').value = 'Hello';`
+            : `vm.color('${p.name}').value = 0xff3d8bd0;`,
+  );
+  return `
+// Data binding: the file's properties, read and written on the bound instance
+const vm = rive.viewModelInstance;
+${lines.join('\n')}
+
+// react to changes made inside the animation
+vm.boolean('${i.properties.find((p) => p.type === 'boolean')?.name ?? i.properties[0]!.name}')?.on((value) => console.log('changed', value));`;
+}
+
+/** A note listing the properties, for runtimes whose data binding API differs. */
+function propertyNote(i: Info, comment = '//') {
+  if (!i.properties.length) return '';
+  return `\n${comment} Data binding properties on this artboard: ${i.properties.map((p) => `${p.name} (${p.type})`).join(', ')}\n${comment} See https://rive.app/docs/runtimes/data-binding for this runtime's API.`;
+}
 
 const SNIPPETS: Record<string, { label: string; lang: string; code: (i: Info) => string }> = {
   web: {
@@ -273,9 +307,12 @@ const rive = new Rive({
   layout: new Layout({ fit: Fit.Contain }),
   onLoad: () => rive.resizeDrawingSurfaceToCanvas(),
 });
-${
+${webDataBinding(i)}${
   i.stateMachine && i.inputs.length
     ? `
+// Deprecated: state machine inputs. Convert them to data binding properties
+// (OpenRive menu › Convert inputs to data binding) to drop this warning:
+//   [Rive: state-machine-inputs] State machine inputs are deprecated…
 const inputs = rive.stateMachineInputs('${i.stateMachine}');
 ${i.inputs
   .map((x) =>
@@ -290,21 +327,43 @@ ${i.inputs
   react: {
     label: 'React',
     lang: 'tsx',
-    code: (i) => `// npm i @rive-app/react-canvas
-import { useRive${i.inputs.length ? ', useStateMachineInput' : ''} } from '@rive-app/react-canvas';
+    code: (i) => {
+      const hooks: Record<string, string> = {
+        boolean: 'useViewModelInstanceBoolean',
+        number: 'useViewModelInstanceNumber',
+        string: 'useViewModelInstanceString',
+        color: 'useViewModelInstanceColor',
+        trigger: 'useViewModelInstanceTrigger',
+      };
+      const used = [...new Set(i.properties.map((p) => hooks[p.type]!))];
+      const imports = ['useRive', ...used, ...(i.inputs.length && !i.properties.length ? ['useStateMachineInput'] : [])].join(', ');
+      return `// npm i @rive-app/react-canvas
+import { ${imports} } from '@rive-app/react-canvas';
 
-export function ${i.artboard.replace(/[^A-Za-z0-9]/g, '') || 'Animation'}() {
+export function ${ident(i.artboard, 'Animation')}() {
   const { rive, RiveComponent } = useRive({
     src: '/${i.file}',
     artboard: '${i.artboard}',
     ${i.stateMachine ? `stateMachines: '${i.stateMachine}',` : `animations: '${i.animation ?? ''}',`}
-    autoplay: true,
+    autoplay: true,${i.properties.length ? '\n    autoBind: true, // binds the default view model instance' : ''}
   });
-${i.inputs
-  .map((x) => `  const ${x.name.replace(/[^A-Za-z0-9]/g, '') || 'input'} = useStateMachineInput(rive, '${i.stateMachine}', '${x.name}');`)
-  .join('\n')}
+${i.properties.length ? `  const vm = rive?.viewModelInstance;\n` : ''}${i.properties
+        .map((p) =>
+          p.type === 'trigger'
+            ? `  const { trigger: ${ident(p.name, 'fire')} } = ${hooks[p.type]}('${p.name}', vm);`
+            : `  const { value: ${ident(p.name, 'value')}, setValue: set${ident(p.name, 'Value').replace(/^./, (c) => c.toUpperCase())} } = ${hooks[p.type]}('${p.name}', vm);`,
+        )
+        .join('\n')}
+${
+  !i.properties.length
+    ? i.inputs
+        .map((x) => `  const ${ident(x.name, 'input')} = useStateMachineInput(rive, '${i.stateMachine}', '${x.name}');`)
+        .join('\n')
+    : ''
+}
   return <RiveComponent style={{ width: 400, height: 400 }} />;
-}`,
+}`;
+    },
   },
   flutter: {
     label: 'Flutter',
@@ -339,7 +398,7 @@ ${i.inputs
         artboard: '${i.artboard}',
         onInit: _onInit,
       );
-}`,
+}${propertyNote(i)}`,
   },
   ios: {
     label: 'iOS (SwiftUI)',
@@ -359,7 +418,7 @@ struct AnimationView: View {
     vm.view()
 ${i.inputs.length ? `      .onTapGesture {\n${i.inputs.map((x) => (x.type === 'trigger' ? `        vm.triggerInput("${x.name}")` : `        vm.setInput("${x.name}", value: ${x.type === 'bool' ? 'true' : '1.0'})`)).join('\n')}\n      }` : ''}
   }
-}`,
+}${propertyNote(i)}`,
   },
   android: {
     label: 'Android',
@@ -382,7 +441,7 @@ val rive = findViewById<RiveAnimationView>(R.id.rive)
 ${i.inputs.map((x) => (x.type === 'trigger' ? `rive.fireState("${i.stateMachine}", "${x.name}")` : `rive.setNumberState / setBooleanState("${i.stateMachine}", "${x.name}", ...)`)).join('\n')}
 -->`
     : ''
-}`,
+}${propertyNote(i, '<!--').replace(/$/, i.properties.length ? ' -->' : '')}`,
   },
 };
 
@@ -407,10 +466,15 @@ function EmbedTab() {
           Uses artboard <b className="text-t1">{info.artboard}</b>
           {info.stateMachine ? (
             <>
-              , state machine <b className="text-t1">{info.stateMachine}</b> and {info.inputs.length} input(s).
+              , state machine <b className="text-t1">{info.stateMachine}</b>, {info.properties.length} data binding propert
+              {info.properties.length === 1 ? 'y' : 'ies'}
+              {info.inputs.length ? ` and ${info.inputs.length} deprecated input(s)` : ''}.
             </>
           ) : (
-            '. Add a state machine to get input code.'
+            '. Add a state machine to get interaction code.'
+          )}
+          {info.inputs.length > 0 && (
+            <div className="mt-2">Inputs are deprecated by Rive — convert them to data binding to keep runtime code warning-free.</div>
           )}
         </div>
       </div>

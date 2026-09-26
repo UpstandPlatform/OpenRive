@@ -22,6 +22,8 @@ import {
 import { addClip, clipsOf, removeClip } from '@openrive/rive/api';
 import { artboardPos, buildScene, invert, isEmpty, objectBounds, pathsOfShape, prop, sampleAnimation, setArtboardPos } from '@openrive/rive/scene';
 import { isA } from '@openrive/rive/schema';
+import { convertInputsToProperties, usesInputs } from '@openrive/rive/databind';
+import { toast } from '@/lib/client/toast';
 import { getPrefs, usePrefs } from '@/lib/client/prefs';
 import { animationFrames, getActive, Tool, useEditor } from '@/lib/store/editor';
 import { deleteSmSelection } from './StateMachinePanel';
@@ -414,6 +416,22 @@ function jumpKey(dir: 1 | -1) {
   }
 }
 
+/** Rewrites this artboard's deprecated state machine inputs as data binding properties. */
+function convertInputs() {
+  const { ab } = getActive();
+  if (!ab) return;
+  let summary = '';
+  st().commit((d) => {
+    const artboard = d.artboards.find((a) => a.id === ab.id);
+    if (!artboard) return;
+    const r = convertInputsToProperties(d, artboard);
+    summary =
+      `Converted ${r.properties.length} input${r.properties.length === 1 ? '' : 's'} to data binding` +
+      (r.kept.length ? ` — kept ${r.kept.map((k) => `"${k.name}" (${k.reason})`).join(', ')}` : '');
+  });
+  if (summary) toast(summary, 6000);
+}
+
 const tool = (t: Tool) => () => st().set('tool', t);
 const zoom = (type: string) => () => window.dispatchEvent(new CustomEvent('editor:zoom', { detail: type }));
 
@@ -425,6 +443,18 @@ export const ACTIONS: Action[] = [
   { id: 'file.save', label: 'Save', category: 'File', keys: ['Ctrl+S'], run: () => editorHandlers.save?.() },
   { id: 'file.export', label: 'Export .riv', category: 'File', keys: ['Ctrl+E'], run: () => editorHandlers.exportFile?.() },
   { id: 'file.exportBundle', label: 'Export preview bundle (.zip)', category: 'File', keys: ['Ctrl+Shift+E'], run: () => editorHandlers.exportBundle?.() },
+  {
+    id: 'file.convertInputs',
+    label: 'Convert inputs to data binding',
+    category: 'File',
+    keys: [],
+    edits: true,
+    run: convertInputs,
+    enabled: () => {
+      const { ab } = getActive();
+      return !!ab && usesInputs(ab);
+    },
+  },
   { id: 'file.preview', label: 'Open preview', category: 'File', keys: ['Ctrl+P'], run: () => editorHandlers.preview?.() },
   { id: 'file.shortcuts', label: 'Keyboard shortcuts', category: 'File', keys: ['Shift+/', 'Ctrl+/'], run: () => editorHandlers.openShortcuts?.() },
   { id: 'file.prefs', label: 'Preferences', category: 'File', keys: ['Ctrl+,'], run: () => editorHandlers.openPrefs?.() },

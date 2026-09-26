@@ -27,7 +27,9 @@ const server = new McpServer(
       'Coordinates are in artboard pixels with (0,0) at the top-left; shapes are positioned by their center.',
       'Colors are CSS strings (#rrggbb or #rrggbbaa). Rotation uses rotationDegrees.',
       'Animate by adding a timeline, then add_keyframes (frame numbers at the timeline fps, or time in seconds).',
-      'Interactivity: add_state_machine, add_input, add_state (one per timeline), add_transition (with conditions), add_listener (pointer events change inputs).',
+      'Interactivity: add_state_machine, add_property, add_state (one per timeline), add_transition (with conditions), add_listener (pointer events set properties).',
+      'Use data binding properties (add_property), not state machine inputs: Rive deprecated inputs, and runtimes read and write properties without deprecation warnings.',
+      'Files that still have inputs can be migrated in one step with convert_inputs_to_data_binding.',
       'Theme colors: define_theme_color once, use_theme_color on shapes/text; add_theme + switch_theme recolors everything.',
       'The user can open http://localhost:3000/editor/<id> to see results; edits appear live in an open editor.',
     ].join('\n'),
@@ -299,11 +301,47 @@ tool('add_state_machine', 'Add a state machine (with entry / any / exit states).
 
 tool(
   'add_input',
-  'Add a state machine input.',
+  'DEPRECATED: add a state machine input. Rive deprecated inputs — prefer add_property, which works everywhere inputs did and more. Only use this for a file that must keep its existing inputs.',
   { project, artboard, stateMachine: sm, type: z.enum(['number', 'boolean', 'trigger']), name: z.string(), value: z.union([z.number(), z.boolean()]).optional() },
   async ({ project: ref, ...i }) => {
     const { result } = await edit(ref, (doc) => api.addInput(doc, i));
     return { id: result.id, name: result.props.name };
+  },
+);
+
+tool(
+  'add_property',
+  'Add a data binding property to the artboard (what replaces state machine inputs). Transitions can read it, listeners can set it, and runtimes get and set it on the view model instance.',
+  {
+    project,
+    artboard,
+    type: z.enum(['number', 'boolean', 'trigger', 'string', 'color']),
+    name: z.string(),
+    value: z.union([z.number(), z.boolean(), z.string()]).optional().describe('Starting value; colors take #rrggbb'),
+  },
+  async ({ project: ref, ...p }) => {
+    const { result } = await edit(ref, (doc) => api.addDataProperty(doc, { ...p, value: p.type === 'color' && typeof p.value === 'string' ? api.parseColor(p.value) : p.value }));
+    return { id: result.obj.id, name: result.name, type: result.type };
+  },
+);
+
+tool(
+  'set_property_value',
+  'Set the value a data binding property starts with.',
+  { project, artboard, property: z.string(), value: z.union([z.number(), z.boolean(), z.string()]) },
+  async ({ project: ref, ...p }) => {
+    await edit(ref, (doc) => api.setDataProperty(doc, { ...p, value: typeof p.value === 'string' && /^#[0-9a-f]{3,8}$/i.test(p.value) ? api.parseColor(p.value) : p.value }));
+    return 'ok';
+  },
+);
+
+tool(
+  'convert_inputs_to_data_binding',
+  'Rewrite a file\'s deprecated state machine inputs as data binding properties: conditions read the property, listeners set it, and the inputs are removed. Reports anything that had to keep its input.',
+  { project, artboard, stateMachine: sm },
+  async ({ project: ref, ...o }) => {
+    const { result } = await edit(ref, (doc) => api.convertInputs(doc, o));
+    return result;
   },
 );
 
@@ -319,7 +357,7 @@ tool(
 
 tool(
   'add_transition',
-  'Add a transition between states. from/to: "entry", "any", "exit", a state id, or a timeline name. Conditions compare inputs (booleans use value, numbers use op + value, triggers need only input).',
+  'Add a transition between states. from/to: "entry", "any", "exit", a state id, or a timeline name. Conditions compare data binding properties (booleans use value, numbers use op + value, triggers need only the name).',
   {
     project,
     artboard,
@@ -330,7 +368,14 @@ tool(
     durationMs: z.number().optional().describe('Blend duration'),
     exitTimeMs: z.number().optional().describe('Wait until this time in the source timeline'),
     conditions: z
-      .array(z.object({ input: z.string(), op: z.enum(['==', '!=', '<', '<=', '>', '>=']).optional(), value: z.union([z.number(), z.boolean()]).optional() }))
+      .array(
+        z.object({
+          property: z.string().optional().describe('Data binding property to read (preferred)'),
+          input: z.string().optional().describe('Deprecated state machine input; a property of the same name is used when there is no such input'),
+          op: z.enum(['==', '!=', '<', '<=', '>', '>=']).optional(),
+          value: z.union([z.number(), z.boolean(), z.string()]).optional(),
+        }),
+      )
       .optional(),
   },
   async ({ project: ref, ...t }) => {
@@ -341,7 +386,7 @@ tool(
 
 tool(
   'add_listener',
-  'Make an object interactive: on a pointer event, change state machine inputs. Boolean values can be true, false or "toggle".',
+  'Make an object interactive: on a pointer event, set data binding properties (or, for older files, state machine inputs, whose boolean values can also be "toggle").',
   {
     project,
     artboard,
@@ -349,10 +394,21 @@ tool(
     target: z.string().optional().describe('Object id or name (default: whole artboard)'),
     event: z.enum(['down', 'up', 'click', 'enter', 'exit', 'move']),
     name: z.string().optional(),
-    actions: z.array(z.object({ input: z.string(), value: z.union([z.number(), z.boolean(), z.literal('toggle')]).optional() })),
+    actions: z.array(
+      z.object({
+        property: z.string().optional().describe('Data binding property to set (preferred)'),
+        input: z.string().optional().describe('Deprecated state machine input; a property of the same name is used when there is no such input'),
+        value: z.union([z.number(), z.boolean(), z.string()]).optional().describe('Triggers need no value; "toggle" only works with an input'),
+      }),
+    ),
   },
   async ({ project: ref, ...l }) => {
-    await edit(ref, (doc) => api.addListener(doc, l));
+    const actions = l.actions.map((a) => {
+      if (a.property) return { property: a.property, value: a.value };
+      if (!a.input) throw new Error('Each action needs a property (or an input) to set');
+      return { input: a.input, value: a.value as number | boolean | 'toggle' | undefined };
+    });
+    await edit(ref, (doc) => api.addListener(doc, { ...l, actions }));
     return 'ok';
   },
 );

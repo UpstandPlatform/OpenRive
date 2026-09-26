@@ -21,6 +21,7 @@ it and working on it.
 | [Keyboard shortcuts](shortcuts.md) | All default shortcuts and how to rebind them |
 | [Templates](templates.md) | The starter templates and example files |
 | [Theme colors](theme-colors.md) | Color variables and switchable themes |
+| [Data binding](data-binding.md) | Properties that drive state machines and your app, and converting deprecated inputs |
 | [Text & assets](text-and-assets.md) | Text objects, fonts, images and SVG import |
 | [Code panel](code-panel.md) | Automation scripts, embed snippets, and a note on Rive scripting |
 | [Preview bundles](preview-bundles.md) | Export the preview as a standalone folder that plays anywhere |

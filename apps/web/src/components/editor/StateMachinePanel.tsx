@@ -1,11 +1,24 @@
 'use client';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { Hash, MousePointerClick, Play, Plus, Square, ToggleLeft, Trash2, Zap } from 'lucide-react';
-import { ArtboardDoc, CoreObj } from '@openrive/rive/document';
+import { Braces, Hash, MousePointerClick, Palette, Play, Plus, Square, ToggleLeft, Trash2, Type, Zap } from 'lucide-react';
+import { ArtboardDoc, CoreObj, RiveDoc } from '@openrive/rive/document';
 import { newLayer, obj } from '@openrive/rive/factory';
 import { findArtboard, findObj } from '@openrive/rive/ops';
 import { prop } from '@openrive/rive/scene';
 import { isA } from '@openrive/rive/schema';
+import {
+  addProperty,
+  convertInputsToProperties,
+  properties as dataProperties,
+  PropertyDoc,
+  PropertyType,
+  propertyValue,
+  removeProperty,
+  renameProperty,
+  setPropertyValue,
+  usesInputs,
+} from '@openrive/rive/databind';
+import { toast } from '@/lib/client/toast';
 import { useActiveArtboard, useEditor } from '@/lib/store/editor';
 import { Tabs } from '@openrive/ui';
 import { NumberField, Row, Select, TextField } from './controls';
@@ -34,6 +47,14 @@ function editSM(abId: string, smId: string, fn: (sm: CoreObj, ab: ArtboardDoc) =
     if (ab && sm) fn(sm, ab);
   });
 }
+
+const PROPERTY_ICONS: Record<PropertyType, React.ReactNode> = {
+  number: <Hash size={13} />,
+  boolean: <ToggleLeft size={13} />,
+  trigger: <Zap size={13} />,
+  string: <Type size={13} />,
+  color: <Palette size={13} />,
+};
 
 function stateLabel(ab: ArtboardDoc, st: CoreObj) {
   if (st.type === 'EntryState') return 'Entry';
@@ -76,12 +97,13 @@ export function StateMachineGraph() {
   const previewing = useEditor((s) => s.previewing);
   const readOnly = useEditor((s) => s.readOnly);
   const smSelection = useEditor((s) => s.smSelection);
-  const [tab, setTab] = useState<'inputs' | 'listeners'>('inputs');
+  const [tab, setTab] = useState<'data' | 'listeners'>('data');
   const [addMenu, setAddMenu] = useState<string | null>(null);
   const [linking, setLinking] = useState<{ from: string; x: number; y: number } | null>(null);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const graphRef = useRef<HTMLDivElement>(null);
   const liveInputs = usePreviewInputs();
+  const doc = useEditor((st) => st.doc);
   const s = useEditor.getState();
 
   useEffect(() => {
@@ -110,6 +132,38 @@ export function StateMachineGraph() {
       else m.children.splice(firstLayer, 0, input);
     });
     s.set('smSelection', { kind: 'input', id: input.id });
+  };
+
+  const props = ab && doc ? dataProperties(doc, ab) : [];
+  const legacyInputs = ab ? usesInputs(ab) : false;
+
+  /** Runs an edit against the live document and this artboard, as one undo step. */
+  const editData = (fn: (d: RiveDoc, artboard: ArtboardDoc) => void) => {
+    if (!ab) return;
+    s.commit((d) => {
+      const target = findArtboard(d, ab.id);
+      if (target) fn(d, target);
+    });
+  };
+
+  const addDataProperty = (type: PropertyType) => {
+    const base = type[0]!.toUpperCase() + type.slice(1);
+    let n = 1;
+    while (props.some((x) => x.name === `${base} ${n}`)) n++;
+    editData((d, artboard) => {
+      addProperty(d, artboard, { name: `${base} ${n}`, type, value: type === 'trigger' ? undefined : type === 'string' ? '' : 0 });
+    });
+  };
+
+  const convert = () => {
+    let summary = '';
+    editData((d, artboard) => {
+      const r = convertInputsToProperties(d, artboard);
+      summary =
+        `Converted ${r.properties.length} input${r.properties.length === 1 ? '' : 's'} to data binding` +
+        (r.kept.length ? ` — kept ${r.kept.map((k) => `"${k.name}" (${k.reason})`).join(', ')}` : '');
+    });
+    if (summary) toast(summary, 6000);
   };
 
   const addListener = () => {
@@ -242,15 +296,58 @@ export function StateMachineGraph() {
       <div className="w-[230px] shrink-0 border-r border-line flex flex-col">
         <Tabs
           items={[
-            { id: 'inputs', label: 'Inputs' },
+            { id: 'data', label: 'Data' },
             { id: 'listeners', label: 'Listeners' },
           ]}
           value={tab}
           onChange={setTab}
         />
         <div className="flex-1 overflow-auto p-1.5">
-          {tab === 'inputs' && (
+          {tab === 'data' && (
             <>
+              {props.map((property) => (
+                <PropertyRow key={property.obj.id} property={property} readOnly={readOnly} onEdit={editData} />
+              ))}
+              {!readOnly && (
+                <div className="relative mt-1">
+                  <button
+                    className="btn h-7 w-full"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setAddMenu(addMenu === 'property' ? null : 'property');
+                    }}
+                  >
+                    <Plus size={13} /> Add property
+                  </button>
+                  {addMenu === 'property' && (
+                    <div className="menu absolute left-0 right-0 top-8">
+                      {(['number', 'boolean', 'trigger', 'string', 'color'] as PropertyType[]).map((t) => (
+                        <button key={t} className="menu-item capitalize" onClick={() => addDataProperty(t)}>
+                          {PROPERTY_ICONS[t]} {t}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {!props.length && !legacyInputs && (
+                <p className="text-t3 text-[11px] mt-2 px-1">
+                  Properties drive transitions and are what your code sets at runtime. They replace state machine inputs, which Rive deprecated.
+                </p>
+              )}
+              {legacyInputs && (
+                <div className="mt-3 p-2 rounded border border-line bg-bg2">
+                  <div className="flex items-center gap-1.5 text-[11px] text-t1">
+                    <Braces size={12} /> Deprecated inputs
+                  </div>
+                  <p className="text-t3 text-[11px] mt-1">Rive deprecated state machine inputs. Converting keeps the behaviour and drops the runtime warnings.</p>
+                  {!readOnly && (
+                    <button className="btn h-7 w-full mt-2" onClick={convert}>
+                      Convert to data binding
+                    </button>
+                  )}
+                </div>
+              )}
               {inputs.map((inp) => {
                 const live = liveInputs.find((l) => l.name === inp.props.name);
                 const sel = smSelection?.kind === 'input' && smSelection.id === inp.id;
@@ -305,7 +402,7 @@ export function StateMachineGraph() {
                       setAddMenu(addMenu === 'input' ? null : 'input');
                     }}
                   >
-                    <Plus size={13} /> Add input
+                    <Plus size={13} /> Add deprecated input
                   </button>
                   {addMenu === 'input' && (
                     <div className="menu absolute left-0 right-0 top-8">
@@ -346,7 +443,7 @@ export function StateMachineGraph() {
                   <Plus size={13} /> Add listener
                 </button>
               )}
-              <p className="text-t3 text-[11px] mt-2 px-1">Listeners react to pointer events on a target shape and change inputs. Try them in Preview.</p>
+              <p className="text-t3 text-[11px] mt-2 px-1">Listeners react to pointer events on a target shape and set properties (or inputs). Try them in Preview.</p>
             </>
           )}
         </div>
@@ -969,4 +1066,68 @@ export function deleteSmSelection() {
     w(m);
   });
   s.set('smSelection', null);
+}
+
+/** One data binding property: rename it, set the value it starts with, remove it. */
+function PropertyRow({
+  property,
+  readOnly,
+  onEdit,
+}: {
+  property: PropertyDoc;
+  readOnly: boolean;
+  onEdit: (fn: (d: RiveDoc, ab: ArtboardDoc) => void) => void;
+}) {
+  const value = propertyValue(property);
+  const set = (v: number | boolean | string) => onEdit((d, ab) => setPropertyValue(d, ab, property.obj.id, v));
+  return (
+    <div
+      className="flex items-center gap-2 h-8 px-2 rounded hover:bg-bg2 group"
+      onContextMenu={(e) =>
+        openContextMenu(e, [
+          {
+            label: 'Rename…',
+            disabled: readOnly,
+            run: () => {
+              const name = prompt('Property name', property.name);
+              if (name) onEdit((d, ab) => void renameProperty(d, ab, property.obj.id, name));
+            },
+          },
+          sep,
+          {
+            label: 'Delete property',
+            danger: true,
+            disabled: readOnly,
+            run: () => onEdit((d, ab) => void removeProperty(d, ab, property.obj.id)),
+          },
+        ])
+      }
+    >
+      <span className="text-t2" title={property.type}>
+        {PROPERTY_ICONS[property.type]}
+      </span>
+      <span className="flex-1 truncate" title={`${property.name} (${property.type})`}>
+        {property.name}
+      </span>
+      {property.type === 'number' && (
+        <div className="w-16">
+          <NumberField value={Number(value ?? 0)} onChange={set} disabled={readOnly} />
+        </div>
+      )}
+      {property.type === 'boolean' && <input type="checkbox" checked={!!value} disabled={readOnly} onChange={(e) => set(e.target.checked)} />}
+      {property.type === 'string' && (
+        <input className="field h-6 w-20" value={String(value ?? '')} disabled={readOnly} onChange={(e) => set(e.target.value)} />
+      )}
+      {property.type === 'color' && (
+        <input
+          type="color"
+          className="w-8 h-6"
+          value={`#${((Number(value ?? 0) >>> 0) & 0xffffff).toString(16).padStart(6, '0')}`}
+          disabled={readOnly}
+          onChange={(e) => set((0xff000000 | parseInt(e.target.value.slice(1), 16)) >>> 0)}
+        />
+      )}
+      {property.type === 'trigger' && <span className="text-t3 text-[11px]">fire in Preview</span>}
+    </div>
+  );
 }

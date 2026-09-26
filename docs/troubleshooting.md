@@ -13,6 +13,13 @@ work. Serve the unzipped folder instead: `npx --yes serve .` (or `python3 -m htt
 printed URL. A bundle exported with *Runtime from CDN* also needs internet — re-export it with the runtime included
 to play offline. See [preview bundles](preview-bundles.md).
 
+### The console says state machine inputs are deprecated
+
+Rive deprecated inputs in favour of data binding properties, and warns when runtime code calls
+`stateMachineInputs`. Open the file in OpenRive and run **Convert inputs to data binding** (the Data tab,
+or right-click the canvas), then copy the new snippet from the [Code panel](code-panel.md) — it sets
+properties on `rive.viewModelInstance` and no longer warns. Details in [data binding](data-binding.md).
+
 ### `bun install` fails
 
 Use Bun 1.4+ (`bun --version`). On Windows, run the terminal as a normal user in a folder you own, not in

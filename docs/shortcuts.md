@@ -10,6 +10,7 @@ Custom bindings are saved in your browser. On macOS, `Ctrl` means `⌘`.
 | Save | `Ctrl S` |
 | Export .riv | `Ctrl E` |
 | Export preview bundle (.zip) | `Ctrl Shift E` |
+| Convert inputs to data binding | — (canvas menu) |
 | Open preview | `Ctrl P` |
 | Keyboard shortcuts | `?`, `Ctrl /` |
 | Preferences | `Ctrl ,` |

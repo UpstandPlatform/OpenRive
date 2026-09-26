@@ -100,7 +100,7 @@ writes it from the CLI.
 ### Tools: `apps/cli`
 
 `project-store.ts` wraps the database for Bun processes; `commands.ts` holds the scriptable commands; `tui/app.tsx` is
-the OpenTUI interface; `mcp-server.ts` exposes 27 MCP tools. All of them go through `packages/rive`'s API.
+the OpenTUI interface; `mcp-server.ts` exposes 30 MCP tools. All of them go through `packages/rive`'s API.
 
 ### Access control
 
@@ -111,7 +111,7 @@ Roles are enforced in the UI, since OpenRive assumes a trusted environment behin
 
 | Command | Checks |
 | --- | --- |
-| `bun run test` | Round-trip of generated files and every template, the SVG importer, and preview bundles |
+| `bun run test` | Round-trip of generated files and every template, the SVG importer, preview bundles, and data binding |
 | `bun run test:corpus -- <rive-runtime>/tests` | Round-trip of Rive's 437 test files |
 | `bun run test:mcp` | MCP server end to end |
 | `bun run check-types`, `bun run lint` | Types and lint across the workspace |

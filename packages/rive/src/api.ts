@@ -5,6 +5,19 @@ import { ArtboardDoc, CoreObj, RiveDoc } from './document';
 import { newAnimation, newArtboard, newLayer, newParametricShape, newPenShape, obj, PenPoint, ShapeKind, solidFill, solidStroke } from './factory';
 import { childrenOf, EASE_PRESETS, findObj, insertObjects, isAnimatable, parentIdOf, setInterpolation, upsertKeyframe } from './ops';
 import { artboardPos, prop } from './scene';
+import {
+  addProperty,
+  ConditionOp,
+  convertInputsToProperties,
+  findProperty,
+  properties as dataProperties,
+  propertyCondition,
+  propertyListenerAction,
+  PropertyType,
+  PropertyValue,
+  propertyValue,
+  setPropertyValue,
+} from './databind';
 import { isA, propDef, propDefByKey } from './schema';
 import { ensureFontAsset, newTextObjects, textRuns } from './text';
 import { addSwatch, applyTheme, bindColor, ensureEditorMeta, swatchColor } from './theme';
@@ -363,6 +376,31 @@ export function addKeyframes(doc: RiveDoc, k: { artboard?: string; animation: st
 }
 
 // ---------------------------------------------------------------------------
+// Data binding properties (what replaces state machine inputs)
+
+export function addDataProperty(
+  doc: RiveDoc,
+  p: { artboard?: string; name: string; type: PropertyType; value?: PropertyValue; viewModel?: string },
+) {
+  const ab = getArtboard(doc, p.artboard);
+  if (findProperty(doc, ab, p.name)) throw new ApiError(`This artboard already has a property named "${p.name}"`);
+  return addProperty(doc, ab, { name: p.name, type: p.type, value: p.value, viewModelName: p.viewModel });
+}
+
+export function setDataProperty(doc: RiveDoc, p: { artboard?: string; property: string; value: PropertyValue }) {
+  const ab = getArtboard(doc, p.artboard);
+  const updated = setPropertyValue(doc, ab, p.property, p.value);
+  if (!updated) throw new ApiError(`Property "${p.property}" not found`);
+  return updated;
+}
+
+/** Rewrites deprecated state machine inputs as data binding properties. */
+export function convertInputs(doc: RiveDoc, o: { artboard?: string; stateMachine?: string } = {}) {
+  const ab = getArtboard(doc, o.artboard);
+  return convertInputsToProperties(doc, ab, o.stateMachine ? getStateMachine(ab, o.stateMachine) : undefined);
+}
+
+// ---------------------------------------------------------------------------
 // State machines
 
 export function addStateMachine(doc: RiveDoc, s: { artboard?: string; name: string }) {
@@ -416,10 +454,13 @@ export function addState(doc: RiveDoc, s: { artboard?: string; stateMachine?: st
 }
 
 export interface ConditionInput {
-  input: string;
+  /** a data binding property (preferred — state machine inputs are deprecated) */
+  property?: string;
+  /** a state machine input; falls back to a property of the same name */
+  input?: string;
   /** for numbers: == != < <= > >= ; for booleans: value true/false ; triggers need neither */
-  op?: '==' | '!=' | '<' | '<=' | '>' | '>=';
-  value?: number | boolean;
+  op?: ConditionOp;
+  value?: number | boolean | string;
 }
 
 export function addTransition(
@@ -443,8 +484,15 @@ export function addTransition(
   const inputs = (sm.children ?? []).filter((c) => isA(c.type, 'StateMachineInput'));
   const ops = { '==': 0, '!=': 1, '<=': 2, '>=': 3, '<': 4, '>': 5 };
   const conditions = (t.conditions ?? []).map((c) => {
-    const input = inputs.find((i) => i.id === c.input || i.props.name === c.input);
-    if (!input) throw new ApiError(`Input "${c.input}" not found`);
+    const name = c.property ?? c.input;
+    if (!name) throw new ApiError('A condition needs a property (or a state machine input) to read');
+    // data binding first; an "input" that is really a property still works
+    const input = c.property ? undefined : inputs.find((i) => i.id === name || i.props.name === name);
+    if (!input) {
+      const p = findProperty(doc, ab, name);
+      if (!p) throw new ApiError(`No data binding property or input named "${name}"`);
+      return propertyCondition(p, c.op ?? '==', c.value);
+    }
     if (input.type === 'StateMachineTrigger') return obj('TransitionTriggerCondition', { inputId: input.id });
     if (input.type === 'StateMachineBool') return obj('TransitionBoolCondition', { inputId: input.id, opValue: c.value === false ? 1 : 0 });
     return obj('TransitionNumberCondition', { inputId: input.id, opValue: ops[c.op ?? '=='], value: Number(c.value ?? 0) });
@@ -467,8 +515,15 @@ export function addListener(
     target?: string;
     event: 'down' | 'up' | 'click' | 'enter' | 'exit' | 'move';
     name?: string;
-    /** input changes, or { alignTarget } to move an object to the pointer (e.g. eyes following the cursor) */
-    actions: ({ input: string; value?: number | boolean | 'toggle' } | { alignTarget: string; preserveOffset?: boolean })[];
+    /**
+     * property changes (preferred), input changes, or { alignTarget } to move an
+     * object to the pointer (e.g. eyes following the cursor)
+     */
+    actions: (
+      | { property: string; value?: number | boolean | string }
+      | { input: string; value?: number | boolean | 'toggle' }
+      | { alignTarget: string; preserveOffset?: boolean }
+    )[];
   },
 ) {
   const ab = getArtboard(doc, l.artboard);
@@ -476,17 +531,24 @@ export function addListener(
   const inputs = (sm.children ?? []).filter((c) => isA(c.type, 'StateMachineInput'));
   const events = { enter: 0, exit: 1, down: 2, up: 3, move: 4, click: 6 };
   const target = l.target ? getObject(doc, l.target, ab.id).o : undefined;
-  const actions = l.actions.map((a) => {
+  const actions = l.actions.flatMap((a) => {
     if ('alignTarget' in a) {
       const t = getObject(doc, a.alignTarget, ab.id).o;
-      return obj('ListenerAlignTarget', { targetId: t.id, ...(a.preserveOffset ? { preserveOffset: true } : {}) });
+      return [obj('ListenerAlignTarget', { targetId: t.id, ...(a.preserveOffset ? { preserveOffset: true } : {}) })];
     }
-    const input = inputs.find((i) => i.id === a.input || i.props.name === a.input);
-    if (!input) throw new ApiError(`Input "${a.input}" not found`);
-    if (input.type === 'StateMachineTrigger') return obj('ListenerTriggerChange', { inputId: input.id });
+    const name = 'property' in a ? a.property : a.input;
+    // data binding first; an "input" that is really a property still works
+    const input = 'property' in a ? undefined : inputs.find((i) => i.id === name || i.props.name === name);
+    if (!input) {
+      const p = findProperty(doc, ab, name);
+      if (!p) throw new ApiError(`No data binding property or input named "${name}"`);
+      if (a.value === 'toggle') throw new ApiError('"toggle" needs a state machine input; set the property to true or false instead');
+      return propertyListenerAction(p, a.value);
+    }
+    if (input.type === 'StateMachineTrigger') return [obj('ListenerTriggerChange', { inputId: input.id })];
     if (input.type === 'StateMachineBool')
-      return obj('ListenerBoolChange', { inputId: input.id, value: a.value === 'toggle' ? 2 : a.value === false ? 0 : 1 });
-    return obj('ListenerNumberChange', { inputId: input.id, value: Number(a.value ?? 0) });
+      return [obj('ListenerBoolChange', { inputId: input.id, value: a.value === 'toggle' ? 2 : a.value === false ? 0 : 1 })];
+    return [obj('ListenerNumberChange', { inputId: input.id, value: Number(a.value ?? 0) })];
   });
   const listener = obj(
     'StateMachineListenerSingle',
@@ -640,6 +702,7 @@ export function outline(doc: RiveDoc) {
           keyed,
         };
       }),
+      properties: dataProperties(doc, ab).map((p) => ({ id: p.obj.id, name: p.name, type: p.type, value: propertyValue(p) })),
       stateMachines: ab.stateMachines.map((sm) => ({
         id: sm.id,
         name: sm.props.name,
