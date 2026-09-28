@@ -38,21 +38,42 @@ builds.
 
 ## The window
 
-The desktop window has no native title bar (`titleBarStyle: 'hidden'`): OpenRive draws its own, so the chrome matches
-the editor instead of the operating system.
+The desktop window has no native title bar (`titleBarStyle: 'hidden'`), and there is no extra bar in its place: the
+app's own top bars _are_ the window handle, so no vertical space is spent on chrome.
 
 | Part | What it does |
 | --- | --- |
-| Logo and name | Drag anywhere on the empty part of the bar to move the window |
-| **?** menu | Documentation, keyboard shortcuts, [openrive.upstand.dev](https://openrive.upstand.dev), the GitHub repository, releases, reporting an issue, and the licence — all open in your normal browser |
-| Minimise / Maximise / Close | The usual window buttons, on the right |
+| The project header, or the editor's toolbar | Drag any empty part of it to move the window |
+| Minimise / Maximise / Close | At the right end of that bar, just after the user avatar |
+| Help, in the user menu and in the editor's OpenRive menu | Documentation, [openrive.upstand.dev](https://openrive.upstand.dev), the GitHub repository and reporting an issue — all open in your normal browser |
 
-Dragging works through Electrobun's app-region CSS. The buttons and the external links reach the native window
-through a tiny control server the main process listens on at `127.0.0.1`, which only answers requests carrying a
-token generated for that run — the page is served over `http://` rather than from `views://`, so it cannot use the
-bundled RPC bridge.
+Dragging is CSS: the bars carry `.window-drag` (`apps/web/src/app/globals.css`), and everything interactive inside
+them is marked `no-drag` so it stays clickable. The rules set `--electrobun-app-region` as well as
+`-webkit-app-region`, because that custom property is what the Electrobun preload reads — the CSS build drops the
+prefixed property, a custom property always survives.
 
-The same Help links are in the editor's own menu (the OpenRive button, top left), so they are there in a browser too.
+The window buttons and the external links reach the native window through a tiny control server the main process
+listens on at `127.0.0.1`, which only answers requests carrying a token generated for that run — the page is served
+over `http://` rather than from `views://`, so it cannot use the bundled RPC bridge.
+
+Everything desktop-only lives in `apps/web/src/components/desktop.tsx` and renders nothing in a browser tab, so the
+same components are safe in the shared header and toolbar.
+
+## Updates
+
+A packaged app updates itself from this project's GitHub releases — `release.baseUrl` in `electrobun.config.ts`
+points at `releases/latest/download`, and the release carries the `update.json`, `.tar.zst` and `.patch` files the
+updater needs (delta patches first, the full bundle as a fallback).
+
+The app checks quietly a few seconds after launch. Whatever it finds is shown in the **user menu** (and in the
+editor's **OpenRive menu**), under the running version:
+
+1. **Check for updates** — check now, if the quiet check has not run yet.
+2. **Download _x.y.z_** — appears once a newer version exists.
+3. **Restart to install _x.y.z_** — quits, swaps the app in place and starts the new version.
+
+Nothing is downloaded or installed without being asked for. Builds made from source report `Updates are managed
+outside the app in this build`, because only the `stable` and `canary` channels have a release to update from.
 
 ## How it works
 
@@ -106,7 +127,8 @@ each `@2x` file is the next size up.
 
 | Path | What |
 | --- | --- |
-| `apps/desktop/src/bun/index.ts` | Main process: starts the server, opens the window |
+| `apps/desktop/src/bun/index.ts` | Main process: starts the server, opens the window, window controls and updates |
+| `apps/web/src/components/desktop.tsx` | Window buttons, Help links and the update menu, all desktop-only |
 | `apps/desktop/assets/` | Application icons |
 | `apps/desktop/src/mainview/` | Fallback view shown if the server does not start |
 | `apps/desktop/electrobun.config.ts` | App name, identifier, bundle contents |

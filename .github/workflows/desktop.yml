@@ -142,13 +142,13 @@ jobs:
         working-directory: apps/desktop
         run: bunx electrobun build --env=${{ inputs.channel || 'stable' }}
 
+      # everything, including update.json, the .tar.zst bundles and the delta
+      # patches: the in-app updater downloads them straight from the release
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: openrive-${{ matrix.target }}
-          path: |
-            apps/desktop/artifacts/*
-            !apps/desktop/artifacts/**/*.patch
+          path: apps/desktop/artifacts/*
           if-no-files-found: error
           retention-days: 30
 
@@ -205,5 +205,8 @@ jobs:
 
             The app carries its own editor and database, so nothing else has to be installed. Projects live in your
             user data folder; set `DATABASE_URL` before launching to share a PostgreSQL instead.
+
+            Already running OpenRive? It updates itself: **user menu → Check for updates**. The `update.json`,
+            `.tar.zst` and `.patch` files attached here are what that uses.
 
             These builds are not code-signed yet, so macOS and Windows will warn on first launch.

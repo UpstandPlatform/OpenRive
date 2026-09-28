@@ -6,6 +6,7 @@ import { Check, ChevronDown, LogOut, Shield, Users } from 'lucide-react';
 import { useCurrentUser, useSession } from '@/lib/client/session';
 import { ROLE_INFO } from '@openrive/shared';
 import { Avatar } from './Avatar';
+import { HelpMenuItems, UpdateMenuSection, WindowControls } from './desktop';
 
 export function Logo() {
   return (
@@ -79,6 +80,8 @@ export function UserSwitcher() {
               <LogOut size={14} /> Sign out
             </button>
           )}
+          <HelpMenuItems onDone={() => setOpen(false)} />
+          <UpdateMenuSection />
         </div>
       )}
     </div>
@@ -98,7 +101,7 @@ export function AppHeader() {
     </Link>
   );
   return (
-    <header className="h-14 flex items-center gap-6 px-5 border-b border-line bg-bg1 sticky top-0 z-20">
+    <header className="window-drag h-14 flex items-center gap-6 px-5 border-b border-line bg-bg1 sticky top-0 z-20">
       <Logo />
       <nav className="flex items-center gap-1">
         {tab('/', 'Files')}
@@ -107,6 +110,7 @@ export function AppHeader() {
       </nav>
       <div className="flex-1" />
       <UserSwitcher />
+      <WindowControls />
     </header>
   );
 }

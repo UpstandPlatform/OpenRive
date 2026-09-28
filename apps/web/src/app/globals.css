@@ -65,11 +65,26 @@ body {
   overscroll-behavior: none;
 }
 
-/* The desktop app draws its own title bar, so the rest of the app starts below
-   it. 36px matches the header's h-9. */
-html.desktop-chrome body {
-  padding-top: 36px;
-  box-sizing: border-box;
+/* In the desktop app the window has no native frame: OpenRive's own top bars
+   are the window handle. Anything interactive inside them stays clickable.
+   --electrobun-app-region is what the desktop preload reads when it decides
+   whether a press starts a window move. It comes first because the CSS build
+   drops -webkit-app-region, while a custom property always survives. */
+html.desktop-chrome .window-drag {
+  --electrobun-app-region: drag;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+html.desktop-chrome .window-drag button,
+html.desktop-chrome .window-drag a,
+html.desktop-chrome .window-drag input,
+html.desktop-chrome .window-drag select,
+html.desktop-chrome .window-drag label,
+html.desktop-chrome .window-drag [role='button'],
+html.desktop-chrome .window-drag [contenteditable='true'] {
+  --electrobun-app-region: no-drag;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 /* This is an editor: dragging the timeline, a panel divider or the canvas must

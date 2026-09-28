@@ -26,5 +26,8 @@ export default {
     win: { bundleCEF: false, icon: 'assets/icon-win.png' },
     linux: { bundleCEF: false, icon: 'assets/icon.png' },
   },
+  // the updater reads <baseUrl>/<platform>-update.json and the archives beside
+  // it; GitHub's "latest" redirect always points at the newest release
+  release: { baseUrl: 'https://github.com/UpstandPlatform/OpenRive/releases/latest/download' },
   runtime: { exitOnLastWindowClosed: true },
 } satisfies ElectrobunConfig;

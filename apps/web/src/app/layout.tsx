@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import { AuthGate } from '@/components/AuthGate';
-import { DesktopChrome } from '@/components/DesktopChrome';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -12,7 +11,6 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
   return (
     <html lang="en" className="h-full antialiased">
       <body className="h-full">
-        <DesktopChrome />
         <AuthGate>{children}</AuthGate>
       </body>
     </html>

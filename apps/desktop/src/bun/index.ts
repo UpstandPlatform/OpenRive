@@ -1,15 +1,16 @@
 // OpenRive desktop (Electrobun).
 //
 // The main process starts the bundled Next.js standalone server on a free local
-// port, then opens a frameless window on it. The title bar is drawn by the web
-// app (see DesktopChrome) and talks back through the small control server
-// below, because the page is served over http rather than from views://.
+// port, then opens a frameless window on it. The window has no native chrome:
+// the app's own top bars are the window handle (see apps/web/src/components/
+// desktop.tsx) and they talk back through the small control server below,
+// because the page is served over http rather than from views://.
 //
 // Projects live in the user's application data folder (embedded PostgreSQL), or
 // in DATABASE_URL when one is set.
 import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { BrowserWindow, PATHS, Utils } from 'electrobun/main';
+import { BrowserWindow, PATHS, Updater, Utils } from 'electrobun/main';
 
 const dataDir = join(Utils.paths.userData, 'data');
 mkdirSync(dataDir, { recursive: true });
@@ -68,6 +69,70 @@ const ready = await waitForServer(url);
 const token = crypto.randomUUID();
 const controlPort = await freePort();
 
+// ---------------------------------------------------------------------------
+// Updates, from the GitHub releases of the project (release.baseUrl in
+// electrobun.config.ts points at the latest release's assets).
+
+const updates = {
+  supported: true,
+  version: '0.0.0',
+  channel: 'stable',
+  checking: false,
+  downloading: false,
+  available: false,
+  ready: false,
+  newVersion: undefined as string | undefined,
+  message: undefined as string | undefined,
+  error: undefined as string | undefined,
+};
+
+const local = await Updater.getLocalInfo();
+updates.version = local.version || updates.version;
+updates.channel = local.channel;
+// Only a packaged stable or canary build can update itself: a dev build and a
+// run without version.json have nothing to compare against or download from.
+updates.supported = (local.channel === 'stable' || local.channel === 'canary') && !!local.baseUrl;
+
+Updater.onStatusChange((entry) => {
+  updates.message = entry.message;
+});
+
+async function checkForUpdate() {
+  if (!updates.supported || updates.checking) return;
+  updates.checking = true;
+  updates.error = undefined;
+  updates.message = 'Checking for updates…';
+  try {
+    const result = await Updater.checkForUpdate();
+    updates.available = result.updateAvailable;
+    updates.newVersion = result.version;
+    updates.ready = Updater.updateInfo().updateReady;
+    updates.message = result.updateAvailable ? `Version ${result.version} is available` : 'OpenRive is up to date';
+  } catch (e) {
+    updates.error = (e as Error).message;
+  } finally {
+    updates.checking = false;
+  }
+}
+
+async function downloadUpdate() {
+  if (!updates.available || updates.downloading) return;
+  updates.downloading = true;
+  updates.error = undefined;
+  try {
+    await Updater.downloadUpdate();
+    updates.ready = Updater.updateInfo().updateReady;
+    updates.message = updates.ready ? 'Ready to install' : 'The download did not finish';
+  } catch (e) {
+    updates.error = (e as Error).message;
+  } finally {
+    updates.downloading = false;
+  }
+}
+
+// a quiet check a few seconds after start, so the menu already knows
+if (updates.supported) setTimeout(() => void checkForUpdate(), 8_000);
+
 const control = Bun.serve({
   hostname: '127.0.0.1',
   port: controlPort,
@@ -96,6 +161,18 @@ const control = Bun.serve({
       }
       case '/state':
         return Response.json({ maximized: window.isMaximized() }, { headers });
+      case '/update/state':
+        return Response.json(updates, { headers });
+      case '/update/check':
+        await checkForUpdate();
+        return Response.json(updates, { headers });
+      case '/update/download':
+        await downloadUpdate();
+        return Response.json(updates, { headers });
+      case '/update/apply':
+        // quits, swaps the app in place and starts the new version
+        void Updater.applyUpdate();
+        return Response.json({ ok: true }, { headers });
       default:
         return new Response('not found', { status: 404, headers });
     }
