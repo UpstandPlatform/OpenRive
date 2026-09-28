@@ -57,8 +57,11 @@ What runs:
 
 | Service | Image | Data |
 | --- | --- | --- |
-| `openrive` | built from the `Dockerfile` (Bun) | volume `openrive-data` (CLI imports/exports) |
+| `openrive` | `ghcr.io/upstandplatform/openrive:latest` | volume `openrive-data` (CLI imports/exports) |
 | `db` | `postgres:17-alpine` | volume `openrive-db` |
+
+Nothing is compiled on your server: the image is published for `linux/amd64` and `linux/arm64` and simply pulled.
+See [Which image you get](#which-image-you-get) to pin a version or follow `main`.
 
 Drizzle migrations run automatically when the app starts, and the app waits (up to `OPENRIVE_DB_WAIT_SECONDS`) while
 PostgreSQL finishes starting beside it, so the order the two containers come up in does not matter.
@@ -73,10 +76,34 @@ PostgreSQL finishes starting beside it, so the order the two containers come up 
 
 ```bash
 docker compose logs -f openrive           # logs
-docker compose pull && docker compose up -d --build   # update after git pull
+docker compose pull && docker compose up -d         # update to the newest image
 docker compose down                       # stop (data is kept in volumes)
 docker compose exec openrive openrive list          # use the CLI inside the container
 docker compose exec openrive openrive users add Sam --role editor
+```
+
+### Which image you get
+
+`ghcr.io/upstandplatform/openrive` is public — no registry sign-in — and is built for `linux/amd64` and
+`linux/arm64` by the **Image** workflow.
+
+| Tag | What it is |
+| --- | --- |
+| `latest` | the newest release (default) |
+| `0.0.6`, `0.0` | a specific release, or the newest patch of that minor |
+| `edge` | the newest commit on `main`: new features early, less settled |
+| `sha-1850d37` | one exact commit |
+
+Pin a tag in `.env`:
+
+```env
+OPENRIVE_TAG=0.0.6
+```
+
+To run your own build instead of the published image — a fork, or a change to the `Dockerfile`:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
 ---
@@ -92,10 +119,9 @@ docker compose -f docker-compose.standalone.yml up -d
 Or with plain Docker:
 
 ```bash
-docker build -t openrive .
 docker run -d --name openrive -p 3000:3000 \
   -e OPENRIVE_ACCESS_TOKEN=a-long-random-password \
-  -v openrive-data:/data openrive
+  -v openrive-data:/data ghcr.io/upstandplatform/openrive:latest
 ```
 
 Projects live in the embedded database inside the `openrive-data` volume, mounted at `/data`.
@@ -142,9 +168,10 @@ then `node .next/standalone/server.js` (copy `public/` and `.next/static/` next 
 
 ## Platforms that deploy from git (Dokploy, Coolify, …)
 
-Point the platform at the repository and let it build `docker-compose.yml`; set `OPENRIVE_ACCESS_TOKEN` and
-`POSTGRES_PASSWORD` in its environment settings. Nothing else is needed — the image builds from the Dockerfile and
-the database comes up beside it.
+Point the platform at the repository and let it run `docker-compose.yml`; set `OPENRIVE_ACCESS_TOKEN` and
+`POSTGRES_PASSWORD` in its environment settings. Nothing else is needed — the published image is pulled (no build
+step on the deploy host, so a small server is enough) and the database comes up beside it. Redeploy to pick up a new
+image, or set `OPENRIVE_TAG` to pin a version.
 
 These platforms clone with `--recurse-submodules`. The Rive SDK forks under `vendor/` are marked `update = none`, so
 they are skipped: they are developer tooling, and one of them has an `ssh://` submodule that a build server cannot

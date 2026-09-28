@@ -98,7 +98,8 @@ cp .env.example .env            # set OPENRIVE_ACCESS_TOKEN and POSTGRES_PASSWOR
 docker compose up -d            # OpenRive + PostgreSQL
 ```
 
-Works with Docker Desktop on Windows, macOS and Linux, or any server running Docker. A single-container
+That pulls `ghcr.io/upstandplatform/openrive` (amd64 and arm64, no sign-in needed), so nothing is compiled on the
+server. Works with Docker Desktop on Windows, macOS and Linux, or any server running Docker. A single-container
 file-storage variant is also available (`docker-compose.standalone.yml`).
 
 Full guide: **[Self-hosting](docs/self-hosting.md)**

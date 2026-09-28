@@ -1,0 +1,11 @@
+# Builds the image from this checkout instead of pulling it from the GitHub
+# Container Registry. Add it to either stack:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#   docker compose -f docker-compose.standalone.yml -f docker-compose.build.yml up -d --build
+#
+# Use it when working on the Dockerfile, or to run a build of your own fork.
+services:
+  openrive:
+    build: .
+    image: openrive:local

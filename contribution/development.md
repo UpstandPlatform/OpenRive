@@ -107,10 +107,16 @@ bun run db:down
 
 ## Building the Docker image
 
+`docker compose up -d` pulls the published image (`ghcr.io/upstandplatform/openrive`). To run your own build of it:
+
 ```bash
-docker build -t openrive .
-docker compose up -d            # app + postgres
+docker build -t openrive:local .
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build   # app + postgres
 ```
+
+CI publishes the image for amd64 and arm64 on every push to `main` (`:edge`) and every `v*` tag (`:1.2.3` and
+`:latest`) — `.github/workflows/image.yml`. Pull requests that touch the `Dockerfile` or a compose file build it
+without publishing.
 
 ## Building the desktop app
 

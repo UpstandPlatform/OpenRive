@@ -6,11 +6,16 @@
 #
 # Single container with the embedded database instead:
 #   docker compose -f docker-compose.standalone.yml up -d
+#
+# The image is published to the GitHub Container Registry by .github/workflows/image.yml.
+# To build it from this checkout instead, add the build override:
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 # Full guide: docs/self-hosting.md
 services:
   openrive:
-    build: .
-    image: openrive
+    # OPENRIVE_TAG picks the version: latest (default), edge for the newest
+    # commit on main, or a release such as 0.0.6
+    image: ghcr.io/upstandplatform/openrive:${OPENRIVE_TAG:-latest}
     restart: unless-stopped
     ports:
       - "${OPENRIVE_PORT:-3000}:3000"
