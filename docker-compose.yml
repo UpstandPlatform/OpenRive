@@ -13,8 +13,8 @@
 # Full guide: docs/self-hosting.md
 services:
   openrive:
-    # OPENRIVE_TAG picks the version: latest (default), edge for the newest
-    # commit on main, or a release such as 0.0.6
+    # OPENRIVE_TAG picks the version: latest (default, the newest build), a
+    # release such as 0.0.6, or the commit the build came from
     image: ghcr.io/upstandplatform/openrive:${OPENRIVE_TAG:-latest}
     restart: unless-stopped
     ports:

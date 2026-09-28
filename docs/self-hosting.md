@@ -89,12 +89,11 @@ docker compose exec openrive openrive users add Sam --role editor
 
 | Tag | What it is |
 | --- | --- |
-| `latest` | the newest release (default) |
-| `0.0.6`, `0.0` | a specific release, or the newest patch of that minor |
-| `edge` | the newest commit on `main`: new features early, less settled |
-| `sha-1850d37` | one exact commit |
+| `latest` | the newest build, moved on every publish (default) |
+| `1850d37` | the exact commit it was built from |
+| `0.0.6`, `0.0` | a release, or the newest patch of that minor |
 
-Pin a tag in `.env`:
+Pin a tag in `.env` to stay on one version:
 
 ```env
 OPENRIVE_TAG=0.0.6

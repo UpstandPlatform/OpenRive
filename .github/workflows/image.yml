@@ -1,11 +1,12 @@
 # Publishes the OpenRive container image to the GitHub Container Registry.
 #
-#   push to main            ghcr.io/upstandplatform/openrive:edge
-#   git push origin v1.2.3  :1.2.3, :1.2 and :latest
-#   pull request            builds only, as a check that the Dockerfile still works
+# Every publish tags the image with the commit it was built from and moves
+# :latest to it, so `docker compose pull` always gets the newest build:
 #
-# Actions -> Image -> Run workflow also takes an extra tag, which is how the
-# first :latest is published before the next release tag exists.
+#   push to main            ghcr.io/upstandplatform/openrive:1850d37 and :latest
+#   git push origin v1.2.3  the same, plus :1.2.3 and :1.2
+#   pull request            builds only, as a check that the Dockerfile still works
+#   Run workflow            publishes the branch it is run from
 #
 # One-time setup: the first push creates the package privately. Make it public
 # under Organisation -> Packages -> openrive -> Package settings, or nobody can
@@ -25,11 +26,6 @@ on:
   pull_request:
     paths: ['Dockerfile', '.dockerignore', 'docker-compose*.yml', '.github/workflows/image.yml']
   workflow_dispatch:
-    inputs:
-      extra_tag:
-        description: Extra tag to publish as well (e.g. latest)
-        type: string
-        default: ''
 
 env:
   IMAGE: ghcr.io/upstandplatform/openrive
@@ -135,21 +131,26 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE }}
-          # 'latest' comes with the semver tags (flavor latest=auto)
+          # every publish gets the commit it was built from and moves 'latest';
+          # a v* tag additionally gets its version numbers
+          flavor: latest=false
           tags: |
-            type=edge,branch=main
+            type=raw,value=latest
+            type=sha,prefix=
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=sha
-            type=raw,value=${{ inputs.extra_tag }},enable=${{ inputs.extra_tag != '' }}
 
-      - name: Join the architectures into one tag
+      # one manifest list carrying both architectures, published under every tag
+      # above: the commit, latest, and the version when this is a release
+      - name: Join the architectures into one image
         working-directory: /tmp/digests
         run: |
           set -euo pipefail
-          docker buildx imagetools create \
-            $(jq -cr '.target."docker-metadata-action".tags | map("-t " + .) | join(" ")' <<< "${DOCKER_METADATA_OUTPUT_JSON}") \
-            $(printf "${IMAGE}@sha256:%s " *)
+          tags=""
+          while read -r tag; do
+            if [ -n "${tag}" ]; then tags="${tags} -t ${tag}"; fi
+          done <<< "${DOCKER_METADATA_OUTPUT_TAGS}"
+          docker buildx imagetools create ${tags} $(printf "${IMAGE}@sha256:%s " *)
 
       - name: What was published
         run: |
@@ -157,6 +158,6 @@ jobs:
           {
             echo "### Image"
             echo
-            jq -r '.target."docker-metadata-action".tags[] | "- `" + . + "`"' <<< "${DOCKER_METADATA_OUTPUT_JSON}"
+            sed -e 's/^/- `/' -e 's/$/`/' <<< "${DOCKER_METADATA_OUTPUT_TAGS}"
           } >> "$GITHUB_STEP_SUMMARY"
-          docker buildx imagetools inspect "${IMAGE}:${{ steps.meta.outputs.version }}"
+          docker buildx imagetools inspect "${IMAGE}:latest"
