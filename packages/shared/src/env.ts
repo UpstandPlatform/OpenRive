@@ -20,6 +20,8 @@ const envSchema = z.object({
     .transform((v) => v === 'true')
     .optional(),
   OPENRIVE_DB_POOL: z.coerce.number().int().positive().max(100).default(10),
+  /** how long to wait for a PostgreSQL server that is still starting */
+  OPENRIVE_DB_WAIT_SECONDS: z.coerce.number().int().nonnegative().max(600).default(60),
   /** 'auto' requires sign-in when DATABASE_URL is set (a shared deployment) */
   OPENRIVE_AUTH: z.enum(['auto', 'on', 'off']).default('auto'),
   /** how long a sign-in lasts */

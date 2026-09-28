@@ -60,7 +60,8 @@ What runs:
 | `openrive` | built from the `Dockerfile` (Bun) | volume `openrive-data` (CLI imports/exports) |
 | `db` | `postgres:17-alpine` | volume `openrive-db` |
 
-Drizzle migrations run automatically when the app starts.
+Drizzle migrations run automatically when the app starts, and the app waits (up to `OPENRIVE_DB_WAIT_SECONDS`) while
+PostgreSQL finishes starting beside it, so the order the two containers come up in does not matter.
 
 ### With Docker Desktop's UI
 

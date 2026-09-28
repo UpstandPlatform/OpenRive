@@ -75,6 +75,13 @@ round-trips.
 `bun run rive:init`. Nothing else needs them — the editor renders with the npm runtime either way. See
 [Rive SDK submodules](rive-sdk.md).
 
+### Deploying fails with "services.openrive.depends_on must be a list"
+
+Some platforms (Dokploy among them) parse `docker-compose.yml` with a stricter schema than Docker itself and reject
+the `depends_on: { db: { condition: service_healthy } }` spelling. OpenRive's compose file uses the plain list form
+instead, and the app waits for PostgreSQL on its own — it retries for `OPENRIVE_DB_WAIT_SECONDS` (60 by default)
+while the database finishes starting. Deploy a commit that includes that change.
+
 ### Deploying fails with "Host key verification failed" on a submodule
 
 The platform cloned with `--recurse-submodules` and reached Rive's own submodule, which uses an `ssh://` URL that a

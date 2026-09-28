@@ -14,13 +14,44 @@ export type Backend = 'postgres' | 'embedded';
 
 let connection: Promise<{ db: Db; backend: Backend; close: () => Promise<void>; where: string }> | null = null;
 
+/**
+ * Errors that mean "the server is still starting", worth waiting out. Drivers
+ * wrap the original error, so the whole cause chain is checked.
+ */
+function isStarting(error: unknown): boolean {
+  for (let current: unknown = error, depth = 0; current && depth < 5; current = (current as { cause?: unknown }).cause, depth++) {
+    const code = String((current as { code?: string }).code ?? '');
+    const message = String((current as Error).message ?? '');
+    if (['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ETIMEDOUT', 'ECONNRESET', '57P03'].includes(code)) return true;
+    if (/starting up|not yet accepting|connection refused|getaddrinfo|ECONNREFUSED/i.test(message)) return true;
+  }
+  return false;
+}
+
 async function connect() {
-  const { DATABASE_URL, OPENRIVE_DB_SSL, OPENRIVE_DB_POOL } = env();
+  const { DATABASE_URL, OPENRIVE_DB_SSL, OPENRIVE_DB_POOL, OPENRIVE_DB_WAIT_SECONDS } = env();
   if (DATABASE_URL) {
     const [{ drizzle }, pg] = await Promise.all([import('drizzle-orm/node-postgres'), import('pg')]);
     const ssl = OPENRIVE_DB_SSL || /[?&]sslmode=(require|verify)/.test(DATABASE_URL) ? { rejectUnauthorized: false } : undefined;
     const pool = new pg.default.Pool({ connectionString: DATABASE_URL, ssl, max: OPENRIVE_DB_POOL });
     const db = drizzle(pool, { schema });
+    // compose starts the app beside PostgreSQL, so the first connection often
+    // lands before it accepts any: wait it out instead of failing the request
+    const deadline = Date.now() + OPENRIVE_DB_WAIT_SECONDS * 1000;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        // the pool reports connection errors unwrapped, with their code
+        await pool.query('select 1');
+        break;
+      } catch (e) {
+        if (!isStarting(e) || Date.now() >= deadline) {
+          await pool.end().catch(() => {});
+          throw e;
+        }
+        if (attempt === 1) console.log('[db] waiting for PostgreSQL to accept connections…');
+        await new Promise((resolve) => setTimeout(resolve, Math.min(2000, 250 * attempt)));
+      }
+    }
     await applyMigrations(db);
     return {
       db,

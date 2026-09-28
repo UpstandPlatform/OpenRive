@@ -12,6 +12,7 @@ or in `docker-compose.yml`.
 | `OPENRIVE_DATA_DIR` | `./data` | Folder for the embedded database and CLI imports/exports. A relative path is resolved against the workspace root. |
 | `OPENRIVE_DB_SSL` | `false` | `true` forces TLS (also enabled by `?sslmode=require` in the URL). Certificates are not verified, which suits managed databases with private CAs. |
 | `OPENRIVE_DB_POOL` | `10` | Maximum database connections (server mode) |
+| `OPENRIVE_DB_WAIT_SECONDS` | `60` | How long to wait for a PostgreSQL server that is still starting before giving up |
 
 ## Access
 

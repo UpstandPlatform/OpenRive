@@ -22,9 +22,11 @@ services:
     volumes:
       # used by the CLI inside the container for imports and exports
       - openrive-data:/data
+    # the short form: some deploy platforms (Dokploy) reject the long
+    # "condition: service_healthy" spelling. OpenRive waits for the database
+    # itself, retrying while PostgreSQL finishes starting.
     depends_on:
-      db:
-        condition: service_healthy
+      - db
 
   db:
     image: postgres:17-alpine
