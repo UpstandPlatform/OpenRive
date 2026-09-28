@@ -31,13 +31,6 @@ services:
       # Strongly recommended when the server is reachable by others:
       # every visitor must enter this password (any user name).
       OPENRIVE_ACCESS_TOKEN: ${OPENRIVE_ACCESS_TOKEN:-}
-      OPENRIVE_DB_RECOVERY_PASSWORD: ${OPENRIVE_DB_RECOVERY_PASSWORD:-}
-    command:
-      - sh
-      - -c
-      - >-
-        bun -e 'import { Client } from "pg"; const client = new Client({ connectionString: process.env.DATABASE_URL }); await client.connect(); const tables = await client.query("SELECT table_name FROM information_schema.tables WHERE table_schema = '"'"'public'"'"' ORDER BY table_name"); const columns = await client.query("SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = '"'"'public'"'"' AND table_name IN ('"'"'users'"'"','"'"'sessions'"'"','"'"'accounts'"'"','"'"'verifications'"'"','"'"'rate_limit'"'"') ORDER BY table_name, ordinal_position"); console.log("DB_STATE " + JSON.stringify({ tables: tables.rows, columns: columns.rows })); await client.query("ALTER ROLE openrive PASSWORD '"'"'" + process.env.OPENRIVE_DB_RECOVERY_PASSWORD + "'"'"'"); await client.end();'
-        && exec bun run --cwd apps/web start
     volumes:
       # used by the CLI inside the container for imports and exports
       - openrive-data:/data
