@@ -36,7 +36,7 @@ services:
       - sh
       - -c
       - >-
-        bun -e 'import { Client } from "pg"; const client = new Client({ connectionString: process.env.DATABASE_URL }); await client.connect(); await client.query("ALTER ROLE openrive PASSWORD $1", [process.env.OPENRIVE_DB_RECOVERY_PASSWORD]); await client.end();'
+        bun -e 'import { Client } from "pg"; const client = new Client({ connectionString: process.env.DATABASE_URL }); await client.connect(); await client.query("ALTER ROLE openrive PASSWORD '"'"'" + process.env.OPENRIVE_DB_RECOVERY_PASSWORD + "'"'"'"); await client.end();'
         && exec bun run --cwd apps/web start
     volumes:
       # used by the CLI inside the container for imports and exports
