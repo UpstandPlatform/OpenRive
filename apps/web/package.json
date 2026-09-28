@@ -12,6 +12,7 @@
     "postinstall": "bun run ../../scripts/copy-wasm.ts"
   },
   "dependencies": {
+    "@openrive/auth": "workspace:*",
     "@openrive/db": "workspace:*",
     "@openrive/rive": "workspace:*",
     "@openrive/shared": "workspace:*",

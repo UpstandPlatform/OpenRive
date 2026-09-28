@@ -8,7 +8,10 @@
 
 FROM oven/bun:1.4.2-alpine AS deps
 WORKDIR /app
-COPY package.json bun.lock ./
+# bunfig.toml matters here: it selects the hoisted linker. Without it bun links
+# each package's dependencies separately, and a package can no longer see one it
+# does not declare — and the symlinks it leaves behind break the copied app.
+COPY package.json bun.lock bunfig.toml ./
 COPY apps/web/package.json apps/web/
 COPY apps/cli/package.json apps/cli/
 COPY apps/desktop/package.json apps/desktop/
@@ -18,6 +21,8 @@ COPY packages/db/package.json packages/db/
 COPY packages/rive/package.json packages/rive/
 COPY packages/shared/package.json packages/shared/
 COPY packages/ui/package.json packages/ui/
+# ^ one line per workspace, so this layer is cached until a manifest changes:
+#   a new workspace needs a line here or the install fails
 # --ignore-scripts: apps/web's postinstall copies the Rive runtime and needs
 # scripts/, which is not in this stage. The build stage below runs it itself.
 RUN bun install --frozen-lockfile --ignore-scripts
