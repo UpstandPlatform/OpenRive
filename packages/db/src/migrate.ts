@@ -45,7 +45,13 @@ async function baselineExistingSchema(db: Runner, applied: Set<string>) {
   // their schema already represents, then let normal migrations continue.
   if (has('projects') && has('settings') && has('users')) baseline.add('0000_plain_komodo');
   if (has('sessions') && has('users', 'email') && has('users', 'password_hash')) baseline.add('0001_odd_felicia_hardy');
-  if (has('accounts') && has('verifications') && has('sessions', 'token') && has('users', 'email_verified')) baseline.add('0002_better_auth');
+  if (has('accounts') && has('verifications') && has('sessions', 'token') && has('users', 'email_verified')) {
+    // A schema that has reached Better Auth necessarily includes the prior
+    // migrations, even though the password_hash column was removed by 0002.
+    baseline.add('0000_plain_komodo');
+    baseline.add('0001_odd_felicia_hardy');
+    baseline.add('0002_better_auth');
+  }
   if (has('rate_limit')) baseline.add('0003_cute_starbolt');
 
   for (const migration of migrations) {
