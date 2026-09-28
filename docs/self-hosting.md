@@ -10,9 +10,9 @@ Run OpenRive on a server, NAS or your own Docker Desktop so a team can share it.
 
 ## Before you start: protecting access
 
-A self-hosted server (one with a `DATABASE_URL`) **asks for a sign-in**: the first person to open it creates the
-administrator account, who then adds everyone else from the admin dashboard. See
-[Accounts and sign-in](authentication.md).
+A self-hosted server (one with a `DATABASE_URL`) **asks for a sign-in**: an email and a password, with nothing sent
+by mail to confirm. The first person to sign up becomes the administrator; `OPENRIVE_SIGNUP` decides whether anyone
+else may. See [Accounts and sign-in](authentication.md).
 
 For a second, coarser gate — or to keep the instance completely private — **set an access token**, which puts HTTP
 Basic auth in front of everything:

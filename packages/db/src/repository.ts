@@ -4,7 +4,7 @@ import { idSchema, type ProjectMeta, type User } from '@openrive/shared';
 import { asc, desc, eq, notInArray } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from './client';
-import { projects, settings, users, type ProjectRow } from './schema';
+import { projects, settings, users, type ProjectRow, type UserRow } from './schema';
 
 const toMeta = (row: ProjectRow): ProjectMeta => ({
   id: row.id,
@@ -24,12 +24,27 @@ export const safeId = (id: string) => idSchema.parse(id);
 // ---------------------------------------------------------------------------
 // Users
 
+/**
+ * The people a file can belong to. Timestamps are milliseconds everywhere above
+ * this layer; the accounts tables store them as dates, so they convert here.
+ */
+export const toUser = (row: UserRow): User => ({
+  id: row.id,
+  name: row.name,
+  color: row.color,
+  role: row.role,
+  createdAt: row.createdAt.getTime(),
+});
+
 export async function listUsers(): Promise<User[]> {
   const conn = await db();
   const rows = await conn.select().from(users).orderBy(asc(users.position), asc(users.id));
-  if (rows.length) return rows.map(({ position: _position, ...u }) => u);
+  if (rows.length) return rows.map(toUser);
   const admin: User = { id: nanoid(10), name: 'Admin', color: '#7c5cff', role: 'admin', createdAt: Date.now() };
-  await conn.insert(users).values({ ...admin, position: 0 }).onConflictDoNothing();
+  await conn
+    .insert(users)
+    .values({ ...admin, createdAt: new Date(admin.createdAt), position: 0 })
+    .onConflictDoNothing();
   return [admin];
 }
 
@@ -41,10 +56,8 @@ export async function saveUsers(list: User[]) {
     if (ids.length) await tx.delete(users).where(notInArray(users.id, ids));
     else await tx.delete(users);
     for (const [position, user] of list.entries()) {
-      await tx
-        .insert(users)
-        .values({ ...user, position })
-        .onConflictDoUpdate({ target: users.id, set: { ...user, position } });
+      const row = { ...user, createdAt: new Date(user.createdAt), position };
+      await tx.insert(users).values(row).onConflictDoUpdate({ target: users.id, set: row });
     }
   });
 }

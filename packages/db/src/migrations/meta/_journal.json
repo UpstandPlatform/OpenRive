@@ -15,6 +15,13 @@
       "when": 1790596515173,
       "tag": "0001_odd_felicia_hardy",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790608725059,
+      "tag": "0002_better_auth",
+      "breakpoints": true
     }
   ]
 }

@@ -5,7 +5,7 @@ OpenRive has two ways of knowing who you are:
 | Mode | When | What it looks like |
 | --- | --- | --- |
 | **Login-free** | a local run or the desktop app | pick a user from the header, as OpenRive has always worked |
-| **Sign-in** | self-hosted (a `DATABASE_URL` is set) | an account with a password, sessions, and an admin dashboard |
+| **Sign-in** | self-hosted (a `DATABASE_URL` is set) | an email and a password, sessions, and an admin dashboard |
 
 Set `OPENRIVE_AUTH` to choose explicitly:
 
@@ -15,16 +15,29 @@ OPENRIVE_AUTH=on     # always require sign-in (also with the embedded database)
 OPENRIVE_AUTH=off    # never require sign-in (single user on a trusted machine)
 ```
 
+Accounts are handled by [Better Auth](https://better-auth.com): email and password, no external provider.
+
 ## The first account
 
-Open the server in a browser. With nobody registered yet, OpenRive shows **Create the administrator account**: pick a
-name, an optional email and a password of at least 8 characters. That first account becomes the **administrator** and
-is signed in straight away.
+Open the server in a browser. With nobody registered yet, OpenRive sends you to **/signup** to create the
+administrator account: a name, an email and a password of at least 8 characters. The first account to exist becomes
+the **administrator** and is signed in straight away; everyone who signs up later is an **editor**.
 
-There is no sign-up page and no email verification — self-hosted instances are private, so the administrator creates
-everyone else from the dashboard.
+**Nothing is emailed and nothing is verified.** The address is only what you sign in with, so it can be
+`ada@example.test` on a private server. OpenRive sends no mail at all.
 
-> Put the server behind HTTPS before anyone signs in over a network. See
+## Who may sign up
+
+```env
+OPENRIVE_SIGNUP=open    # default: anyone who can reach the server can create an account
+OPENRIVE_SIGNUP=first   # only the administrator account; an admin adds the rest
+OPENRIVE_SIGNUP=off     # nobody: accounts are created with `openrive users add`
+```
+
+The server enforces this, not just the page: a refused sign-up creates nothing.
+
+> On a server reachable from the internet, set `OPENRIVE_SIGNUP=first` (or `off`) unless you really want anyone
+> passing by to have an account. Put the server behind HTTPS before anyone signs in over a network — see
 > [Self-hosting](self-hosting.md#https-with-a-reverse-proxy).
 
 ## Roles
@@ -52,14 +65,33 @@ Changing a password or disabling an account ends that person's existing sessions
 
 ## Sessions
 
-Signing in sets an `httpOnly` cookie holding a random session id; the session itself lives in the database, so it can
-be revoked. Sessions last `OPENRIVE_SESSION_DAYS` (30 by default) and expired rows are cleaned up on each sign-in.
+Signing in sets an `httpOnly` cookie holding a signed session token; the session itself is a database row, so it can
+be revoked from the dashboard. Sessions last `OPENRIVE_SESSION_DAYS` (30 by default).
+
+Cookies are signed with `OPENRIVE_AUTH_SECRET`. Leave it unset and OpenRive generates one on first use and keeps it
+in the database, so sessions survive a restart; set it explicitly to share one secret across several app containers:
+
+```env
+OPENRIVE_AUTH_SECRET=a-long-random-string
+```
 
 ## Passwords
 
-Passwords are hashed with PBKDF2-HMAC-SHA-512, 210,000 iterations and a random 16-byte salt per password (OWASP's
-guidance), using WebCrypto — nothing native to compile. The database stores only the hash, and sign-in compares in
-constant time. The same message is shown for an unknown account and a wrong password.
+Passwords are hashed with scrypt (Better Auth's default) and only the hash is stored. The same message is shown for
+an unknown account and a wrong password, so neither reveals which accounts exist. Accounts created by the first
+release of sign-in carry a PBKDF2-HMAC-SHA-512 hash instead; those still work, and the next password change stores
+scrypt.
+
+## Where accounts live
+
+| Table | Holds |
+| --- | --- |
+| `users` | the account and the person a file belongs to: name, email, colour, role |
+| `accounts` | how an account signs in — one `credential` row per password |
+| `sessions` | who is signed in, from which browser and until when |
+| `verifications` | short-lived tokens; empty unless something asks for one |
+
+One row per person in `users`, whether they sign in or are just a name a local, login-free run attributes files to.
 
 ## Recovering access from the server
 
@@ -70,8 +102,10 @@ openrive db auth                       # who exists, who has a password
 openrive users password Ada            # asks for a new password (no echo)
 openrive users password Ada --password 'a new password'
 openrive users role Ada --role admin   # promote someone
-openrive users add Sam --role editor --password 'their password' --email sam@example.com
+openrive users add Sam --role editor --email sam@example.com --password 'their password'
 ```
+
+An account needs an email before it can have a password — that is what it signs in with.
 
 With the embedded database, stop the server first — it allows one process at a time.
 

@@ -1,12 +1,12 @@
 // Server-side access control. Every API route goes through these helpers, so
 // roles are enforced on the server and not only hidden in the interface.
-import { authEnabled, canEditProject, canSeeProject, isAdmin, sessionUser, SESSION_COOKIE, type Account } from '@openrive/auth';
+import { auth, authEnabled, canEditProject, canSeeProject, isAdmin, sessionUser, SESSION_COOKIE, type Account } from '@openrive/auth';
 import { listUsers } from '@openrive/db';
 import type { ProjectMeta } from '@openrive/shared';
-import { cookies } from 'next/headers';
+import { headers } from 'next/headers';
 import { fail } from './route';
 
-export { authEnabled, canEditProject, canSeeProject, isAdmin, SESSION_COOKIE };
+export { auth, authEnabled, canEditProject, canSeeProject, isAdmin, SESSION_COOKIE };
 export type { Account };
 
 /**
@@ -17,10 +17,7 @@ export type { Account };
  * user keeps working without signing in.
  */
 export async function currentUser(): Promise<Account | null> {
-  if (authEnabled()) {
-    const store = await cookies();
-    return sessionUser(store.get(SESSION_COOKIE)?.value);
-  }
+  if (authEnabled()) return sessionUser(await headers());
   const users = await listUsers();
   const local = users.find((u) => u.role === 'admin') ?? users[0];
   return local ? { ...local, email: null, disabled: false, lastLoginAt: null, hasPassword: false } : null;
@@ -49,18 +46,3 @@ export function requireEdit(user: Account, project: ProjectMeta): Response | nul
   return null;
 }
 
-/** Cookie options: secure over https, and readable only by the server. */
-export function sessionCookie(value: string, expiresAt: number, secure: boolean) {
-  return {
-    name: SESSION_COOKIE,
-    value,
-    httpOnly: true,
-    sameSite: 'lax' as const,
-    secure,
-    path: '/',
-    expires: new Date(expiresAt),
-  };
-}
-
-export const isSecureRequest = (request: Request) =>
-  new URL(request.url).protocol === 'https:' || request.headers.get('x-forwarded-proto') === 'https';

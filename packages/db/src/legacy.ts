@@ -38,7 +38,10 @@ export async function importLegacyDataDir(dir?: string, log: (msg: string) => vo
   for (const [position, raw] of legacyUsers.entries()) {
     const parsed = userSchema.safeParse(raw);
     if (!parsed.success) continue;
-    await conn.insert(users).values({ ...parsed.data, position }).onConflictDoNothing();
+    await conn
+      .insert(users)
+      .values({ ...parsed.data, createdAt: new Date(parsed.data.createdAt), position })
+      .onConflictDoNothing();
     userCount++;
   }
 

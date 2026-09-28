@@ -28,5 +28,26 @@ export const migrations: EmbeddedMigration[] = [
       "ALTER TABLE \"users\" ADD COLUMN \"last_login_at\" bigint;",
       "ALTER TABLE \"sessions\" ADD CONSTRAINT \"sessions_user_id_users_id_fk\" FOREIGN KEY (\"user_id\") REFERENCES \"public\".\"users\"(\"id\") ON DELETE cascade ON UPDATE no action;"
     ]
+  },
+  {
+    "tag": "0002_better_auth",
+    "hash": "86e24eabe226d1ad3198929259bf6486485513fc5549d1ace6e6fbfbadc7aded",
+    "statements": [
+      "ALTER TABLE \"users\" ADD COLUMN \"email_verified\" boolean DEFAULT false NOT NULL;",
+      "ALTER TABLE \"users\" ADD COLUMN \"image\" text;",
+      "ALTER TABLE \"users\" ALTER COLUMN \"created_at\" SET DATA TYPE timestamp with time zone USING to_timestamp(\"created_at\" / 1000.0);",
+      "ALTER TABLE \"users\" ALTER COLUMN \"created_at\" SET DEFAULT now();",
+      "ALTER TABLE \"users\" ALTER COLUMN \"last_login_at\" SET DATA TYPE timestamp with time zone USING to_timestamp(\"last_login_at\" / 1000.0);",
+      "ALTER TABLE \"users\" ADD COLUMN \"updated_at\" timestamp with time zone DEFAULT now() NOT NULL;",
+      "ALTER TABLE \"users\" ADD CONSTRAINT \"users_email_unique\" UNIQUE(\"email\");",
+      "CREATE TABLE \"accounts\" (\n\t\"id\" text PRIMARY KEY NOT NULL,\n\t\"user_id\" text NOT NULL,\n\t\"account_id\" text NOT NULL,\n\t\"provider_id\" text NOT NULL,\n\t\"password\" text,\n\t\"access_token\" text,\n\t\"refresh_token\" text,\n\t\"id_token\" text,\n\t\"access_token_expires_at\" timestamp with time zone,\n\t\"refresh_token_expires_at\" timestamp with time zone,\n\t\"scope\" text,\n\t\"created_at\" timestamp with time zone DEFAULT now() NOT NULL,\n\t\"updated_at\" timestamp with time zone DEFAULT now() NOT NULL\n);",
+      "ALTER TABLE \"accounts\" ADD CONSTRAINT \"accounts_user_id_users_id_fk\" FOREIGN KEY (\"user_id\") REFERENCES \"public\".\"users\"(\"id\") ON DELETE cascade ON UPDATE no action;",
+      "INSERT INTO \"accounts\" (\"id\", \"user_id\", \"account_id\", \"provider_id\", \"password\", \"created_at\", \"updated_at\")\n\tSELECT md5(random()::text || \"id\"), \"id\", \"id\", 'credential', \"password_hash\", now(), now()\n\tFROM \"users\" WHERE \"password_hash\" IS NOT NULL;",
+      "ALTER TABLE \"users\" DROP COLUMN \"password_hash\";",
+      "CREATE TABLE \"verifications\" (\n\t\"id\" text PRIMARY KEY NOT NULL,\n\t\"identifier\" text NOT NULL,\n\t\"value\" text NOT NULL,\n\t\"expires_at\" timestamp with time zone NOT NULL,\n\t\"created_at\" timestamp with time zone DEFAULT now() NOT NULL,\n\t\"updated_at\" timestamp with time zone DEFAULT now() NOT NULL\n);",
+      "DROP TABLE \"sessions\";",
+      "CREATE TABLE \"sessions\" (\n\t\"id\" text PRIMARY KEY NOT NULL,\n\t\"user_id\" text NOT NULL,\n\t\"token\" text NOT NULL,\n\t\"expires_at\" timestamp with time zone NOT NULL,\n\t\"created_at\" timestamp with time zone DEFAULT now() NOT NULL,\n\t\"updated_at\" timestamp with time zone DEFAULT now() NOT NULL,\n\t\"ip_address\" text,\n\t\"user_agent\" text,\n\tCONSTRAINT \"sessions_token_unique\" UNIQUE(\"token\")\n);",
+      "ALTER TABLE \"sessions\" ADD CONSTRAINT \"sessions_user_id_users_id_fk\" FOREIGN KEY (\"user_id\") REFERENCES \"public\".\"users\"(\"id\") ON DELETE cascade ON UPDATE no action;"
+    ]
   }
 ];

@@ -1,12 +1,13 @@
 'use client';
 // Who the browser is acting as.
 //
-// Two modes, decided by the server (/api/auth/session):
+// Two modes, decided by the server (/api/session):
 //  - sign-in off (local, single user): pick any local user from the header, as
 //    OpenRive has always worked
 //  - sign-in on (self-hosted): the signed-in account, from a session cookie
 import { create } from 'zustand';
 import type { ProjectMeta, Role, User } from '@openrive/shared';
+import { authClient } from './auth';
 
 const KEY = 'openrive:user';
 
@@ -23,6 +24,8 @@ interface SessionState {
   account: Account | null;
   authEnabled: boolean;
   needsSetup: boolean;
+  /** whether the sign-up page takes new accounts */
+  canSignUp: boolean;
   currentId: string | null;
   loaded: boolean;
   refresh(): Promise<void>;
@@ -35,19 +38,29 @@ export const useSession = create<SessionState>((set, get) => ({
   account: null,
   authEnabled: false,
   needsSetup: false,
+  canSignUp: false,
   currentId: null,
   loaded: false,
   async refresh() {
-    const session = (await fetch('/api/auth/session', { cache: 'no-store' })
+    const session = (await fetch('/api/session', { cache: 'no-store' })
       .then((r) => r.json())
-      .catch(() => ({ authEnabled: false, needsSetup: false, user: null }))) as {
+      .catch(() => ({ authEnabled: false, needsSetup: false, canSignUp: false, user: null }))) as {
       authEnabled: boolean;
       needsSetup: boolean;
+      canSignUp: boolean;
       user: Account | null;
     };
 
     if (session.authEnabled && !session.user) {
-      set({ users: [], account: null, authEnabled: true, needsSetup: session.needsSetup, currentId: null, loaded: true });
+      set({
+        users: [],
+        account: null,
+        authEnabled: true,
+        needsSetup: session.needsSetup,
+        canSignUp: session.canSignUp,
+        currentId: null,
+        loaded: true,
+      });
       return;
     }
 
@@ -56,7 +69,7 @@ export const useSession = create<SessionState>((set, get) => ({
       .catch(() => []);
 
     if (session.authEnabled && session.user) {
-      set({ users, account: session.user, authEnabled: true, needsSetup: false, currentId: session.user.id, loaded: true });
+      set({ users, account: session.user, authEnabled: true, needsSetup: false, canSignUp: session.canSignUp, currentId: session.user.id, loaded: true });
       return;
     }
 
@@ -68,7 +81,7 @@ export const useSession = create<SessionState>((set, get) => ({
       currentId = null;
     }
     if (!currentId || !users.some((u) => u.id === currentId)) currentId = users[0]?.id ?? null;
-    set({ users, account: null, authEnabled: false, needsSetup: false, currentId, loaded: true });
+    set({ users, account: null, authEnabled: false, needsSetup: false, canSignUp: false, currentId, loaded: true });
     if (currentId) get().switchUser(currentId);
   },
   switchUser(id) {
@@ -82,7 +95,7 @@ export const useSession = create<SessionState>((set, get) => ({
     set({ currentId: id });
   },
   async signOut() {
-    await fetch('/api/auth/logout', { method: 'POST' });
+    await authClient.signOut().catch(() => {});
     set({ account: null, currentId: null, users: [] });
     // a full load, so no editor state survives the sign-out
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination

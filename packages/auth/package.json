@@ -13,6 +13,7 @@
   "dependencies": {
     "@openrive/db": "workspace:*",
     "@openrive/shared": "workspace:*",
+    "better-auth": "1.7.6",
     "drizzle-orm": "catalog:",
     "nanoid": "catalog:",
     "zod": "catalog:"

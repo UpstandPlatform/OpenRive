@@ -26,6 +26,10 @@ const envSchema = z.object({
   OPENRIVE_AUTH: z.enum(['auto', 'on', 'off']).default('auto'),
   /** how long a sign-in lasts */
   OPENRIVE_SESSION_DAYS: z.coerce.number().int().positive().max(365).default(30),
+  /** signs session cookies; generated and kept in the database when unset */
+  OPENRIVE_AUTH_SECRET: z.string().min(16).optional(),
+  /** who may use the sign-up page: anyone, only the first (administrator) account, or nobody */
+  OPENRIVE_SIGNUP: z.enum(['open', 'first', 'off']).default('open'),
   PORT: z.coerce.number().int().positive().max(65535).default(3000),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 });
@@ -54,6 +58,18 @@ let cached: Env | null = null;
 /** Validated environment. Re-read it after changing process.env (the CLI does this for --data / --db). */
 export function env(): Env {
   return (cached ??= read());
+}
+
+/**
+ * Does this deployment require a sign-in? Pure configuration, so the database
+ * layer can answer it too (it seeds a local user only when it does not).
+ */
+export function authRequired(): boolean {
+  const mode = env().OPENRIVE_AUTH;
+  if (mode === 'on') return true;
+  if (mode === 'off') return false;
+  // 'auto': a database server means a shared deployment, which needs accounts
+  return !!env().DATABASE_URL;
 }
 
 export function resetEnv() {

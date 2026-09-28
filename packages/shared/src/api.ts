@@ -64,24 +64,19 @@ export function formatIssues(error: z.ZodError): string {
 // ---------------------------------------------------------------------------
 // Accounts (self-hosted sign-in)
 
-export const loginSchema = z.object({
-  /** name or email; accounts are never verified by mail */
-  login: z.string().trim().min(1, 'Enter your name or email'),
-  password: z.string().min(1, 'Enter your password'),
-});
+// Signing in and signing up are Better Auth's own endpoints under /api/auth,
+// which validate their own input. What is left here is what an administrator
+// does from the dashboard or the CLI.
 
-export const setupSchema = z.object({
-  name: z.string().trim().min(1).max(80),
-  email: z.string().trim().email().optional().or(z.literal('')),
-  password: z.string().min(8, 'Use at least 8 characters').max(200),
-});
-
-export const adminCreateUserSchema = z.object({
-  name: z.string().trim().min(1).max(80),
-  email: z.string().trim().email().optional().or(z.literal('')),
-  password: z.string().min(8).max(200).optional().or(z.literal('')),
-  role: roleSchema.default('editor'),
-});
+export const adminCreateUserSchema = z
+  .object({
+    name: z.string().trim().min(1).max(80),
+    email: z.string().trim().email().optional().or(z.literal('')),
+    password: z.string().min(8).max(200).optional().or(z.literal('')),
+    role: roleSchema.default('editor'),
+  })
+  // the email is what an account signs in with, so a password needs one
+  .refine((input) => !input.password || !!input.email, { path: ['email'], message: 'An account with a password needs an email' });
 
 export const adminUpdateUserSchema = z.object({
   name: z.string().trim().min(1).max(80).optional(),
