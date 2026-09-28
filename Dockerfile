@@ -18,7 +18,9 @@ COPY packages/db/package.json packages/db/
 COPY packages/rive/package.json packages/rive/
 COPY packages/shared/package.json packages/shared/
 COPY packages/ui/package.json packages/ui/
-RUN bun install --frozen-lockfile
+# --ignore-scripts: apps/web's postinstall copies the Rive runtime and needs
+# scripts/, which is not in this stage. The build stage below runs it itself.
+RUN bun install --frozen-lockfile --ignore-scripts
 
 FROM deps AS build
 WORKDIR /app
