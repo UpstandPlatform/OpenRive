@@ -75,6 +75,19 @@ round-trips.
 `bun run rive:init`. Nothing else needs them — the editor renders with the npm runtime either way. See
 [Rive SDK submodules](rive-sdk.md).
 
+### Deploying fails with "Host key verification failed" on a submodule
+
+The platform cloned with `--recurse-submodules` and reached Rive's own submodule, which uses an `ssh://` URL that a
+build server has no key for. OpenRive marks its `vendor/` submodules `update = none` precisely so this is skipped —
+make sure you are deploying a commit that includes that. If the platform forces submodules regardless, run this on
+the build host:
+
+```bash
+git config --global url."https://github.com/".insteadOf "git@github.com:"
+```
+
+Nothing in `vendor/` is needed to run OpenRive; it is only for building the Rive runtime yourself.
+
 ### Docker Desktop: "cannot connect to the Docker daemon"
 
 Start Docker Desktop and wait until it says "Engine running", then retry `docker compose up -d`.

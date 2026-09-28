@@ -1,8 +1,21 @@
+# The Rive SDK forks are developer tooling for building the runtime from source
+# (bun run rive:build). They are NOT needed to run or deploy OpenRive, which
+# uses the published @rive-app/canvas-advanced.
+#
+# "update = none" keeps them out of `git clone --recurse-submodules`, which is
+# what deploy platforms (Dokploy, Coolify, Vercel...) run: rive-wasm has its own
+# submodule with an ssh:// URL, and a build server has no SSH key for it.
+#
+# Fetch them on demand with:  bun run rive:init
 [submodule "vendor/rive-wasm"]
 	path = vendor/rive-wasm
 	url = https://github.com/UpstandPlatform/rive-wasm.git
 	branch = master
+	update = none
+	shallow = true
 [submodule "vendor/rive-runtime"]
 	path = vendor/rive-runtime
 	url = https://github.com/UpstandPlatform/rive-runtime.git
 	branch = main
+	update = none
+	shallow = true

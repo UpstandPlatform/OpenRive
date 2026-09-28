@@ -6,6 +6,7 @@ node_modules
 **/.turbo
 .wiki
 data
+vendor
 apps/desktop/build
 apps/desktop/artifacts
 .git

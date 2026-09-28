@@ -1,5 +1,12 @@
 # The Rive SDK submodules
 
+> **Deployments never need these.** They are marked `update = none`, so
+> `git clone --recurse-submodules` — what Dokploy, Coolify and similar platforms
+> run — skips them. OpenRive runs on the published `@rive-app/canvas-advanced`;
+> the submodules only matter when you want to build the runtime yourself.
+> Fetch them with `bun run rive:init`, which also rewrites Rive's own `ssh://`
+> submodule URL to https so no SSH key is needed.
+
 OpenRive renders with Rive's own runtime. By default that is the published npm package
 `@rive-app/canvas-advanced`; the WASM and its loader are copied into `apps/web/public/rive` on install so the editor
 works offline.

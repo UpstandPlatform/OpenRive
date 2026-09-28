@@ -91,10 +91,18 @@ async function status() {
   else console.log(`Editor runtime: npm @rive-app/canvas-advanced ${info.version}`);
 }
 
+/**
+ * github.com over https instead of ssh. rive-wasm's own submodule uses an
+ * ssh:// URL, which only works with a key loaded, so every clone here is
+ * rewritten to https.
+ */
+const HTTPS_INSTEAD_OF = ['-c', 'url.https://github.com/.insteadOf=git@github.com:', '-c', 'url.https://github.com/.insteadOf=ssh://git@github.com/'];
+
 async function init() {
   for (const sub of SUBMODULES) {
     console.log(`Checking out ${sub.path}…`);
-    const { code } = await run(['git', 'submodule', 'update', '--init', '--depth', '1', sub.path]);
+    // --checkout overrides the "update = none" that keeps deploy clones out of vendor/
+    const { code } = await run(['git', ...HTTPS_INSTEAD_OF, 'submodule', 'update', '--init', '--checkout', '--depth', '1', sub.path]);
     if (code !== 0) throw new Error(`Could not check out ${sub.path}`);
     const dir = path.join(root, sub.path);
     if (!(await git(['remote', 'get-url', 'upstream'], dir)).out) {

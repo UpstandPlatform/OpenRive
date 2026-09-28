@@ -139,6 +139,21 @@ then `node .next/standalone/server.js` (copy `public/` and `.next/static/` next 
 
 ---
 
+## Platforms that deploy from git (Dokploy, Coolify, …)
+
+Point the platform at the repository and let it build `docker-compose.yml`; set `OPENRIVE_ACCESS_TOKEN` and
+`POSTGRES_PASSWORD` in its environment settings. Nothing else is needed — the image builds from the Dockerfile and
+the database comes up beside it.
+
+These platforms clone with `--recurse-submodules`. The Rive SDK forks under `vendor/` are marked `update = none`, so
+they are skipped: they are developer tooling, and one of them has an `ssh://` submodule that a build server cannot
+read. If a platform forces submodules anyway and the clone fails with **"Host key verification failed"**, tell git to
+use https instead of ssh on the build host:
+
+```bash
+git config --global url."https://github.com/".insteadOf "git@github.com:"
+```
+
 ## HTTPS with a reverse proxy
 
 Put OpenRive behind a proxy that handles TLS.
