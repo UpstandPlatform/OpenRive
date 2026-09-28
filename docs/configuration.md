@@ -13,6 +13,7 @@ or in `docker-compose.yml`.
 | `OPENRIVE_DB_SSL` | `false` | `true` forces TLS (also enabled by `?sslmode=require` in the URL). Certificates are not verified, which suits managed databases with private CAs. |
 | `OPENRIVE_DB_POOL` | `10` | Maximum database connections (server mode) |
 | `OPENRIVE_DB_WAIT_SECONDS` | `60` | How long to wait for a PostgreSQL server that is still starting before giving up |
+| `OPENRIVE_REDIS_URL` | – | Optional Redis URL for distributed rate limits, locks and ephemeral coordination. The Compose stack uses `redis://redis:6379`. |
 
 ## Access
 

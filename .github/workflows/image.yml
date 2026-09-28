@@ -24,7 +24,16 @@ on:
     branches: [main]
     tags: ['v*']
   pull_request:
-    paths: ['Dockerfile', '.dockerignore', 'docker-compose*.yml', '.github/workflows/image.yml']
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'docker-compose*.yml'
+      - '.github/workflows/image.yml'
+      - 'package.json'
+      - 'bun.lock'
+      - 'apps/**'
+      - 'packages/**'
+      - 'scripts/copy-wasm.ts'
   workflow_dispatch:
 
 env:

@@ -47,6 +47,8 @@ POSTGRES_PASSWORD=another-long-random-password
 # Optional second gate:
 # OPENRIVE_ACCESS_TOKEN=a-long-random-password
 # OPENRIVE_PORT=3000
+# Redis is included by the Compose stack; its URL inside the stack is
+# redis://redis:6379 and its data is memory-only by design.
 ```
 
 Start it:
@@ -63,12 +65,17 @@ What runs:
 | --- | --- | --- |
 | `openrive` | `ghcr.io/upstandplatform/openrive:latest` | volume `openrive-data` (CLI imports/exports) |
 | `db` | `postgres:17-alpine` | volume `openrive-db` |
+| `redis` | `redis:7.4-alpine` | no volume; rate limits, locks and queues are ephemeral |
 
 Nothing is compiled on your server: the image is published for `linux/amd64` and `linux/arm64` and simply pulled.
 See [Which image you get](#which-image-you-get) to pin a version or follow `main`.
 
 Drizzle migrations run automatically when the app starts, and the app waits (up to `OPENRIVE_DB_WAIT_SECONDS`) while
 PostgreSQL finishes starting beside it, so the order the two containers come up in does not matter.
+Redis is also started as part of this stack. It uses neither RDB snapshots nor
+the append-only log, and has no disk volume. Redis loss clears only ephemeral
+coordination state; the PostgreSQL volume remains the source of truth for
+accounts, sessions and projects.
 
 ### With Docker Desktop's UI
 
@@ -179,6 +186,10 @@ leave it unset so OpenRive generates and persists one in the database. Keep
 The optional `OPENRIVE_ACCESS_TOKEN` adds HTTP Basic auth in front of the
 application. The published image is pulled, so the deploy host does not need
 to build the project.
+The Compose file provisions the memory-only Redis service automatically; do not
+attach a persistent volume to it. If you override the service, keep
+`--save ""` and `--appendonly no` so rate-limit and lock state cannot become a
+second data store.
 
 These platforms clone with `--recurse-submodules`. The Rive SDK forks under `vendor/` are marked `update = none`, so
 they are skipped: they are developer tooling, and one of them has an `ssh://` submodule that a build server cannot
@@ -235,8 +246,11 @@ starts with an empty database, or by hand with `openrive db import`. See [Storag
 
 ## Health check
 
-`GET /api/health` returns `{"ok":true,"storage":"postgres"}` (HTTP 200) when the app and its storage are working, and
-503 otherwise. It needs no access token, and the Docker image uses it as its `HEALTHCHECK`.
+`GET /api/health` returns HTTP 200 when the app, its database, and configured
+Redis are working. It includes `storage` and `redis` (`"ready"` or
+`"disabled"`). A configured but unavailable Redis returns 503, so a deployment
+cannot appear healthy while distributed rate limiting is broken. It needs no
+access token, and the Docker image uses it as its `HEALTHCHECK`.
 
 ## Resource usage
 

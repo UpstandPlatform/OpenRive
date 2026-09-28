@@ -28,6 +28,7 @@ services:
       OPENRIVE_SIGNUP: ${OPENRIVE_SIGNUP:-first}
       OPENRIVE_AUTH_SECRET: ${OPENRIVE_AUTH_SECRET:-}
       OPENRIVE_TRUSTED_ORIGINS: ${OPENRIVE_TRUSTED_ORIGINS:-}
+      OPENRIVE_REDIS_URL: ${OPENRIVE_REDIS_URL:-redis://redis:6379}
       # Strongly recommended when the server is reachable by others:
       # every visitor must enter this password (any user name).
       OPENRIVE_ACCESS_TOKEN: ${OPENRIVE_ACCESS_TOKEN:-}
@@ -39,6 +40,7 @@ services:
     # itself, retrying while PostgreSQL finishes starting.
     depends_on:
       - db
+      - redis
 
   db:
     image: postgres:17-alpine
@@ -57,6 +59,27 @@ services:
     # uncomment to reach the database from the host (backups, drizzle-kit studio)
     # ports:
     #   - "5432:5432"
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    # Rate limits, locks and queues are intentionally ephemeral. No RDB,
+    # AOF, or volume is enabled; a Redis restart clears this coordination data.
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - ${OPENRIVE_REDIS_MAXMEMORY:-128mb}
+      - --maxmemory-policy
+      - noeviction
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
 volumes:
   openrive-data:

@@ -13,6 +13,7 @@ import { APIError } from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { hashPassword as hashScrypt, verifyPassword as verifyScrypt } from 'better-auth/crypto';
 import { db, schema } from '@openrive/db';
+import { createRedisInfrastructure, type RedisInfrastructure } from '@openrive/redis';
 import { authRequired, env } from '@openrive/shared/env';
 import type { ProjectMeta, Role, User } from '@openrive/shared';
 import { and, eq, gt, isNotNull, lt } from 'drizzle-orm';
@@ -43,6 +44,24 @@ export function passwordProblem(password: string): string | null {
 
 const SECRET_KEY = 'auth.secret';
 
+let redisInstance: Promise<RedisInfrastructure | undefined> | null = null;
+
+/** The optional distributed store is shared by Better Auth and health checks. */
+function redisStorage(): Promise<RedisInfrastructure | undefined> {
+  const configuredUrl = env().OPENRIVE_REDIS_URL;
+  return (redisInstance ??= configuredUrl
+    ? createRedisInfrastructure({ url: configuredUrl, namespace: 'auth' })
+    : Promise.resolve(undefined));
+}
+
+/** Verifies the configured Redis dependency without exposing its connection details. */
+export async function redisHealth(): Promise<'disabled' | 'ready'> {
+  const storage = await redisStorage();
+  if (!storage) return 'disabled';
+  await storage.ping();
+  return 'ready';
+}
+
 /** A stable secret for signing cookies: from the environment, or kept in the database. */
 async function secret(): Promise<string> {
   const configured = env().OPENRIVE_AUTH_SECRET;
@@ -70,6 +89,7 @@ function trustedOrigins() {
 async function build() {
   const conn = await db();
   const settings = env();
+  const redis = await redisStorage();
   if (settings.NODE_ENV === 'production' && authRequired() && !process.env.OPENRIVE_URL) {
     throw new Error('OPENRIVE_URL must be set for production authentication');
   }
@@ -111,10 +131,19 @@ async function build() {
       expiresIn: settings.OPENRIVE_SESSION_DAYS * 24 * 60 * 60,
       updateAge: 24 * 60 * 60,
       freshAge: 60 * 60,
+      // Keep the database as the source of truth for account/session
+      // administration while Redis accelerates and distributes rate limits.
+      storeSessionInDatabase: true,
     },
     rateLimit: {
       enabled: settings.NODE_ENV === 'production',
+      // Use the dedicated hook instead of Better Auth's generic
+      // secondaryStorage: the latter caches sessions, while OpenRive revokes
+      // sessions directly from PostgreSQL in the admin and CLI paths.
       storage: 'database',
+      customStorage: redis
+        ? { consume: (key, rule) => redis.consume(key, rule) }
+        : undefined,
       window: 10,
       max: 100,
     },

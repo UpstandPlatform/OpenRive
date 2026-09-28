@@ -22,6 +22,8 @@ const envSchema = z.object({
   OPENRIVE_DB_POOL: z.coerce.number().int().positive().max(100).default(10),
   /** how long to wait for a PostgreSQL server that is still starting */
   OPENRIVE_DB_WAIT_SECONDS: z.coerce.number().int().nonnegative().max(600).default(60),
+  /** Redis for distributed rate limits, locks and other ephemeral coordination. */
+  OPENRIVE_REDIS_URL: z.string().url().optional(),
   /** 'auto' requires sign-in when DATABASE_URL is set (a shared deployment) */
   OPENRIVE_AUTH: z.enum(['auto', 'on', 'off']).default('auto'),
   /** how long a sign-in lasts */
@@ -49,6 +51,7 @@ function read(): Env {
     OPENRIVE_ACCESS_TOKEN: optional(source.OPENRIVE_ACCESS_TOKEN || source.RIVE_EDITOR_ACCESS_TOKEN),
     OPENRIVE_AUTH_SECRET: optional(source.OPENRIVE_AUTH_SECRET),
     OPENRIVE_TRUSTED_ORIGINS: optional(source.OPENRIVE_TRUSTED_ORIGINS),
+    OPENRIVE_REDIS_URL: optional(source.OPENRIVE_REDIS_URL),
     OPENRIVE_USER: source.OPENRIVE_USER || source.RIVE_EDITOR_USER || undefined,
   });
   if (!parsed.success) {

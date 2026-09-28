@@ -1,5 +1,5 @@
 {
-  "name": "@openrive/auth",
+  "name": "@openrive/redis",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,13 +11,7 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@openrive/db": "workspace:*",
-    "@openrive/redis": "workspace:*",
-    "@openrive/shared": "workspace:*",
-    "better-auth": "1.7.6",
-    "drizzle-orm": "catalog:",
-    "nanoid": "catalog:",
-    "zod": "catalog:"
+    "redis": "^6.2.1"
   },
   "devDependencies": {
     "@openrive/config": "workspace:*",

@@ -79,7 +79,9 @@ When authentication is enabled in production, set `OPENRIVE_URL` to the public
 origin, for example `https://openrive.example.com`. If the browser is served
 from additional origins, list them in `OPENRIVE_TRUSTED_ORIGINS` as a
 comma-separated value. Authentication requests are rate limited and the limits
-are stored in the database so multiple app processes share them.
+are stored in Redis when `OPENRIVE_REDIS_URL` is configured, so multiple app
+processes share atomic fixed-window limits. Without Redis, the existing
+database-backed limiter remains the safe fallback.
 
 ## Passwords
 
@@ -96,7 +98,7 @@ scrypt.
 | `accounts` | how an account signs in — one `credential` row per password |
 | `sessions` | who is signed in, from which browser and until when |
 | `verifications` | short-lived tokens; empty unless something asks for one |
-| `rate_limit` | Better Auth request-rate windows |
+| `rate_limit` | Better Auth request-rate windows when Redis is not configured |
 
 One row per person in `users`, whether they sign in or are just a name a local, login-free run attributes files to.
 

@@ -19,6 +19,7 @@ COPY packages/auth/package.json packages/auth/
 COPY packages/config/package.json packages/config/
 COPY packages/db/package.json packages/db/
 COPY packages/rive/package.json packages/rive/
+COPY packages/redis/package.json packages/redis/
 COPY packages/shared/package.json packages/shared/
 COPY packages/ui/package.json packages/ui/
 # ^ one line per workspace, so this layer is cached until a manifest changes:
