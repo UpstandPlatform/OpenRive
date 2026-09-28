@@ -36,6 +36,24 @@ git tag v1.2.0 && git push origin v1.2.0
 Version numbers therefore live in the tags; the `version` fields in the repository are only defaults for local
 builds.
 
+## The window
+
+The desktop window has no native title bar (`titleBarStyle: 'hidden'`): OpenRive draws its own, so the chrome matches
+the editor instead of the operating system.
+
+| Part | What it does |
+| --- | --- |
+| Logo and name | Drag anywhere on the empty part of the bar to move the window |
+| **?** menu | Documentation, keyboard shortcuts, [openrive.upstand.dev](https://openrive.upstand.dev), the GitHub repository, releases, reporting an issue, and the licence — all open in your normal browser |
+| Minimise / Maximise / Close | The usual window buttons, on the right |
+
+Dragging works through Electrobun's app-region CSS. The buttons and the external links reach the native window
+through a tiny control server the main process listens on at `127.0.0.1`, which only answers requests carrying a
+token generated for that run — the page is served over `http://` rather than from `views://`, so it cannot use the
+bundled RPC bridge.
+
+The same Help links are in the editor's own menu (the OpenRive button, top left), so they are there in a browser too.
+
 ## How it works
 
 - The main process (Bun, bundled) starts the Next.js standalone server on a free local port and opens a window on it.

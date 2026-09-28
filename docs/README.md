@@ -1,6 +1,6 @@
 # OpenRive documentation
 
-OpenRive is an open-source, local-first editor for Rive `.riv` files. These docs cover running it, using it, automating
+OpenRive is an open-source, local-first editor for Rive `.riv` files — [openrive.upstand.dev](https://openrive.upstand.dev). These docs cover running it, using it, automating
 it and working on it.
 
 ## Get started

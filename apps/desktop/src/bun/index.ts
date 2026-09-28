@@ -1,8 +1,12 @@
 // OpenRive desktop (Electrobun).
 //
-// The main process starts the bundled Next.js standalone server on a free
-// local port, then opens a window on it. Projects are stored in the user's
-// application data folder (embedded PostgreSQL), or in DATABASE_URL when set.
+// The main process starts the bundled Next.js standalone server on a free local
+// port, then opens a frameless window on it. The title bar is drawn by the web
+// app (see DesktopChrome) and talks back through the small control server
+// below, because the page is served over http rather than from views://.
+//
+// Projects live in the user's application data folder (embedded PostgreSQL), or
+// in DATABASE_URL when one is set.
 import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { BrowserWindow, PATHS, Utils } from 'electrobun/main';
@@ -54,14 +58,65 @@ const server = Bun.spawn([process.execPath, entry], {
 
 const ready = await waitForServer(url);
 
+// ---------------------------------------------------------------------------
+// Window controls for the web-drawn title bar.
+//
+// Dragging needs nothing: Electrobun's preload handles the app-region CSS. The
+// buttons do need to reach the native window, so the main process listens on
+// 127.0.0.1 and only answers requests carrying this run's token.
+
+const token = crypto.randomUUID();
+const controlPort = await freePort();
+
+const control = Bun.serve({
+  hostname: '127.0.0.1',
+  port: controlPort,
+  async fetch(request) {
+    const { pathname, searchParams } = new URL(request.url);
+    const headers = { 'access-control-allow-origin': url, 'access-control-allow-headers': 'content-type' };
+    if (request.method === 'OPTIONS') return new Response(null, { headers });
+    if (searchParams.get('token') !== token) return new Response('no', { status: 403, headers });
+
+    switch (pathname) {
+      case '/minimize':
+        window.minimize();
+        break;
+      case '/maximize':
+        if (window.isMaximized()) window.unmaximize();
+        else window.maximize();
+        break;
+      case '/close':
+        window.close();
+        break;
+      case '/open': {
+        // links to the repository, the docs and the site open in the real browser
+        const target = searchParams.get('url') ?? '';
+        if (/^https:\/\//.test(target)) Utils.openExternal(target);
+        break;
+      }
+      case '/state':
+        return Response.json({ maximized: window.isMaximized() }, { headers });
+      default:
+        return new Response('not found', { status: 404, headers });
+    }
+    return Response.json({ ok: true, maximized: window.isMaximized() }, { headers });
+  },
+});
+
+// the page reads these and draws its own title bar
+const appUrl = `${url}/?desktop=1&controlPort=${controlPort}&controlToken=${token}`;
+
 const window = new BrowserWindow({
   title: 'OpenRive',
-  url: ready ? url : `views://mainview/index.html`,
+  url: ready ? appUrl : 'views://mainview/index.html',
   frame: { width: 1440, height: 900, x: 60, y: 60 },
+  // no native chrome: the app draws the title bar and window buttons
+  titleBarStyle: 'hidden',
 });
 
 const shutdown = () => {
   server.kill();
+  void control.stop(true);
   process.exit(0);
 };
 process.on('SIGINT', shutdown);

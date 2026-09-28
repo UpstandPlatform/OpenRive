@@ -65,6 +65,13 @@ body {
   overscroll-behavior: none;
 }
 
+/* The desktop app draws its own title bar, so the rest of the app starts below
+   it. 36px matches the header's h-9. */
+html.desktop-chrome body {
+  padding-top: 36px;
+  box-sizing: border-box;
+}
+
 /* This is an editor: dragging the timeline, a panel divider or the canvas must
    never highlight the interface. Text stays selectable where it is content. */
 body {

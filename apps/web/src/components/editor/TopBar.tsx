@@ -2,9 +2,13 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import {
+  BookOpen,
   Circle,
   ChevronDown,
   Download,
+  ExternalLink,
+  Globe,
+  LifeBuoy,
   Frame,
   Hand,
   Hexagon,
@@ -30,6 +34,7 @@ import { Tool, useEditor } from '@/lib/store/editor';
 import { useCurrentUser } from '@/lib/client/session';
 import { Avatar } from '../Avatar';
 import { AppIcon } from '../AppHeader';
+import { LINKS, openExternal } from '../DesktopChrome';
 import { usePrefs } from '@/lib/client/prefs';
 
 const SHAPE_TOOLS: { tool: Tool; label: string; key: string; icon: React.ReactNode }[] = [
@@ -116,6 +121,20 @@ export function TopBar({ onSave, onExport, saveState }: { onSave: () => void; on
             </button>
             <button className="menu-item" onClick={() => (runAction('file.shortcuts'), setMenu(null))}>
               <Keyboard size={13} /> Keyboard shortcuts <span className="shortcut">?</span>
+            </button>
+            <div className="menu-sep" />
+            <div className="px-2.5 py-1.5 label">Help</div>
+            <button className="menu-item" onClick={() => (openExternal(LINKS.docs), setMenu(null))}>
+              <BookOpen size={13} /> Documentation
+            </button>
+            <button className="menu-item" onClick={() => (openExternal(LINKS.site), setMenu(null))}>
+              <Globe size={13} /> openrive.upstand.dev
+            </button>
+            <button className="menu-item" onClick={() => (openExternal(LINKS.repo), setMenu(null))}>
+              <ExternalLink size={13} /> GitHub repository
+            </button>
+            <button className="menu-item" onClick={() => (openExternal(LINKS.issues), setMenu(null))}>
+              <LifeBuoy size={13} /> Report an issue
             </button>
           </div>
         )}
