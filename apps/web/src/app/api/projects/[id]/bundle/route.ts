@@ -4,6 +4,7 @@ import { buildBundle, bundleFileName } from '@openrive/rive/bundle';
 import { importRiv } from '@openrive/rive/document';
 import { getProjectMeta, getProjectRiv } from '@openrive/db';
 import { handler, notFound, routeId } from '@/lib/server/route';
+import { canSeeProject, requireUser } from '@/lib/server/auth';
 import { runtimeFiles, runtimeInfo } from '@/lib/server/riveRuntime';
 
 export const dynamic = 'force-dynamic';
@@ -11,8 +12,11 @@ export const dynamic = 'force-dynamic';
 export const GET = handler(async (request: Request, ctx: RouteContext<'/api/projects/[id]/bundle'>) => {
   const { id, error } = routeId((await ctx.params).id);
   if (error) return error;
+  const guard = await requireUser();
+  if (guard.error) return guard.error;
   const [meta, stored] = await Promise.all([getProjectMeta(id), getProjectRiv(id)]);
   if (!meta || !stored) return notFound();
+  if (!canSeeProject(guard.user, meta)) return notFound();
 
   const runtime = new URL(request.url).searchParams.get('runtime') === 'cdn' ? 'cdn' : 'offline';
   const info = await runtimeInfo();

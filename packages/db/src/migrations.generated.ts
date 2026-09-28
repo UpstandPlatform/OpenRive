@@ -16,5 +16,17 @@ export const migrations: EmbeddedMigration[] = [
       "CREATE TABLE \"settings\" (\n\t\"key\" text PRIMARY KEY NOT NULL,\n\t\"value\" jsonb NOT NULL\n);",
       "CREATE TABLE \"users\" (\n\t\"id\" text PRIMARY KEY NOT NULL,\n\t\"name\" text NOT NULL,\n\t\"color\" text NOT NULL,\n\t\"role\" text DEFAULT 'editor' NOT NULL,\n\t\"created_at\" bigint NOT NULL,\n\t\"position\" integer DEFAULT 0 NOT NULL\n);"
     ]
+  },
+  {
+    "tag": "0001_odd_felicia_hardy",
+    "hash": "3356403e30b357aedcc2f46643b19207a97ef4f203650351efe32e1b9b099907",
+    "statements": [
+      "CREATE TABLE \"sessions\" (\n\t\"id\" text PRIMARY KEY NOT NULL,\n\t\"user_id\" text NOT NULL,\n\t\"created_at\" bigint NOT NULL,\n\t\"expires_at\" bigint NOT NULL,\n\t\"agent\" text\n);",
+      "ALTER TABLE \"users\" ADD COLUMN \"email\" text;",
+      "ALTER TABLE \"users\" ADD COLUMN \"password_hash\" text;",
+      "ALTER TABLE \"users\" ADD COLUMN \"disabled\" boolean DEFAULT false NOT NULL;",
+      "ALTER TABLE \"users\" ADD COLUMN \"last_login_at\" bigint;",
+      "ALTER TABLE \"sessions\" ADD CONSTRAINT \"sessions_user_id_users_id_fk\" FOREIGN KEY (\"user_id\") REFERENCES \"public\".\"users\"(\"id\") ON DELETE cascade ON UPDATE no action;"
+    ]
   }
 ];

@@ -1,15 +1,19 @@
-import { deleteProject, getProject, updateProject } from '@openrive/db';
+import { deleteProject, getProject, getProjectMeta, updateProject } from '@openrive/db';
 import { updateProjectSchema } from '@openrive/shared';
 import { fromBase64 } from '@openrive/shared/serialize';
 import { body, handler, json, notFound, routeId } from '@/lib/server/route';
+import { canSeeProject, requireEdit, requireUser } from '@/lib/server/auth';
 
 export const dynamic = 'force-dynamic';
 
 export const GET = handler(async (request: Request, ctx: RouteContext<'/api/projects/[id]'>) => {
   const { id, error } = routeId((await ctx.params).id);
   if (error) return error;
+  const guard = await requireUser();
+  if (guard.error) return guard.error;
   const project = await getProject(id);
   if (!project) return notFound();
+  if (!canSeeProject(guard.user, project.meta)) return notFound();
   // lightweight poll used by the editor to detect changes made by other tools
   if (new URL(request.url).searchParams.has('meta')) return json(project.meta);
   // the document is stored as JSON text: send it through without re-parsing
@@ -21,6 +25,12 @@ export const GET = handler(async (request: Request, ctx: RouteContext<'/api/proj
 export const PUT = handler(async (request: Request, ctx: RouteContext<'/api/projects/[id]'>) => {
   const { id, error } = routeId((await ctx.params).id);
   if (error) return error;
+  const guard = await requireUser();
+  if (guard.error) return guard.error;
+  const existing = await getProjectMeta(id);
+  if (!existing) return notFound();
+  const denied = requireEdit(guard.user, existing);
+  if (denied) return denied;
   const parsed = await body(request, updateProjectSchema);
   if (parsed.error) return parsed.error;
   const { riv, ...patch } = parsed.data;
@@ -31,6 +41,12 @@ export const PUT = handler(async (request: Request, ctx: RouteContext<'/api/proj
 export const DELETE = handler(async (_request: Request, ctx: RouteContext<'/api/projects/[id]'>) => {
   const { id, error } = routeId((await ctx.params).id);
   if (error) return error;
+  const guard = await requireUser();
+  if (guard.error) return guard.error;
+  const existing = await getProjectMeta(id);
+  if (!existing) return notFound();
+  const denied = requireEdit(guard.user, existing);
+  if (denied) return denied;
   await deleteProject(id);
   return json({ ok: true });
 });

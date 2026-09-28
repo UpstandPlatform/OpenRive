@@ -1,6 +1,6 @@
 // Drizzle schema. PostgreSQL everywhere: a server via DATABASE_URL, or the
 // embedded PGlite build of PostgreSQL for a local run with no setup.
-import { bigint, integer, jsonb, pgTable, text, customType } from 'drizzle-orm/pg-core';
+import { bigint, boolean, integer, jsonb, pgTable, text, customType } from 'drizzle-orm/pg-core';
 
 /** bytea mapped to Uint8Array (the exported .riv file). */
 const bytes = customType<{ data: Uint8Array; driverData: Buffer }>({
@@ -18,6 +18,25 @@ export const users = pgTable('users', {
     .default('editor'),
   createdAt: bigint('created_at', { mode: 'number' }).notNull(),
   position: integer('position').notNull().default(0),
+  /** sign-in name; optional, and never verified (self-hosted deployments) */
+  email: text('email'),
+  /** PBKDF2 hash; null means this account cannot sign in yet */
+  passwordHash: text('password_hash'),
+  /** a disabled account keeps its files but cannot sign in */
+  disabled: boolean('disabled').notNull().default(false),
+  lastLoginAt: bigint('last_login_at', { mode: 'number' }),
+});
+
+/** Signed-in sessions. Rows are the source of truth, so they can be revoked. */
+export const sessions = pgTable('sessions', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+  expiresAt: bigint('expires_at', { mode: 'number' }).notNull(),
+  /** short description of the browser, shown in the admin dashboard */
+  agent: text('agent'),
 });
 
 export const projects = pgTable('projects', {
@@ -45,4 +64,5 @@ export const settings = pgTable('settings', {
 });
 
 export type UserRow = typeof users.$inferSelect;
+export type SessionRow = typeof sessions.$inferSelect;
 export type ProjectRow = typeof projects.$inferSelect;

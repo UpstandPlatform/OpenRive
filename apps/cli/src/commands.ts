@@ -1,13 +1,13 @@
 // Non-interactive commands. `openrive` with no arguments opens the TUI instead.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { authEnabled, createAccount, listAccounts, passwordProblem, updateAccount } from '@openrive/auth';
 import { importLegacyDataDir } from '@openrive/db';
 import { outline } from '@openrive/rive/api';
 import { buildBundle, bundleFileName, type BundleFile } from '@openrive/rive/bundle';
 import { exportRiv, importRiv } from '@openrive/rive/document';
-import { roleSchema, USER_COLORS } from '@openrive/shared';
+import { roleSchema } from '@openrive/shared';
 import { env } from '@openrive/shared/env';
-import { nanoid } from 'nanoid';
 import {
   createProject,
   EXAMPLES,
@@ -21,6 +21,33 @@ import {
 } from './project-store';
 
 export const pad = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s.padEnd(n));
+
+/** Reads a line from the terminal without echoing it, for passwords. */
+async function prompt(question: string): Promise<string> {
+  process.stdout.write(question);
+  const stdin = process.stdin;
+  if (!stdin.isTTY) throw new StoreError('Pass --password when there is no terminal to type into');
+  stdin.setRawMode(true);
+  stdin.resume();
+  let value = '';
+  for await (const chunk of stdin) {
+    for (const byte of chunk as Buffer) {
+      if (byte === 13 || byte === 10) {
+        stdin.setRawMode(false);
+        stdin.pause();
+        process.stdout.write('\n');
+        return value;
+      }
+      if (byte === 3) {
+        stdin.setRawMode(false);
+        process.exit(130);
+      }
+      if (byte === 127 || byte === 8) value = value.slice(0, -1);
+      else value += String.fromCharCode(byte);
+    }
+  }
+  return value;
+}
 
 export const editorUrl = (id: string) => `${env().OPENRIVE_URL.replace(/\/$/, '')}/editor/${id}`;
 
@@ -186,10 +213,37 @@ export async function users(args: string[], opts: Options) {
   }
   if (sub === 'add') {
     const name = args.slice(1).join(' ');
-    if (!name) throw new StoreError('Usage: users add <name> [--role admin|editor|viewer]');
+    if (!name) throw new StoreError('Usage: users add <name> [--role admin|editor|viewer] [--password <pw>] [--email <email>]');
     const role = roleSchema.catch('editor').parse(opts.role);
-    await storage.saveUsers([...list, { id: nanoid(10), name, role, color: USER_COLORS[list.length % USER_COLORS.length]!, createdAt: Date.now() }]);
-    console.log(`Added ${name} (${role})`);
+    const password = typeof opts.password === 'string' ? opts.password : undefined;
+    const account = await createAccount({
+      name,
+      role,
+      password,
+      email: typeof opts.email === 'string' ? opts.email : null,
+    });
+    console.log(`Added ${account.name} (${role})${password ? ' with a password' : ' — set a password with: openrive users password ' + account.name}`);
+    return;
+  }
+  if (sub === 'password') {
+    const ref = args.slice(1).join(' ');
+    if (!ref) throw new StoreError('Usage: users password <name|id> [--password <pw>]');
+    const user = list.find((u) => u.id === ref || u.name.toLowerCase() === ref.toLowerCase());
+    if (!user) throw new StoreError(`User "${ref}" not found`);
+    const password = typeof opts.password === 'string' ? opts.password : await prompt(`New password for ${user.name}: `);
+    const problem = passwordProblem(password);
+    if (problem) throw new StoreError(problem);
+    await updateAccount(user.id, { password });
+    console.log(`Set a new password for ${user.name}. Their other sessions were signed out.`);
+    return;
+  }
+  if (sub === 'role') {
+    const role = roleSchema.catch('editor').parse(opts.role ?? args[2]);
+    const ref = args[1] ?? '';
+    const user = list.find((u) => u.id === ref || u.name.toLowerCase() === ref.toLowerCase());
+    if (!user) throw new StoreError(`Usage: users role <name|id> --role admin|editor|viewer`);
+    await updateAccount(user.id, { role });
+    console.log(`${user.name} is now ${role}`);
     return;
   }
   if (sub === 'remove') {
@@ -204,7 +258,7 @@ export async function users(args: string[], opts: Options) {
     console.log(`Removed ${user.name}; their files now belong to ${heir.name}`);
     return;
   }
-  throw new StoreError(`Unknown users command "${sub}"`);
+  throw new StoreError(`Unknown users command "${sub}". Use: users | users add | users password | users role | users remove`);
 }
 
 export async function dbCommand(args: string[]) {
@@ -215,6 +269,13 @@ export async function dbCommand(args: string[]) {
 Location: ${where}
 Users:    ${list.length}
 Projects: ${projects.length}`);
+    return;
+  }
+  if (sub === 'auth' || sub === 'status-auth') {
+    const accounts = await listAccounts();
+    console.log(`Sign-in: ${authEnabled() ? 'required' : 'off'} (OPENRIVE_AUTH=${env().OPENRIVE_AUTH})
+Accounts: ${accounts.length}, with a password: ${accounts.filter((a) => a.hasPassword).length}
+${accounts.map((a) => `  ${pad(a.name, 20)}${pad(a.role, 8)}${a.hasPassword ? 'password set' : 'no password'}${a.disabled ? ' (disabled)' : ''}`).join('\n')}`);
     return;
   }
   if (sub === 'import') {

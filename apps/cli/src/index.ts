@@ -29,11 +29,14 @@ Projects
 
 Users
   users                                            List users
-  users add <name> [--role admin|editor|viewer]    Add a user
+  users add <name> [--role …] [--password <pw>]    Add a user (and optionally its password)
+  users password <name|id> [--password <pw>]       Set a password (asks when not given)
+  users role <name|id> --role admin|editor|viewer  Change a role
   users remove <name|id>                           Remove a user (files move to an admin)
 
 Database
   db status                                        Show the database in use and what it holds
+  db auth                                          Show whether sign-in is required, and who can sign in
   db import [dir]                                  Import a legacy data folder (pre-Drizzle file storage)
 
 Global options

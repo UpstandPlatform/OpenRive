@@ -17,7 +17,9 @@ or in `docker-compose.yml`.
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `OPENRIVE_ACCESS_TOKEN` | – | When set, every request needs HTTP Basic auth with this password (any user name). `/api/health` stays open. |
+| `OPENRIVE_AUTH` | `auto` | `auto` requires a sign-in when `DATABASE_URL` is set, `on` always requires one, `off` never does. See [Accounts and sign-in](authentication.md). |
+| `OPENRIVE_SESSION_DAYS` | `30` | How long a sign-in lasts |
+| `OPENRIVE_ACCESS_TOKEN` | – | When set, every request needs HTTP Basic auth with this password (any user name). `/api/health` stays open. Can be combined with accounts. |
 
 ## Server
 

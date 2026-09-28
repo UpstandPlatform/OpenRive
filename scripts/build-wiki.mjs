@@ -32,6 +32,7 @@ const PAGES = {
   'docs/code-panel.md': 'Code-Panel',
   'docs/preview-bundles.md': 'Preview-Bundles',
   'docs/users.md': 'Users-and-Roles',
+  'docs/authentication.md': 'Accounts-and-Sign-in',
   'docs/cli.md': 'CLI',
   'docs/mcp.md': 'MCP-Server',
   'docs/rest-api.md': 'REST-API',

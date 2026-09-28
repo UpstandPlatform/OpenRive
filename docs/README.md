@@ -25,6 +25,7 @@ it and working on it.
 | [Text & assets](text-and-assets.md) | Text objects, fonts, images and SVG import |
 | [Code panel](code-panel.md) | Automation scripts, embed snippets, and a note on Rive scripting |
 | [Preview bundles](preview-bundles.md) | Export the preview as a standalone folder that plays anywhere |
+| [Accounts and sign-in](authentication.md) | Passwords, the first administrator, roles and the admin dashboard |
 | [Users & roles](users.md) | Local users, roles and sharing (no login) |
 
 ## Automate

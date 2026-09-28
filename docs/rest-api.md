@@ -5,6 +5,31 @@ Basic auth (any user name, the token as password).
 
 Base URL: `http://localhost:3000/api`
 
+When the server requires a sign-in ([Accounts and sign-in](authentication.md)), every endpoint except `/health` and
+`/auth/*` needs the session cookie from `POST /auth/login`; without it they answer `401`, and `403` when the account
+lacks the right. In login-free mode the API acts as the local administrator.
+
+## Accounts
+
+| Method & path | Body | Response |
+| --- | --- | --- |
+| `GET /auth/session` | – | `{ authEnabled, needsSetup, user }` |
+| `POST /auth/setup` | `{ name, email?, password }` | `201 { user }` — only while no account exists; becomes the admin |
+| `POST /auth/login` | `{ login, password }` | `{ user }` and a session cookie (`login` is a name or email) |
+| `POST /auth/logout` | – | `{ ok: true }` |
+
+## Admin (administrators only)
+
+| Method & path | Body | Response |
+| --- | --- | --- |
+| `GET /admin/stats` | – | counts of users, files and sessions, plus database and server settings |
+| `GET /admin/users` | – | `Account[]` (never password hashes) |
+| `POST /admin/users` | `{ name, email?, password?, role? }` | `201 Account` |
+| `PATCH /admin/users/:id` | `{ name?, email?, password?, role?, disabled?, color? }` | `Account` |
+| `DELETE /admin/users/:id?transferTo=<id>` | – | `{ ok, transferredTo }` |
+| `GET /admin/sessions` | – | active sessions |
+| `DELETE /admin/sessions?session=<id>` or `?user=<id>` | – | `{ ok: true }` |
+
 ## Health
 
 | Method & path | Response |

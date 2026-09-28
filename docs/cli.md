@@ -67,7 +67,9 @@ Projects can be referenced by id or name.
 | Command | Description |
 | --- | --- |
 | `users` | List users |
-| `users add <name> [--role admin\|editor\|viewer]` | Add a user |
+| `users add <name> [--role …] [--password <pw>] [--email <e>]` | Add a user, optionally with a password |
+| `users password <name\|id> [--password <pw>]` | Set a password (asks for it when not given) — how you recover a locked-out server |
+| `users role <name\|id> --role admin\|editor\|viewer` | Change a role |
 | `users remove <name\|id>` | Remove a user (their files move to an admin) |
 
 ### Database
@@ -76,6 +78,7 @@ Projects can be referenced by id or name.
 | --- | --- |
 | `db status` | Show the database in use and what it holds |
 | `db import [dir]` | Import a legacy data folder (the pre-Drizzle file storage) |
+| `db auth` | Whether sign-in is required, and which accounts can sign in |
 
 ### Global options
 

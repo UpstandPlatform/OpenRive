@@ -20,6 +20,7 @@
 - [Code Panel](Code-Panel)
 - [Preview Bundles](Preview-Bundles)
 - [Users and Roles](Users-and-Roles)
+- [Accounts and Sign-in](Accounts-and-Sign-in)
 
 **Self-hosting**
 - [Self-Hosting](Self-Hosting)

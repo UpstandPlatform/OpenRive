@@ -32,6 +32,7 @@ and rendering; the server only stores documents.
 | `apps/desktop` | Electrobun app that runs the standalone server in a native window |
 | `packages/rive` | The `.riv` format and editing core (DOM-free) |
 | `packages/db` | Drizzle schema, migrations, and every database query |
+| `packages/auth` | Password hashing, sessions and the permission rules |
 | `packages/shared` | zod schemas and types (domain, API payloads, environment) |
 | `packages/ui` | React components shared between panels and pages |
 | `packages/config` | The base TypeScript configuration |

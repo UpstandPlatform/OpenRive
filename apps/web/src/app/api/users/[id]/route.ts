@@ -1,10 +1,13 @@
 import { listProjects, listUsers, saveUsers, updateProject } from '@openrive/db';
 import { updateUserSchema } from '@openrive/shared';
 import { body, fail, handler, json, notFound, routeId } from '@/lib/server/route';
+import { authEnabled, requireAdmin } from '@/lib/server/auth';
 
 export const PUT = handler(async (request: Request, ctx: RouteContext<'/api/users/[id]'>) => {
   const { id, error } = routeId((await ctx.params).id);
   if (error) return error;
+  const guard = authEnabled() ? await requireAdmin() : { error: undefined };
+  if (guard.error) return guard.error;
   const parsed = await body(request, updateUserSchema);
   if (parsed.error) return parsed.error;
   const users = await listUsers();
@@ -22,6 +25,8 @@ export const PUT = handler(async (request: Request, ctx: RouteContext<'/api/user
 export const DELETE = handler(async (request: Request, ctx: RouteContext<'/api/users/[id]'>) => {
   const { id, error } = routeId((await ctx.params).id);
   if (error) return error;
+  const guard = authEnabled() ? await requireAdmin() : { error: undefined };
+  if (guard.error) return guard.error;
   const users = await listUsers();
   const user = users.find((u) => u.id === id);
   if (!user) return notFound();

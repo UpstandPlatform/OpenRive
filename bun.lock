@@ -6,6 +6,7 @@
       "name": "openrive",
       "devDependencies": {
         "@modelcontextprotocol/sdk": "^1.30.0",
+        "@openrive/auth": "workspace:*",
         "@openrive/config": "workspace:*",
         "@openrive/db": "workspace:*",
         "@openrive/rive": "workspace:*",
@@ -24,6 +25,7 @@
       },
       "dependencies": {
         "@modelcontextprotocol/sdk": "^1.30.0",
+        "@openrive/auth": "workspace:*",
         "@openrive/db": "workspace:*",
         "@openrive/rive": "workspace:*",
         "@openrive/shared": "workspace:*",
@@ -77,6 +79,22 @@
         "eslint": "^9",
         "eslint-config-next": "16.3.5",
         "tailwindcss": "^4",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/auth": {
+      "name": "@openrive/auth",
+      "version": "0.1.0",
+      "dependencies": {
+        "@openrive/db": "workspace:*",
+        "@openrive/shared": "workspace:*",
+        "drizzle-orm": "catalog:",
+        "nanoid": "catalog:",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@openrive/config": "workspace:*",
+        "@types/node": "catalog:",
         "typescript": "catalog:",
       },
     },
@@ -385,6 +403,8 @@
     "@nodelib/fs.walk": ["@nodelib/fs.walk@1.2.8", "", { "dependencies": { "@nodelib/fs.scandir": "2.1.5", "fastq": "^1.6.0" } }, "sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg=="],
 
     "@nolyfill/is-core-module": ["@nolyfill/is-core-module@1.0.39", "", {}, "sha512-nn5ozdjYQpUCZlWGuxcJY/KpxkWQs4DcbMCmKojjyrYDEAGy4Ce19NN4v5MduafTwJlbKc99UA8YhSVqq9yPZA=="],
+
+    "@openrive/auth": ["@openrive/auth@workspace:packages/auth"],
 
     "@openrive/cli": ["@openrive/cli@workspace:apps/cli"],
 

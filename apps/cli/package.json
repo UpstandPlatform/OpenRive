@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "bin": { "openrive": "./src/index.ts" },
+  "bin": {
+    "openrive": "./src/index.ts"
+  },
   "scripts": {
     "check-types": "tsc --noEmit",
     "start": "bun src/index.ts",
@@ -18,7 +20,8 @@
     "@opentui/react": "^0.5.12",
     "nanoid": "catalog:",
     "react": "catalog:",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "@openrive/auth": "workspace:*"
   },
   "devDependencies": {
     "@openrive/config": "workspace:*",

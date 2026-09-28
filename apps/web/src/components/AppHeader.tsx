@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, Users } from 'lucide-react';
+import { Check, ChevronDown, LogOut, Shield, Users } from 'lucide-react';
 import { useCurrentUser, useSession } from '@/lib/client/session';
 import { ROLE_INFO } from '@openrive/shared';
 import { Avatar } from './Avatar';
@@ -17,7 +17,7 @@ export function Logo() {
 }
 
 export function UserSwitcher() {
-  const { users, switchUser, refresh, loaded } = useSession();
+  const { users, switchUser, refresh, loaded, authEnabled, signOut } = useSession();
   const user = useCurrentUser();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -42,26 +42,43 @@ export function UserSwitcher() {
       </button>
       {open && (
         <div className="menu absolute right-0 top-10 w-64">
-          <div className="px-2.5 py-1.5 label">Switch user (no login needed)</div>
-          {users.map((u) => (
-            <button
-              key={u.id}
-              className="menu-item"
-              onClick={() => {
-                switchUser(u.id);
-                setOpen(false);
-              }}
-            >
-              <Avatar user={u} size={20} />
-              <span className="flex-1 truncate">{u.name}</span>
-              <span className="text-t2 text-[11px]">{ROLE_INFO[u.role].label}</span>
-              {u.id === user.id && <Check size={14} />}
+          {/* signed in: the account is fixed. login-free: any local user works */}
+          {!authEnabled && (
+            <>
+              <div className="px-2.5 py-1.5 label">Switch user (no login needed)</div>
+              {users.map((u) => (
+                <button
+                  key={u.id}
+                  className="menu-item"
+                  onClick={() => {
+                    switchUser(u.id);
+                    setOpen(false);
+                  }}
+                >
+                  <Avatar user={u} size={20} />
+                  <span className="flex-1 truncate">{u.name}</span>
+                  <span className="text-t2 text-[11px]">{ROLE_INFO[u.role].label}</span>
+                  {u.id === user.id && <Check size={14} />}
+                </button>
+              ))}
+              <div className="menu-sep" />
+            </>
+          )}
+          {user.role === 'admin' && (
+            <Link href="/admin" className="menu-item" onClick={() => setOpen(false)}>
+              <Shield size={14} /> Admin dashboard
+            </Link>
+          )}
+          {!authEnabled && (
+            <Link href="/users" className="menu-item" onClick={() => setOpen(false)}>
+              <Users size={14} /> Manage users
+            </Link>
+          )}
+          {authEnabled && (
+            <button className="menu-item" onClick={() => void signOut()}>
+              <LogOut size={14} /> Sign out
             </button>
-          ))}
-          <div className="menu-sep" />
-          <Link href="/users" className="menu-item" onClick={() => setOpen(false)}>
-            <Users size={14} /> Manage users
-          </Link>
+          )}
         </div>
       )}
     </div>
@@ -70,6 +87,8 @@ export function UserSwitcher() {
 
 export function AppHeader() {
   const path = usePathname();
+  const user = useCurrentUser();
+  const authEnabled = useSession((s) => s.authEnabled);
   const tab = (href: string, label: string) => (
     <Link
       href={href}
@@ -83,7 +102,8 @@ export function AppHeader() {
       <Logo />
       <nav className="flex items-center gap-1">
         {tab('/', 'Files')}
-        {tab('/users', 'Users')}
+        {user?.role === 'admin' ? tab('/admin', 'Admin') : null}
+        {!authEnabled && tab('/users', 'Users')}
       </nav>
       <div className="flex-1" />
       <UserSwitcher />

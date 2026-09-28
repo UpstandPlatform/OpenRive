@@ -10,8 +10,12 @@ Run OpenRive on a server, NAS or your own Docker Desktop so a team can share it.
 
 ## Before you start: protecting access
 
-OpenRive has no login, by design. Any visitor can pick a user and edit. When the server is reachable by anyone other
-than you, **set an access token**:
+A self-hosted server (one with a `DATABASE_URL`) **asks for a sign-in**: the first person to open it creates the
+administrator account, who then adds everyone else from the admin dashboard. See
+[Accounts and sign-in](authentication.md).
+
+For a second, coarser gate — or to keep the instance completely private — **set an access token**, which puts HTTP
+Basic auth in front of everything:
 
 ```env
 OPENRIVE_ACCESS_TOKEN=a-long-random-password

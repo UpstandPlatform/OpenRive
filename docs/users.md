@@ -1,5 +1,8 @@
 # Users & roles
 
+> This page describes the **login-free** mode. A self-hosted server with a database asks for a password instead —
+> see [Accounts and sign-in](authentication.md) for the first administrator, the admin dashboard and roles.
+
 OpenRive has **local users instead of accounts**. There are no passwords or sign-up. Pick who you are from the switcher
 in the header. It's meant for sharing one machine or a trusted team server. On a server reachable by others, protect
 the whole app with `OPENRIVE_ACCESS_TOKEN` (see [Self-hosting](self-hosting.md#before-you-start-protecting-access)).

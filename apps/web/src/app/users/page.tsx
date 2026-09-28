@@ -1,4 +1,5 @@
 'use client';
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Check, LogIn, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { AppHeader } from '@/components/AppHeader';
@@ -8,8 +9,13 @@ import { ProjectMeta, Role, ROLE_INFO, User, USER_COLORS } from '@openrive/share
 import { Modal } from '@openrive/ui';
 
 export default function UsersPage() {
-  const { users, refresh, switchUser, loaded } = useSession();
+  const router = useRouter();
+  const { users, refresh, switchUser, loaded, authEnabled } = useSession();
   const me = useCurrentUser();
+  // with sign-in on, accounts (and passwords) are managed in the dashboard
+  useEffect(() => {
+    if (loaded && authEnabled) router.replace('/admin');
+  }, [loaded, authEnabled, router]);
   const [projects, setProjects] = useState<ProjectMeta[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);

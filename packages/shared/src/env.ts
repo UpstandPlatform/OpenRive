@@ -20,6 +20,10 @@ const envSchema = z.object({
     .transform((v) => v === 'true')
     .optional(),
   OPENRIVE_DB_POOL: z.coerce.number().int().positive().max(100).default(10),
+  /** 'auto' requires sign-in when DATABASE_URL is set (a shared deployment) */
+  OPENRIVE_AUTH: z.enum(['auto', 'on', 'off']).default('auto'),
+  /** how long a sign-in lasts */
+  OPENRIVE_SESSION_DAYS: z.coerce.number().int().positive().max(365).default(30),
   PORT: z.coerce.number().int().positive().max(65535).default(3000),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 });

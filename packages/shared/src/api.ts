@@ -60,3 +60,50 @@ export const projectsSchema = z.array(projectMetaSchema);
 export function formatIssues(error: z.ZodError): string {
   return error.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`).join('; ');
 }
+
+// ---------------------------------------------------------------------------
+// Accounts (self-hosted sign-in)
+
+export const loginSchema = z.object({
+  /** name or email; accounts are never verified by mail */
+  login: z.string().trim().min(1, 'Enter your name or email'),
+  password: z.string().min(1, 'Enter your password'),
+});
+
+export const setupSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  email: z.string().trim().email().optional().or(z.literal('')),
+  password: z.string().min(8, 'Use at least 8 characters').max(200),
+});
+
+export const adminCreateUserSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  email: z.string().trim().email().optional().or(z.literal('')),
+  password: z.string().min(8).max(200).optional().or(z.literal('')),
+  role: roleSchema.default('editor'),
+});
+
+export const adminUpdateUserSchema = z.object({
+  name: z.string().trim().min(1).max(80).optional(),
+  email: z.string().trim().email().optional().or(z.literal('')),
+  password: z.string().min(8).max(200).optional().or(z.literal('')),
+  role: roleSchema.optional(),
+  disabled: z.boolean().optional(),
+  color: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/)
+    .optional(),
+});
+
+export const accountSchema = userSchema.extend({
+  email: z.string().nullable(),
+  disabled: z.boolean(),
+  lastLoginAt: z.number().nullable(),
+  hasPassword: z.boolean(),
+});
+
+export const sessionInfoSchema = z.object({
+  authEnabled: z.boolean(),
+  needsSetup: z.boolean(),
+  user: accountSchema.nullable(),
+});
