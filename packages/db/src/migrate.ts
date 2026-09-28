@@ -67,7 +67,9 @@ export async function applyMigrations(db: Runner): Promise<string[]> {
   const applied = new Set<string>();
   const migrationRows = (await db.execute(sql`SELECT hash FROM "drizzle"."__drizzle_migrations"`)) as { rows?: { hash: string }[] } | { hash: string }[];
   for (const row of (Array.isArray(migrationRows) ? migrationRows : (migrationRows.rows ?? []))) applied.add(row.hash);
-  if (applied.size === 0) await baselineExistingSchema(db, applied);
+  // Run this even when the journal is non-empty: a previous interrupted or
+  // manually initialized deployment can leave partial bookkeeping behind.
+  await baselineExistingSchema(db, applied);
 
   const ran: string[] = [];
   for (const migration of migrations) {
