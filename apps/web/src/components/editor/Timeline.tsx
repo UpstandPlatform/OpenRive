@@ -32,6 +32,7 @@ import { prop } from '@openrive/rive/scene';
 import { animationFrames, useActiveArtboard, useEditor } from '@/lib/store/editor';
 import { NumberField, Select } from './controls';
 import { act, MenuItem, openContextMenu, sep } from './ContextMenu';
+import { runAction } from './actions';
 import { displayName } from './Hierarchy';
 import { StateMachineGraph } from './StateMachinePanel';
 
@@ -549,7 +550,25 @@ function TimelineView({ ab }: { ab: ArtboardDoc }) {
                   />
                 )}
               </div>
-              <div className="relative" onPointerDown={onAreaPointerDown} style={{ minHeight: tracks.length * ROW + 40 }}>
+              <div
+                className="relative"
+                onPointerDown={onAreaPointerDown}
+                onContextMenu={(e) => {
+                  // right-clicking empty timeline space pastes at that frame
+                  const el = areaRef.current!;
+                  const rect = el.getBoundingClientRect();
+                  const frame = Math.max(0, Math.min(f.duration, frameAt(e.clientX - rect.left + el.scrollLeft)));
+                  openContextMenu(e, [
+                    { ...act('anim.pasteKeys'), label: `Paste keyframes at frame ${frame}`, run: () => {
+                        s.setFrame(frame);
+                        runAction('anim.pasteKeys');
+                      } },
+                    sep,
+                    act('anim.key'),
+                  ]);
+                }}
+                style={{ minHeight: tracks.length * ROW + 40 }}
+              >
                 {tracks.map((t, i) => (
                   <div key={t.key} className={`absolute left-0 right-0 h-6 ${t.isGroup ? 'bg-bg2/50' : ''}`} style={{ top: i * ROW }}>
                     {!t.isGroup && <Segments t={t} xOf={xOf} />}
@@ -846,6 +865,10 @@ function keyframeMenu(ab: ArtboardDoc, anim: CoreObj): MenuItem[] {
     .filter(({ kf }) => ids.has(kf.id))
     .map(({ kf }) => prop(kf, 'frame'));
   return [
+    act('anim.copyKeys'),
+    act('anim.cutKeys'),
+    act('anim.pasteKeys'),
+    sep,
     {
       label: 'Interpolation',
       submenu: [

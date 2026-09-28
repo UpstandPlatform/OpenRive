@@ -1,10 +1,10 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { colorAlpha, colorCss, colorToHex, hexToColor } from '@openrive/rive/ops';
 import { useEditor } from '@/lib/store/editor';
 import { addSwatch } from '@openrive/rive/theme';
 import { Link2, Unlink } from 'lucide-react';
+import { Popover } from '@openrive/ui';
 
 type KeyState = 'none' | 'animated' | 'keyed';
 
@@ -365,43 +365,17 @@ export function ColorSwatch({
   boundSwatch?: string;
 }) {
   const boundName = useEditor((st) => (boundSwatch ? st.doc?.editor?.swatches.find((x) => x.id === boundSwatch)?.name : undefined));
-  const [open, setOpen] = useState<{ left: number; top: number } | null>(null);
+  const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const popRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => {
-      const t = e.target as Node;
-      if (!ref.current?.contains(t) && !popRef.current?.contains(t)) setOpen(null);
-    };
-    const onScroll = (e: Event) => {
-      if (!popRef.current?.contains(e.target as Node)) setOpen(null);
-    };
-    window.addEventListener('mousedown', close);
-    window.addEventListener('resize', onScroll);
-    window.addEventListener('scroll', onScroll, true);
-    return () => {
-      window.removeEventListener('mousedown', close);
-      window.removeEventListener('resize', onScroll);
-      window.removeEventListener('scroll', onScroll, true);
-    };
-  }, [open]);
-  // Position the picker in a portal so panels with overflow (or the canvas) never clip it.
-  const toggle = (e: React.MouseEvent) => {
-    if (open) return setOpen(null);
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const W = 240;
-    const H = 420;
-    let left = r.right - W;
-    if (left < 8) left = 8;
-    if (left + W > window.innerWidth - 8) left = window.innerWidth - W - 8;
-    let top = r.bottom + 6;
-    if (top + H > window.innerHeight - 8) top = Math.max(8, r.top - H - 6);
-    setOpen({ left, top });
-  };
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
   return (
     <div className="relative flex items-center gap-2 flex-1 min-w-0" ref={ref}>
-      <button className="w-6 h-6 rounded checker overflow-hidden shrink-0 border border-line2" onClick={toggle}>
+      <button
+        ref={triggerRef}
+        className="w-6 h-6 rounded checker overflow-hidden shrink-0 border border-line2"
+        onClick={() => setOpen((v) => !v)}
+      >
         <span className="block w-full h-full" style={{ background: colorCss(value) }} />
       </button>
       {boundName ? (
@@ -422,13 +396,11 @@ export function ColorSwatch({
           <span className="text-t2 text-[11px]">{Math.round(colorAlpha(value) * 100)}%</span>
         </>
       )}
-      {open &&
-        createPortal(
-          <div ref={popRef} className="menu fixed z-[300]" style={{ left: open.left, top: open.top }}>
-            <ColorPicker value={value} onChange={onChange} boundSwatch={boundSwatch} />
-          </div>,
-          document.body,
-        )}
+      {open && (
+        <Popover anchorRef={triggerRef} onClose={() => setOpen(false)}>
+          <ColorPicker value={value} onChange={onChange} boundSwatch={boundSwatch} />
+        </Popover>
+      )}
     </div>
   );
 }

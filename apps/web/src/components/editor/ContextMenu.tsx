@@ -47,6 +47,7 @@ function resolve(item: Exclude<MenuItem, { separator: true }>) {
     label: item.label ?? a?.label ?? '',
     shortcut: item.shortcut ?? (item.action ? shortcutLabel(item.action) : undefined),
     disabled: item.disabled ?? (a ? !isEnabled(a) : false),
+    checked: item.checked ?? a?.checked?.(),
     run: item.run ?? a?.run,
   };
 }
@@ -90,7 +91,7 @@ function MenuList({ items, x, y, onDone, level = 0 }: { items: MenuItem[]; x: nu
               r.run?.();
             }}
           >
-            <span className="w-4 flex justify-center shrink-0">{item.checked ? <Check size={13} /> : item.icon}</span>
+            <span className="w-4 flex justify-center shrink-0">{r.checked ? <Check size={13} /> : item.icon}</span>
             <span className="flex-1 truncate">{r.label}</span>
             {r.shortcut && !hasSub && <span className="shortcut">{r.shortcut}</span>}
             {hasSub && <ChevronRight size={13} className="ml-auto text-t2" />}

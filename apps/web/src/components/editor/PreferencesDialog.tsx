@@ -83,6 +83,21 @@ export function PreferencesDialog({ onClose }: { onClose: () => void }) {
             <p className="text-t3 text-[11px]">Double-click a group to select inside it; Esc steps back out.</p>
           </div>
           <div className="flex flex-col gap-1.5">
+            <div className="panel-title">Canvas</div>
+            <Row label="Rulers">
+              <input type="checkbox" checked={prefs.showRuler} onChange={(e) => update({ showRuler: e.target.checked })} />
+            </Row>
+            <Row label="Grid">
+              <input type="checkbox" checked={prefs.showGrid} onChange={(e) => update({ showGrid: e.target.checked })} />
+            </Row>
+            <Row label="Grid size">
+              <NumberField value={prefs.gridSize} min={1} max={500} onChange={(v) => update({ gridSize: Math.round(v) })} />
+            </Row>
+            <Row label="Snap to grid">
+              <input type="checkbox" checked={prefs.snapToGrid} onChange={(e) => update({ snapToGrid: e.target.checked })} />
+            </Row>
+          </div>
+          <div className="flex flex-col gap-1.5">
             <div className="panel-title">Moving</div>
             <Row label="Nudge">
               <NumberField value={prefs.nudge} min={0.01} onChange={(v) => update({ nudge: v })} suffix="px" />

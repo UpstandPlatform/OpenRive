@@ -21,6 +21,14 @@ export interface Prefs {
   snapToPixel: boolean;
   /** what a click on the canvas picks: the whole group, or the object under the cursor */
   selectMode: 'group' | 'object';
+  /** rulers along the top and left of the canvas */
+  showRuler: boolean;
+  /** a grid drawn over the artboard */
+  showGrid: boolean;
+  /** grid spacing in artboard pixels */
+  gridSize: number;
+  /** snap dragged objects to the grid */
+  snapToGrid: boolean;
   /** action id -> key combos, overriding the defaults */
   shortcuts: Record<string, string[]>;
 }
@@ -39,6 +47,10 @@ export const DEFAULT_PREFS: Prefs = {
   bigNudge: 10,
   snapToPixel: false,
   selectMode: 'group',
+  showRuler: true,
+  showGrid: false,
+  gridSize: 20,
+  snapToGrid: false,
   shortcuts: {},
 };
 

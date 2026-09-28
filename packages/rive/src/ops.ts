@@ -326,6 +326,103 @@ export function allKeyframes(anim: CoreObj): { kf: CoreObj; kp: CoreObj; ko: Cor
   return out;
 }
 
+/** Keyframes on the clipboard, with frames relative to the earliest one. */
+export interface KeyframeClipboard {
+  kind: 'openrive/keyframes';
+  /** frame of the earliest copied key: paste positions everything relative to it */
+  baseFrame: number;
+  entries: {
+    objectId: string;
+    propertyKey: number;
+    /** keyframe type, e.g. KeyFrameDouble or KeyFrameColor */
+    type: string;
+    frame: number;
+    value: unknown;
+    interpolationType: number;
+    /** cubic easing, when interpolationType is 2 */
+    bezier?: [number, number, number, number];
+  }[];
+}
+
+/** Copies keyframes (by id) out of a timeline so they can be pasted elsewhere. */
+export function copyKeyframes(ab: ArtboardDoc, anim: CoreObj, ids: string[]): KeyframeClipboard | null {
+  const wanted = new Set(ids);
+  const entries: KeyframeClipboard['entries'] = [];
+  for (const { kf, kp, ko } of allKeyframes(anim)) {
+    if (!wanted.has(kf.id)) continue;
+    const interpolator = typeof kf.props.interpolatorId === 'string' ? findObj(ab, kf.props.interpolatorId) : undefined;
+    entries.push({
+      objectId: String(ko.props.objectId ?? ''),
+      propertyKey: Number(kp.props.propertyKey ?? 0),
+      type: kf.type,
+      frame: prop(kf, 'frame'),
+      value: kf.props.value,
+      interpolationType: prop(kf, 'interpolationType'),
+      ...(interpolator
+        ? { bezier: [prop(interpolator, 'x1'), prop(interpolator, 'y1'), prop(interpolator, 'x2'), prop(interpolator, 'y2')] as [number, number, number, number] }
+        : {}),
+    });
+  }
+  if (!entries.length) return null;
+  return { kind: 'openrive/keyframes', baseFrame: Math.min(...entries.map((e) => e.frame)), entries };
+}
+
+/**
+ * Pastes copied keyframes into a timeline, with the earliest key landing on
+ * `atFrame`. Keys that came from one object can be retargeted to another one
+ * (`retargetTo`), which is how "copy this animation onto that shape" works.
+ * Existing keys on the same property and frame are replaced.
+ */
+export function pasteKeyframes(
+  ab: ArtboardDoc,
+  anim: CoreObj,
+  clip: KeyframeClipboard,
+  atFrame: number,
+  retargetTo?: string,
+): { keyframes: string[]; skipped: number } {
+  const sources = new Set(clip.entries.map((e) => e.objectId));
+  // retargeting only makes sense when everything came from a single object
+  const retarget = retargetTo && sources.size === 1 ? retargetTo : undefined;
+  const offset = Math.round(atFrame - clip.baseFrame);
+  const created: string[] = [];
+  let skipped = 0;
+
+  for (const entry of clip.entries) {
+    const targetId = retarget ?? entry.objectId;
+    const target = findObj(ab, targetId);
+    // the property must exist on the target (retargeting can cross object types)
+    if (!target || !propDef(target.type, propNameForKey(entry.propertyKey))) {
+      skipped++;
+      continue;
+    }
+    const frame = Math.max(0, entry.frame + offset);
+    anim.children ??= [];
+    let ko = anim.children.find((k) => k.type === 'KeyedObject' && k.props.objectId === targetId);
+    if (!ko) {
+      ko = obj('KeyedObject', { objectId: targetId }, []);
+      anim.children.push(ko);
+    }
+    ko.children ??= [];
+    let kp = ko.children.find((k) => k.props.propertyKey === entry.propertyKey);
+    if (!kp) {
+      kp = obj('KeyedProperty', { propertyKey: entry.propertyKey }, []);
+      ko.children.push(kp);
+    }
+    kp.children = (kp.children ?? []).filter((k) => prop(k, 'frame') !== frame);
+    const kf = obj(entry.type, { frame, value: entry.value, interpolationType: entry.interpolationType });
+    kp.children.push(kf);
+    kp.children.sort((a, b) => prop(a, 'frame') - prop(b, 'frame'));
+    created.push(kf.id);
+    if (entry.interpolationType === 2 && entry.bezier) {
+      const interpolator = obj('CubicEaseInterpolator', { x1: entry.bezier[0], y1: entry.bezier[1], x2: entry.bezier[2], y2: entry.bezier[3] });
+      ab.objects.push(interpolator);
+      kf.props.interpolatorId = interpolator.id;
+    }
+  }
+  cleanupInterpolators(ab);
+  return { keyframes: created, skipped };
+}
+
 export function propNameForKey(key: number): string {
   return propDefByKey(key)?.name ?? `#${key}`;
 }

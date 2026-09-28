@@ -51,6 +51,9 @@ or another tab) changes the file while it's open, a banner lets you reload or ke
   that shape, and the mask itself is hidden. The **Mask** section of the inspector lists every mask on the selection,
   where you can turn one off with the eye, remove it, or add another shape as an extra mask.
 - **Context menus**: right-click objects, layers, the canvas, keyframes, timelines, states and transitions.
+- **Rulers and grid** (View menu, or `Alt R` / `Ctrl '`): rulers along the top and left show artboard pixels, highlight
+  the artboard's extent and track the selection. The grid draws over the active artboard at the spacing set in
+  Preferences (20 px by default), and **Snap to grid** (`Ctrl Shift '`) makes dragged objects land on it.
 
 ### Animate mode (`Tab`)
 
@@ -59,6 +62,10 @@ or another tab) changes the file while it's open, a banner lets you reload or ke
   objects' transforms.
 - **Keyframes**: drag to move, `Shift`-click to select several, right-click to set interpolation (hold, linear, cubic
   presets) or delete. The curve editor tweaks cubic easing.
+- **Copy and paste keyframes**: `Ctrl C` / `Ctrl X` copies the selected keys, and `Ctrl V` pastes them at the playhead,
+  keeping their spacing and easing. Right-click empty timeline space to paste at that exact frame instead. Keys can go
+  into another timeline, and — when they all came from one object — onto whichever object is selected, which is how you
+  reuse a move on a second shape. Keys that don't fit the target (a property it doesn't have) are skipped with a note.
 - **Playback**: `Enter` play/pause, `,` `.` step frames, `Alt ,` `Alt .` jump between keyframes, `Home`/`End`.
 
 ### State machines

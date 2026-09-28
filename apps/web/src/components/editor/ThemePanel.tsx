@@ -1,8 +1,9 @@
 'use client';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Copy, Palette, Plus, Trash2 } from 'lucide-react';
 import { colorCss } from '@openrive/rive/ops';
 import { activeTheme, addSwatch, addTheme, applyTheme, countBindings, removeSwatch, removeTheme, renameSwatch, setSwatchColor } from '@openrive/rive/theme';
+import { Popover } from '@openrive/ui';
 import { useEditor } from '@/lib/store/editor';
 import { ColorPicker } from './controls';
 import { openContextMenu, sep } from './ContextMenu';
@@ -103,7 +104,40 @@ export function ThemePanel() {
           const c = theme?.colors[sw.id] ?? 0xff000000;
           const uses = countBindings(doc, sw.id);
           return (
-            <div key={sw.id} className="relative">
+            <SwatchRow
+              key={sw.id}
+              swatch={sw}
+              color={c}
+              uses={uses}
+              readOnly={readOnly}
+              editing={editing === sw.id}
+              renaming={renaming === sw.id}
+              setEditing={setEditing}
+              setRenaming={setRenaming}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+interface SwatchRowProps {
+  swatch: { id: string; name: string };
+  color: number;
+  uses: number;
+  readOnly: boolean;
+  editing: boolean;
+  renaming: boolean;
+  setEditing: (id: string | null) => void;
+  setRenaming: (id: string | null) => void;
+}
+
+function SwatchRow({ swatch: sw, color: c, uses, readOnly, editing, renaming, setEditing, setRenaming }: SwatchRowProps) {
+  const s = useEditor.getState();
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  return (
+            <div className="relative">
               <div
                 className="flex items-center gap-2 h-8 px-1.5 rounded hover:bg-bg2"
                 onContextMenu={(e) =>
@@ -116,13 +150,14 @@ export function ThemePanel() {
                 }
               >
                 <button
+                  ref={triggerRef}
                   className="w-6 h-6 rounded checker overflow-hidden border border-line2 shrink-0"
-                  onClick={() => setEditing(editing === sw.id ? null : sw.id)}
+                  onClick={() => setEditing(editing ? null : sw.id)}
                   title="Edit color"
                 >
                   <span className="block w-full h-full" style={{ background: colorCss(c) }} />
                 </button>
-                {renaming === sw.id ? (
+                {renaming ? (
                   <input
                     autoFocus
                     className="field h-6"
@@ -147,20 +182,16 @@ export function ThemePanel() {
                   <Trash2 size={12} />
                 </button>
               </div>
-              {editing === sw.id && !readOnly && (
-                <div className="menu my-1">
+              {editing && !readOnly && (
+                <Popover anchorRef={triggerRef} align="start" onClose={() => setEditing(null)}>
                   <ColorPicker value={c} onChange={(v, t) => s.commit((d) => setSwatchColor(d, sw.id, v), t)} hideSwatches />
                   <div className="flex justify-end px-2 pb-1">
                     <button className="btn h-6 px-2" onClick={() => setEditing(null)}>
                       Done
                     </button>
                   </div>
-                </div>
+                </Popover>
               )}
             </div>
-          );
-        })}
-      </div>
-    </div>
   );
 }

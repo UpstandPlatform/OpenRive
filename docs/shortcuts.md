@@ -71,6 +71,9 @@ Custom bindings are saved in your browser. On macOS, `Ctrl` means `⌘`.
 | Design ⇄ Animate | `Tab` |
 | Cycle Layers / Theme / Assets | `Alt T` |
 | Click selects groups (on/off) | `Alt G` |
+| Show rulers | `Alt R` |
+| Show grid | `Ctrl '` |
+| Snap to grid | `Ctrl Shift '` |
 | Code panel | `Alt C` |
 
 ## Animate
@@ -79,6 +82,8 @@ Custom bindings are saved in your browser. On macOS, `Ctrl` means `⌘`.
 | --- | --- |
 | Play / pause | `Enter`, `Shift Space` |
 | Key selected transforms | `K` |
+| Copy / cut keyframes | `Ctrl C` / `Ctrl X` |
+| Paste keyframes at the playhead | `Ctrl V` |
 | Previous / next frame | `,` / `.` |
 | Back / forward 10 frames | `Shift ,` / `Shift .` |
 | Previous / next keyframe | `Alt ,` / `Alt .` |

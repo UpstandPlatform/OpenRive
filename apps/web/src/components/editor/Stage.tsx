@@ -72,6 +72,13 @@ type Drag =
   | { kind: 'penHandle'; index: number }
   | { kind: 'vertex'; abId: string; id: string; which: 'pt' | 'in' | 'out'; inv: Mat };
 
+/** mid grey, so grid lines stay visible on both light and dark artboards */
+const GRID_COLOR = '#8a8a99';
+/** ruler thickness in screen pixels */
+const RULER = 18;
+/** tick spacings the ruler chooses from, in artboard pixels */
+const RULER_STEPS = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000];
+
 const HANDLE_CURSORS: Record<Handle, string> = {
   n: 'ns-resize',
   s: 'ns-resize',
@@ -106,6 +113,9 @@ export function Stage() {
   const editPathId = useEditor((s) => s.editPathId);
   const selectionContext = useEditor((s) => s.selectionContext);
   const selectMode = usePrefs((s) => s.prefs.selectMode);
+  const showRuler = usePrefs((s) => s.prefs.showRuler);
+  const showGrid = usePrefs((s) => s.prefs.showGrid);
+  const gridSize = usePrefs((s) => s.prefs.gridSize);
   const readOnly = useEditor((s) => s.readOnly);
   const editTextId = useEditor((s) => s.editTextId);
 
@@ -741,7 +751,10 @@ export function Stage() {
         for (const [id, st] of drag.start) {
           const ldx = st.inv[0] * dx + st.inv[2] * dy;
           const ldy = st.inv[1] * dx + st.inv[3] * dy;
-          const snap = getPrefs().snapToPixel ? Math.round : round2;
+          const prefs = getPrefs();
+          // the grid wins over pixel snapping when both are on
+          const grid = prefs.snapToGrid ? Math.max(1, prefs.gridSize) : 0;
+          const snap = grid ? (v: number) => Math.round(v / grid) * grid : prefs.snapToPixel ? Math.round : round2;
           s.setProps(id, { x: snap(st.x + ldx), y: snap(st.y + ldy) });
         }
         break;
@@ -1062,6 +1075,27 @@ export function Stage() {
   const stroke = '#57a5e0';
   const overlay: React.ReactNode[] = [];
 
+  // grid over the active artboard, for aligning by eye (and snapping, when on)
+  if (showGrid && activeAb && gridSize > 0) {
+    const p = abPos(activeAb);
+    const w = prop(activeAb.artboard, 'width');
+    const h = prop(activeAb.artboard, 'height');
+    // thin out the grid when zoomed out so it never turns into a grey block
+    const step = gridSize * Math.max(1, Math.pow(2, Math.ceil(Math.log2(6 / (gridSize * view.zoom)))));
+    const lines: React.ReactNode[] = [];
+    for (let x = 0; x <= w + 0.001; x += step) {
+      const [sx1, sy1] = toScreen(p.x + x, p.y);
+      const [, sy2] = toScreen(p.x + x, p.y + h);
+      lines.push(<line key={`gx${x}`} x1={sx1} y1={sy1} x2={sx1} y2={sy2} stroke={GRID_COLOR} strokeOpacity={x % (step * 5) === 0 ? 0.55 : 0.28} />);
+    }
+    for (let y = 0; y <= h + 0.001; y += step) {
+      const [sx1, sy1] = toScreen(p.x, p.y + y);
+      const [sx2] = toScreen(p.x + w, p.y + y);
+      lines.push(<line key={`gy${y}`} x1={sx1} y1={sy1} x2={sx2} y2={sy1} stroke={GRID_COLOR} strokeOpacity={y % (step * 5) === 0 ? 0.55 : 0.28} />);
+    }
+    overlay.push(<g key="grid">{lines}</g>);
+  }
+
   // artboard titles + active outline
   for (const ab of doc.artboards) {
     const p = abPos(ab);
@@ -1267,6 +1301,70 @@ export function Stage() {
         overlay.push(<rect key={`pp${i}`} x={x - 3.5} y={y - 3.5} width={7} height={7} fill={i === 0 ? stroke : '#fff'} stroke={stroke} />);
       });
     }
+  }
+
+  // rulers last, so they stay above the artwork and the selection overlay
+  if (showRuler && activeAb) {
+    const p = abPos(activeAb);
+    const w = prop(activeAb.artboard, 'width');
+    const h = prop(activeAb.artboard, 'height');
+    // a step that keeps labels at least 56px apart at the current zoom
+    const step = RULER_STEPS.find((v) => v * view.zoom >= 56) ?? RULER_STEPS[RULER_STEPS.length - 1]!;
+    const ticks: React.ReactNode[] = [];
+    // the selection's extent in screen space, highlighted on both rulers
+    let selBox: { x: number; y: number; w: number; h: number } | null = null;
+    if (selectionBox) {
+      const pts = selectionBox.corners.map(([cx, cy]) => toScreen(cx, cy));
+      const xs = pts.map(([px]) => px);
+      const ys = pts.map(([, py]) => py);
+      selBox = { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+    }
+
+    const first = (from: number) => Math.ceil(from / step) * step;
+    // horizontal ruler: artboard x, measured from the artboard's left edge
+    const [x0] = toStage(0, 0);
+    const [x1] = toStage(size.w, size.h);
+    for (let v = first(x0 - p.x); p.x + v <= x1; v += step) {
+      const [sx] = toScreen(p.x + v, 0);
+      ticks.push(<line key={`rx${v}`} x1={sx} y1={RULER - 5} x2={sx} y2={RULER} stroke="var(--line-2)" />);
+      ticks.push(
+        <text key={`rxt${v}`} x={sx + 3} y={RULER - 7} fill="var(--text-3)" fontSize={9}>
+          {v}
+        </text>,
+      );
+    }
+    const [, y0] = toStage(0, 0);
+    const [, y1] = toStage(size.w, size.h);
+    for (let v = first(y0 - p.y); p.y + v <= y1; v += step) {
+      const [, sy] = toScreen(0, p.y + v);
+      ticks.push(<line key={`ry${v}`} x1={RULER - 5} y1={sy} x2={RULER} y2={sy} stroke="var(--line-2)" />);
+      ticks.push(
+        <text key={`ryt${v}`} x={4} y={sy - 3} fill="var(--text-3)" fontSize={9} transform={`rotate(-90 4 ${sy - 3})`} textAnchor="start">
+          {v}
+        </text>,
+      );
+    }
+    const [abX0, abY0] = toScreen(p.x, p.y);
+    const [abX1, abY1] = toScreen(p.x + w, p.y + h);
+    overlay.push(
+      <g key="ruler">
+        <rect x={0} y={0} width={size.w} height={RULER} fill="var(--bg-1)" />
+        <rect x={0} y={0} width={RULER} height={size.h} fill="var(--bg-1)" />
+        {/* the artboard's extent, so its edges are easy to find */}
+        <rect x={abX0} y={0} width={Math.max(0, abX1 - abX0)} height={RULER} fill="#ffffff" fillOpacity={0.06} />
+        <rect x={0} y={abY0} width={RULER} height={Math.max(0, abY1 - abY0)} fill="#ffffff" fillOpacity={0.06} />
+        {selBox && (
+          <>
+            <rect x={selBox.x} y={0} width={Math.max(1, selBox.w)} height={RULER} fill={stroke} fillOpacity={0.35} />
+            <rect x={0} y={selBox.y} width={RULER} height={Math.max(1, selBox.h)} fill={stroke} fillOpacity={0.35} />
+          </>
+        )}
+        {ticks}
+        <line x1={0} y1={RULER} x2={size.w} y2={RULER} stroke="var(--line)" />
+        <line x1={RULER} y1={0} x2={RULER} y2={size.h} stroke="var(--line)" />
+        <rect x={0} y={0} width={RULER} height={RULER} fill="var(--bg-1)" />
+      </g>,
+    );
   }
 
   return (

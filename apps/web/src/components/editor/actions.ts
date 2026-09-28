@@ -14,6 +14,9 @@ import {
   isAncestor,
   parentIdOf,
   pasteObjects,
+  copyKeyframes,
+  type KeyframeClipboard,
+  pasteKeyframes,
   removeKeyframes,
   reorder,
   ungroup,
@@ -41,6 +44,8 @@ export interface Action {
   edits?: boolean;
   run(): void;
   enabled?(): boolean;
+  /** shows a tick in menus for on/off commands */
+  checked?(): boolean;
 }
 
 /** Callbacks owned by the Editor component (saving etc.) */
@@ -104,6 +109,73 @@ function readClip(): ClipboardData | null {
   return memoryClip;
 }
 export const hasClipboard = () => !!readClip();
+
+// Keyframes have their own clipboard, so copying keys never overwrites copied
+// objects (and Ctrl+C means "keys" in Animate mode, "objects" in Design mode).
+const KEY_CLIP_KEY = 'openrive:clipboard-keys';
+let memoryKeyClip: KeyframeClipboard | null = null;
+
+function writeKeyClip(c: KeyframeClipboard) {
+  memoryKeyClip = c;
+  try {
+    localStorage.setItem(KEY_CLIP_KEY, JSON.stringify(c));
+  } catch {
+    /* unavailable: keep the in-memory copy */
+  }
+}
+
+function readKeyClip(): KeyframeClipboard | null {
+  try {
+    const raw = localStorage.getItem(KEY_CLIP_KEY);
+    if (raw) return JSON.parse(raw) as KeyframeClipboard;
+  } catch {
+    /* fall through */
+  }
+  return memoryKeyClip;
+}
+
+export const hasKeyClipboard = () => !!readKeyClip();
+
+function copyKeys(): boolean {
+  const { s, ab, anim } = getActive();
+  if (!ab || !anim || !s.selectedKeyframes.length) return false;
+  const clip = copyKeyframes(ab, anim, s.selectedKeyframes);
+  if (!clip) return false;
+  writeKeyClip(clip);
+  return true;
+}
+
+function cutKeys() {
+  const { s, ab, anim } = getActive();
+  if (!copyKeys() || !ab || !anim) return;
+  const ids = new Set(s.selectedKeyframes);
+  s.commit((d) => {
+    const artboard = findArtboard(d, ab.id)!;
+    removeKeyframes(artboard, artboard.animations.find((a) => a.id === anim.id)!, ids);
+  });
+  s.set('selectedKeyframes', []);
+}
+
+/** Pastes copied keys at the playhead, onto the selected object when one is selected. */
+function pasteKeys() {
+  const clip = readKeyClip();
+  const { s, ab, anim } = getActive();
+  if (!clip || !ab || !anim) return;
+  const retargetTo = s.selection.length === 1 ? s.selection[0] : undefined;
+  let result: { keyframes: string[]; skipped: number } = { keyframes: [], skipped: 0 };
+  s.commit((d) => {
+    const artboard = findArtboard(d, ab.id)!;
+    result = pasteKeyframes(artboard, artboard.animations.find((a) => a.id === anim.id)!, clip, s.frame, retargetTo);
+  });
+  s.set('selectedKeyframes', result.keyframes);
+  if (result.skipped) {
+    toast(
+      result.keyframes.length
+        ? `Pasted ${result.keyframes.length} keys; ${result.skipped} did not fit the target object`
+        : 'Those keys do not fit the selected object',
+    );
+  }
+}
 
 function copy(): boolean {
   const s = st();
@@ -464,6 +536,35 @@ export const ACTIONS: Action[] = [
   { id: 'edit.redo', label: 'Redo', category: 'Edit', keys: ['Ctrl+Shift+Z', 'Ctrl+Y'], edits: true, run: () => st().redo(), enabled: () => st().future.length > 0 },
   { id: 'edit.cut', label: 'Cut', category: 'Edit', keys: ['Ctrl+X'], edits: true, when: 'design', run: () => copy() && deleteSelection(), enabled: hasSelection },
   { id: 'edit.copy', label: 'Copy', category: 'Edit', keys: ['Ctrl+C'], when: 'design', run: () => void copy(), enabled: hasSelection },
+  {
+    id: 'anim.copyKeys',
+    label: 'Copy keyframes',
+    category: 'Animate',
+    keys: ['Ctrl+C'],
+    when: 'animate',
+    run: () => void copyKeys(),
+    enabled: () => st().selectedKeyframes.length > 0,
+  },
+  {
+    id: 'anim.cutKeys',
+    label: 'Cut keyframes',
+    category: 'Animate',
+    keys: ['Ctrl+X'],
+    when: 'animate',
+    edits: true,
+    run: cutKeys,
+    enabled: () => st().selectedKeyframes.length > 0,
+  },
+  {
+    id: 'anim.pasteKeys',
+    label: 'Paste keyframes at the playhead',
+    category: 'Animate',
+    keys: ['Ctrl+V'],
+    when: 'animate',
+    edits: true,
+    run: pasteKeys,
+    enabled: hasKeyClipboard,
+  },
   { id: 'edit.paste', label: 'Paste', category: 'Edit', keys: ['Ctrl+V'], edits: true, when: 'design', run: () => paste(false), enabled: hasClipboard },
   { id: 'edit.pasteInPlace', label: 'Paste in place', category: 'Edit', keys: ['Ctrl+Shift+V'], edits: true, when: 'design', run: () => paste(true), enabled: hasClipboard },
   { id: 'edit.duplicate', label: 'Duplicate', category: 'Edit', keys: ['Ctrl+D'], edits: true, run: duplicate, enabled: hasSelection },
@@ -603,6 +704,34 @@ export const ACTIONS: Action[] = [
       const prefs = getPrefs();
       usePrefs.getState().update({ selectMode: prefs.selectMode === 'group' ? 'object' : 'group' });
       st().set('selectionContext', null);
+    },
+  },
+  {
+    id: 'view.ruler',
+    label: 'Show rulers',
+    category: 'View',
+    keys: ['Alt+R'],
+    checked: () => getPrefs().showRuler,
+    run: () => usePrefs.getState().update({ showRuler: !getPrefs().showRuler }),
+  },
+  {
+    id: 'view.grid',
+    label: 'Show grid',
+    category: 'View',
+    keys: ["Ctrl+'"],
+    checked: () => getPrefs().showGrid,
+    run: () => usePrefs.getState().update({ showGrid: !getPrefs().showGrid }),
+  },
+  {
+    id: 'view.snapGrid',
+    label: 'Snap to grid',
+    category: 'View',
+    keys: ["Ctrl+Shift+'"],
+    checked: () => getPrefs().snapToGrid,
+    run: () => {
+      const prefs = getPrefs();
+      // turning snapping on shows the grid, so the effect is visible
+      usePrefs.getState().update({ snapToGrid: !prefs.snapToGrid, showGrid: prefs.snapToGrid ? prefs.showGrid : true });
     },
   },
   { id: 'view.codePanel', label: 'Toggle code panel', category: 'View', keys: ['Alt+C'], run: () => st().set('codeOpen', !st().codeOpen) },
