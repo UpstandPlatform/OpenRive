@@ -28,8 +28,8 @@ export function handler<A extends unknown[]>(fn: (...args: A) => Promise<Respons
       return await fn(...args);
     } catch (e) {
       const message = (e as Error).message || 'Unexpected error';
-      console.error('[api]', message);
-      return fail(message, 500);
+      console.error('[api]', e);
+      return fail(process.env.NODE_ENV === 'development' ? message : 'Internal server error', 500);
     }
   };
 }

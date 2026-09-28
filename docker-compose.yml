@@ -21,6 +21,13 @@ services:
       - "${OPENRIVE_PORT:-3000}:3000"
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-openrive}:${POSTGRES_PASSWORD:-openrive}@db:5432/${POSTGRES_DB:-openrive}
+      # Set OPENRIVE_URL to the public HTTPS origin in Dokploy or another
+      # reverse-proxied deployment. The localhost default is for local compose.
+      OPENRIVE_URL: ${OPENRIVE_URL:-http://localhost:3000}
+      OPENRIVE_AUTH: ${OPENRIVE_AUTH:-on}
+      OPENRIVE_SIGNUP: ${OPENRIVE_SIGNUP:-first}
+      OPENRIVE_AUTH_SECRET: ${OPENRIVE_AUTH_SECRET:-}
+      OPENRIVE_TRUSTED_ORIGINS: ${OPENRIVE_TRUSTED_ORIGINS:-}
       # Strongly recommended when the server is reachable by others:
       # every visitor must enter this password (any user name).
       OPENRIVE_ACCESS_TOKEN: ${OPENRIVE_ACCESS_TOKEN:-}

@@ -46,7 +46,7 @@ export async function importLegacyDataDir(dir?: string, log: (msg: string) => vo
   }
 
   let projectCount = 0;
-  const entries = await fs.readdir(found.projectsDir, { withFileTypes: true }).catch(() => []);
+  const entries = await fs.readdir(/* turbopackIgnore: true */ found.projectsDir, { withFileTypes: true }).catch(() => []);
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     const dirPath = path.join(found.projectsDir, entry.name);

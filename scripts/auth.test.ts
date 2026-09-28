@@ -10,6 +10,9 @@ import path from 'node:path';
 const dir = mkdtempSync(path.join(tmpdir(), 'openrive-auth-'));
 process.env.OPENRIVE_DATA_DIR = dir;
 process.env.OPENRIVE_AUTH = 'on';
+// The production default is intentionally restrictive; this test exercises
+// the later-signup role transition explicitly with an open signup policy.
+process.env.OPENRIVE_SIGNUP = 'open';
 delete process.env.DATABASE_URL;
 
 const { resetEnv } = await import('@openrive/shared/env');

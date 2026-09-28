@@ -8,6 +8,7 @@ export async function GET() {
     const { backend } = await describeDatabase();
     return Response.json({ ok: true, storage: backend });
   } catch (e) {
-    return Response.json({ ok: false, storage: 'unknown', error: (e as Error).message }, { status: 503 });
+    console.error('[health]', e);
+    return Response.json({ ok: false, storage: 'unknown' }, { status: 503 });
   }
 }

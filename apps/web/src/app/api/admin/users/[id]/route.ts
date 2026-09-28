@@ -1,5 +1,5 @@
-import { getAccount, listAccounts, revokeUserSessions, updateAccount } from '@openrive/auth';
-import { listProjects, saveUsers, updateProject } from '@openrive/db';
+import { deleteAccount, getAccount, listAccounts, revokeUserSessions, updateAccount } from '@openrive/auth';
+import { listProjects, updateProject } from '@openrive/db';
 import { adminUpdateUserSchema } from '@openrive/shared';
 import { requireAdmin } from '@/lib/server/auth';
 import { routeId } from '@/lib/server/route';
@@ -53,7 +53,7 @@ export const DELETE = handler(async (request: Request, ctx: RouteContext<'/api/a
     if (project.ownerId === id) await updateProject(project.id, { ownerId: heir.id });
   }
   await revokeUserSessions(id);
-  await saveUsers((await listAccounts()).filter((a) => a.id !== id));
+  await deleteAccount(id);
   return json({ ok: true, transferredTo: heir.id });
 });
 

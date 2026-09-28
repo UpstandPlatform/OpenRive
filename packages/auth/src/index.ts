@@ -62,16 +62,28 @@ async function secret(): Promise<string> {
 
 const COLORS = ['#7c5cff', '#2bb3ff', '#27c498', '#ffb020', '#ff5c7a', '#ff7a2b', '#b45cff', '#5ce1ff'];
 
+function trustedOrigins() {
+  const configured = env().OPENRIVE_TRUSTED_ORIGINS?.split(',').map((origin) => origin.trim()).filter(Boolean);
+  return configured?.length ? configured : [env().OPENRIVE_URL];
+}
+
 async function build() {
   const conn = await db();
+  const settings = env();
+  if (settings.NODE_ENV === 'production' && authRequired() && !process.env.OPENRIVE_URL) {
+    throw new Error('OPENRIVE_URL must be set for production authentication');
+  }
 
   return betterAuth({
     appName: 'OpenRive',
     secret: await secret(),
-    // an explicit address wins; otherwise the request's own host is used, so a
-    // server reached by several names (localhost, a LAN address, a domain)
-    // keeps working without configuration
-    baseURL: process.env.OPENRIVE_URL ? env().OPENRIVE_URL : { allowedHosts: ['*'], fallback: env().OPENRIVE_URL },
+    // An explicit public URL is required for production auth. Local development
+    // and desktop use the restricted loopback host list instead of trusting any
+    // Host header.
+    baseURL: process.env.OPENRIVE_URL
+      ? settings.OPENRIVE_URL
+      : { allowedHosts: ['localhost', '127.0.0.1', '[::1]'], fallback: settings.OPENRIVE_URL, protocol: 'http' },
+    trustedOrigins: trustedOrigins(),
     database: drizzleAdapter(conn, {
       provider: 'pg',
       schema: {
@@ -79,6 +91,7 @@ async function build() {
         session: schema.sessions,
         account: schema.accounts,
         verification: schema.verifications,
+        rateLimit: schema.rateLimit,
       },
     }),
     emailAndPassword: {
@@ -95,8 +108,15 @@ async function build() {
       },
     },
     session: {
-      expiresIn: env().OPENRIVE_SESSION_DAYS * 24 * 60 * 60,
+      expiresIn: settings.OPENRIVE_SESSION_DAYS * 24 * 60 * 60,
       updateAge: 24 * 60 * 60,
+      freshAge: 60 * 60,
+    },
+    rateLimit: {
+      enabled: settings.NODE_ENV === 'production',
+      storage: 'database',
+      window: 10,
+      max: 100,
     },
     // OpenRive's own columns on the users table. None of them can be set from a
     // sign-up request: an account does not get to pick its own role.
@@ -228,7 +248,8 @@ export async function sessionUser(headers: Headers): Promise<Account | null> {
   const instance = await auth();
   const session = await instance.api.getSession({ headers }).catch(() => null);
   if (!session?.user) return null;
-  return getAccount(session.user.id);
+  const account = await getAccount(session.user.id);
+  return account && !account.disabled ? account : null;
 }
 
 export interface NewAccount {
@@ -372,6 +393,12 @@ export async function revokeUserSessions(userId: string) {
   await conn.delete(schema.sessions).where(eq(schema.sessions.userId, userId));
 }
 
+/** Deletes an account and lets the database cascade its auth records. */
+export async function deleteAccount(userId: string) {
+  const conn = await db();
+  await conn.delete(schema.users).where(eq(schema.users.id, userId));
+}
+
 /** Housekeeping: drops sessions that expired. */
 export async function purgeExpiredSessions() {
   const conn = await db();
@@ -390,6 +417,15 @@ export function canEditProject(user: Account | User, project: ProjectMeta): bool
   if (user.role === 'viewer') return false;
   if (user.role === 'admin') return true;
   return project.ownerId === user.id || !!project.sharedWith?.includes(user.id);
+}
+
+/** Sharing, ownership and deletion are more privileged than editing content. */
+export function canManageProject(user: Account | User, project: ProjectMeta): boolean {
+  return user.role === 'admin' || project.ownerId === user.id;
+}
+
+export function canTransferProject(user: Account | User): boolean {
+  return user.role === 'admin';
 }
 
 export const canCreateProjects = (user: Account | User) => user.role !== 'viewer';

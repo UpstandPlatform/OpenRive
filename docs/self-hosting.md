@@ -40,8 +40,12 @@ cp .env.example .env
 Edit `.env`:
 
 ```env
-OPENRIVE_ACCESS_TOKEN=a-long-random-password
+OPENRIVE_URL=https://openrive.example.com
+OPENRIVE_SIGNUP=first
+OPENRIVE_AUTH_SECRET=a-long-random-secret-at-least-32-characters
 POSTGRES_PASSWORD=another-long-random-password
+# Optional second gate:
+# OPENRIVE_ACCESS_TOKEN=a-long-random-password
 # OPENRIVE_PORT=3000
 ```
 
@@ -167,10 +171,14 @@ then `node .next/standalone/server.js` (copy `public/` and `.next/static/` next 
 
 ## Platforms that deploy from git (Dokploy, Coolify, …)
 
-Point the platform at the repository and let it run `docker-compose.yml`; set `OPENRIVE_ACCESS_TOKEN` and
-`POSTGRES_PASSWORD` in its environment settings. Nothing else is needed — the published image is pulled (no build
-step on the deploy host, so a small server is enough) and the database comes up beside it. Redeploy to pick up a new
-image, or set `OPENRIVE_TAG` to pin a version.
+Point the platform at the repository and let it run `docker-compose.yml`. Set
+`OPENRIVE_URL` to the public HTTPS domain, `POSTGRES_PASSWORD` to a strong
+password, and either `OPENRIVE_AUTH_SECRET` to a strong 32+ character value or
+leave it unset so OpenRive generates and persists one in the database. Keep
+`OPENRIVE_SIGNUP=first` or `off` after the initial administrator is created.
+The optional `OPENRIVE_ACCESS_TOKEN` adds HTTP Basic auth in front of the
+application. The published image is pulled, so the deploy host does not need
+to build the project.
 
 These platforms clone with `--recurse-submodules`. The Rive SDK forks under `vendor/` are marked `update = none`, so
 they are skipped: they are developer tooling, and one of them has an `ssh://` submodule that a build server cannot

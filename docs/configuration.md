@@ -19,7 +19,11 @@ or in `docker-compose.yml`.
 | Variable | Default | Description |
 | --- | --- | --- |
 | `OPENRIVE_AUTH` | `auto` | `auto` requires a sign-in when `DATABASE_URL` is set, `on` always requires one, `off` never does. See [Accounts and sign-in](authentication.md). |
+| `OPENRIVE_URL` | `http://localhost:3000` | Public origin used by authentication and CLI/editor links. Set this to the HTTPS domain in production. |
+| `OPENRIVE_TRUSTED_ORIGINS` | `OPENRIVE_URL` | Comma-separated browser origins trusted by Better Auth. |
 | `OPENRIVE_SESSION_DAYS` | `30` | How long a sign-in lasts |
+| `OPENRIVE_AUTH_SECRET` | generated | Optional 32+ character secret. If omitted, a durable secret is generated in the database. |
+| `OPENRIVE_SIGNUP` | `first` | `open`, `first`, or `off`; use `first` or `off` on public deployments. |
 | `OPENRIVE_ACCESS_TOKEN` | – | When set, every request needs HTTP Basic auth with this password (any user name). `/api/health` stays open. Can be combined with accounts. |
 
 ## Server

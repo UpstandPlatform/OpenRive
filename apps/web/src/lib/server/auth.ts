@@ -1,12 +1,23 @@
 // Server-side access control. Every API route goes through these helpers, so
 // roles are enforced on the server and not only hidden in the interface.
-import { auth, authEnabled, canEditProject, canSeeProject, isAdmin, sessionUser, SESSION_COOKIE, type Account } from '@openrive/auth';
+import {
+  auth,
+  authEnabled,
+  canEditProject,
+  canManageProject,
+  canSeeProject,
+  canTransferProject,
+  isAdmin,
+  sessionUser,
+  SESSION_COOKIE,
+  type Account,
+} from '@openrive/auth';
 import { listUsers } from '@openrive/db';
 import type { ProjectMeta } from '@openrive/shared';
 import { headers } from 'next/headers';
 import { fail } from './route';
 
-export { auth, authEnabled, canEditProject, canSeeProject, isAdmin, SESSION_COOKIE };
+export { auth, authEnabled, canEditProject, canManageProject, canSeeProject, canTransferProject, isAdmin, SESSION_COOKIE };
 export type { Account };
 
 /**
@@ -43,6 +54,11 @@ export async function requireAdmin(): Promise<{ user: Account; error?: never } |
 /** Requires permission to change a project. */
 export function requireEdit(user: Account, project: ProjectMeta): Response | null {
   if (!canEditProject(user, project)) return fail('You cannot edit this file', 403);
+  return null;
+}
+
+export function requireProjectManager(user: Account, project: ProjectMeta): Response | null {
+  if (!canManageProject(user, project)) return fail('Only the owner or an administrator may manage this file', 403);
   return null;
 }
 

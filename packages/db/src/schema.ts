@@ -84,6 +84,14 @@ export const verifications = pgTable('verifications', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** Persistent Better Auth rate-limit windows for multi-process deployments. */
+export const rateLimit = pgTable('rate_limit', {
+  id: text('id').primaryKey(),
+  key: text('key').notNull().unique(),
+  count: integer('count').notNull(),
+  lastRequest: bigint('last_request', { mode: 'number' }).notNull(),
+});
+
 export const projects = pgTable('projects', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
@@ -112,3 +120,4 @@ export type UserRow = typeof users.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type AccountRow = typeof accounts.$inferSelect;
 export type ProjectRow = typeof projects.$inferSelect;
+export type RateLimitRow = typeof rateLimit.$inferSelect;

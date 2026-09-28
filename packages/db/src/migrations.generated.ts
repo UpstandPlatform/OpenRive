@@ -10,18 +10,18 @@ export interface EmbeddedMigration {
 export const migrations: EmbeddedMigration[] = [
   {
     "tag": "0000_plain_komodo",
-    "hash": "ee8950309fa646fd7979734d982f22abe6e6cac2c7a107fde337a68d27176615",
+    "hash": "bdfa8ab91b36f02a1e4cecc94930f971cf6fd9682f0dcfe874adb2d1c25a6704",
     "statements": [
-      "CREATE TABLE \"projects\" (\n\t\"id\" text PRIMARY KEY NOT NULL,\n\t\"name\" text NOT NULL,\n\t\"owner_id\" text DEFAULT '' NOT NULL,\n\t\"created_at\" bigint NOT NULL,\n\t\"updated_at\" bigint NOT NULL,\n\t\"thumbnail\" text,\n\t\"artboards\" integer,\n\t\"animations\" integer,\n\t\"state_machines\" integer,\n\t\"shared_with\" jsonb,\n\t\"doc\" text,\n\t\"riv\" \"bytea\"\n);",
-      "CREATE TABLE \"settings\" (\n\t\"key\" text PRIMARY KEY NOT NULL,\n\t\"value\" jsonb NOT NULL\n);",
-      "CREATE TABLE \"users\" (\n\t\"id\" text PRIMARY KEY NOT NULL,\n\t\"name\" text NOT NULL,\n\t\"color\" text NOT NULL,\n\t\"role\" text DEFAULT 'editor' NOT NULL,\n\t\"created_at\" bigint NOT NULL,\n\t\"position\" integer DEFAULT 0 NOT NULL\n);"
+      "CREATE TABLE \"projects\" (\r\n\t\"id\" text PRIMARY KEY NOT NULL,\r\n\t\"name\" text NOT NULL,\r\n\t\"owner_id\" text DEFAULT '' NOT NULL,\r\n\t\"created_at\" bigint NOT NULL,\r\n\t\"updated_at\" bigint NOT NULL,\r\n\t\"thumbnail\" text,\r\n\t\"artboards\" integer,\r\n\t\"animations\" integer,\r\n\t\"state_machines\" integer,\r\n\t\"shared_with\" jsonb,\r\n\t\"doc\" text,\r\n\t\"riv\" \"bytea\"\r\n);",
+      "CREATE TABLE \"settings\" (\r\n\t\"key\" text PRIMARY KEY NOT NULL,\r\n\t\"value\" jsonb NOT NULL\r\n);",
+      "CREATE TABLE \"users\" (\r\n\t\"id\" text PRIMARY KEY NOT NULL,\r\n\t\"name\" text NOT NULL,\r\n\t\"color\" text NOT NULL,\r\n\t\"role\" text DEFAULT 'editor' NOT NULL,\r\n\t\"created_at\" bigint NOT NULL,\r\n\t\"position\" integer DEFAULT 0 NOT NULL\r\n);"
     ]
   },
   {
     "tag": "0001_odd_felicia_hardy",
-    "hash": "3356403e30b357aedcc2f46643b19207a97ef4f203650351efe32e1b9b099907",
+    "hash": "acca953638c4ba067f5437d3a31cb563aeb9fc2088a81886d034b85881ff616d",
     "statements": [
-      "CREATE TABLE \"sessions\" (\n\t\"id\" text PRIMARY KEY NOT NULL,\n\t\"user_id\" text NOT NULL,\n\t\"created_at\" bigint NOT NULL,\n\t\"expires_at\" bigint NOT NULL,\n\t\"agent\" text\n);",
+      "CREATE TABLE \"sessions\" (\r\n\t\"id\" text PRIMARY KEY NOT NULL,\r\n\t\"user_id\" text NOT NULL,\r\n\t\"created_at\" bigint NOT NULL,\r\n\t\"expires_at\" bigint NOT NULL,\r\n\t\"agent\" text\r\n);",
       "ALTER TABLE \"users\" ADD COLUMN \"email\" text;",
       "ALTER TABLE \"users\" ADD COLUMN \"password_hash\" text;",
       "ALTER TABLE \"users\" ADD COLUMN \"disabled\" boolean DEFAULT false NOT NULL;",
@@ -31,7 +31,7 @@ export const migrations: EmbeddedMigration[] = [
   },
   {
     "tag": "0002_better_auth",
-    "hash": "86e24eabe226d1ad3198929259bf6486485513fc5549d1ace6e6fbfbadc7aded",
+    "hash": "964943a099070d5690215ff77da56a7fd057c47958ba5c7aba023e13c28f332e",
     "statements": [
       "ALTER TABLE \"users\" ADD COLUMN \"email_verified\" boolean DEFAULT false NOT NULL;",
       "ALTER TABLE \"users\" ADD COLUMN \"image\" text;",
@@ -40,14 +40,21 @@ export const migrations: EmbeddedMigration[] = [
       "ALTER TABLE \"users\" ALTER COLUMN \"last_login_at\" SET DATA TYPE timestamp with time zone USING to_timestamp(\"last_login_at\" / 1000.0);",
       "ALTER TABLE \"users\" ADD COLUMN \"updated_at\" timestamp with time zone DEFAULT now() NOT NULL;",
       "ALTER TABLE \"users\" ADD CONSTRAINT \"users_email_unique\" UNIQUE(\"email\");",
-      "CREATE TABLE \"accounts\" (\n\t\"id\" text PRIMARY KEY NOT NULL,\n\t\"user_id\" text NOT NULL,\n\t\"account_id\" text NOT NULL,\n\t\"provider_id\" text NOT NULL,\n\t\"password\" text,\n\t\"access_token\" text,\n\t\"refresh_token\" text,\n\t\"id_token\" text,\n\t\"access_token_expires_at\" timestamp with time zone,\n\t\"refresh_token_expires_at\" timestamp with time zone,\n\t\"scope\" text,\n\t\"created_at\" timestamp with time zone DEFAULT now() NOT NULL,\n\t\"updated_at\" timestamp with time zone DEFAULT now() NOT NULL\n);",
+      "CREATE TABLE \"accounts\" (\r\n\t\"id\" text PRIMARY KEY NOT NULL,\r\n\t\"user_id\" text NOT NULL,\r\n\t\"account_id\" text NOT NULL,\r\n\t\"provider_id\" text NOT NULL,\r\n\t\"password\" text,\r\n\t\"access_token\" text,\r\n\t\"refresh_token\" text,\r\n\t\"id_token\" text,\r\n\t\"access_token_expires_at\" timestamp with time zone,\r\n\t\"refresh_token_expires_at\" timestamp with time zone,\r\n\t\"scope\" text,\r\n\t\"created_at\" timestamp with time zone DEFAULT now() NOT NULL,\r\n\t\"updated_at\" timestamp with time zone DEFAULT now() NOT NULL\r\n);",
       "ALTER TABLE \"accounts\" ADD CONSTRAINT \"accounts_user_id_users_id_fk\" FOREIGN KEY (\"user_id\") REFERENCES \"public\".\"users\"(\"id\") ON DELETE cascade ON UPDATE no action;",
-      "INSERT INTO \"accounts\" (\"id\", \"user_id\", \"account_id\", \"provider_id\", \"password\", \"created_at\", \"updated_at\")\n\tSELECT md5(random()::text || \"id\"), \"id\", \"id\", 'credential', \"password_hash\", now(), now()\n\tFROM \"users\" WHERE \"password_hash\" IS NOT NULL;",
+      "INSERT INTO \"accounts\" (\"id\", \"user_id\", \"account_id\", \"provider_id\", \"password\", \"created_at\", \"updated_at\")\r\n\tSELECT md5(random()::text || \"id\"), \"id\", \"id\", 'credential', \"password_hash\", now(), now()\r\n\tFROM \"users\" WHERE \"password_hash\" IS NOT NULL;",
       "ALTER TABLE \"users\" DROP COLUMN \"password_hash\";",
-      "CREATE TABLE \"verifications\" (\n\t\"id\" text PRIMARY KEY NOT NULL,\n\t\"identifier\" text NOT NULL,\n\t\"value\" text NOT NULL,\n\t\"expires_at\" timestamp with time zone NOT NULL,\n\t\"created_at\" timestamp with time zone DEFAULT now() NOT NULL,\n\t\"updated_at\" timestamp with time zone DEFAULT now() NOT NULL\n);",
+      "CREATE TABLE \"verifications\" (\r\n\t\"id\" text PRIMARY KEY NOT NULL,\r\n\t\"identifier\" text NOT NULL,\r\n\t\"value\" text NOT NULL,\r\n\t\"expires_at\" timestamp with time zone NOT NULL,\r\n\t\"created_at\" timestamp with time zone DEFAULT now() NOT NULL,\r\n\t\"updated_at\" timestamp with time zone DEFAULT now() NOT NULL\r\n);",
       "DROP TABLE \"sessions\";",
-      "CREATE TABLE \"sessions\" (\n\t\"id\" text PRIMARY KEY NOT NULL,\n\t\"user_id\" text NOT NULL,\n\t\"token\" text NOT NULL,\n\t\"expires_at\" timestamp with time zone NOT NULL,\n\t\"created_at\" timestamp with time zone DEFAULT now() NOT NULL,\n\t\"updated_at\" timestamp with time zone DEFAULT now() NOT NULL,\n\t\"ip_address\" text,\n\t\"user_agent\" text,\n\tCONSTRAINT \"sessions_token_unique\" UNIQUE(\"token\")\n);",
+      "CREATE TABLE \"sessions\" (\r\n\t\"id\" text PRIMARY KEY NOT NULL,\r\n\t\"user_id\" text NOT NULL,\r\n\t\"token\" text NOT NULL,\r\n\t\"expires_at\" timestamp with time zone NOT NULL,\r\n\t\"created_at\" timestamp with time zone DEFAULT now() NOT NULL,\r\n\t\"updated_at\" timestamp with time zone DEFAULT now() NOT NULL,\r\n\t\"ip_address\" text,\r\n\t\"user_agent\" text,\r\n\tCONSTRAINT \"sessions_token_unique\" UNIQUE(\"token\")\r\n);",
       "ALTER TABLE \"sessions\" ADD CONSTRAINT \"sessions_user_id_users_id_fk\" FOREIGN KEY (\"user_id\") REFERENCES \"public\".\"users\"(\"id\") ON DELETE cascade ON UPDATE no action;"
+    ]
+  },
+  {
+    "tag": "0003_cute_starbolt",
+    "hash": "9c9fbbd2e132eb435feff5c06b4ddd54da6c1f5a0d9fb618c37f7406f7f0a58d",
+    "statements": [
+      "CREATE TABLE \"rate_limit\" (\n\t\"id\" text PRIMARY KEY NOT NULL,\n\t\"key\" text NOT NULL,\n\t\"count\" integer NOT NULL,\n\t\"last_request\" bigint NOT NULL,\n\tCONSTRAINT \"rate_limit_key_unique\" UNIQUE(\"key\")\n);"
     ]
   }
 ];

@@ -13,6 +13,11 @@ services:
     volumes:
       - openrive-data:/data
     environment:
+      OPENRIVE_URL: ${OPENRIVE_URL:-http://localhost:3000}
+      OPENRIVE_AUTH: ${OPENRIVE_AUTH:-on}
+      OPENRIVE_SIGNUP: ${OPENRIVE_SIGNUP:-first}
+      OPENRIVE_AUTH_SECRET: ${OPENRIVE_AUTH_SECRET:-}
+      OPENRIVE_TRUSTED_ORIGINS: ${OPENRIVE_TRUSTED_ORIGINS:-}
       OPENRIVE_ACCESS_TOKEN: ${OPENRIVE_ACCESS_TOKEN:-}
 volumes:
   openrive-data:

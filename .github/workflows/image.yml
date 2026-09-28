@@ -39,7 +39,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Keep GHCR releases behind the same checks as the normal CI workflow. A
+  # release tag must never publish an image that cannot pass the application
+  # checks or production build.
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - run: bun install --frozen-lockfile
+
+      - name: Types
+        run: bun run check-types
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Tests
+        run: bun run test
+
+      - name: Build
+        run: bun run build
+
   build:
+    needs: validate
     strategy:
       fail-fast: false
       matrix:

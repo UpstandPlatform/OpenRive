@@ -27,9 +27,11 @@ const envSchema = z.object({
   /** how long a sign-in lasts */
   OPENRIVE_SESSION_DAYS: z.coerce.number().int().positive().max(365).default(30),
   /** signs session cookies; generated and kept in the database when unset */
-  OPENRIVE_AUTH_SECRET: z.string().min(16).optional(),
+  OPENRIVE_AUTH_SECRET: z.string().min(32, 'must be at least 32 characters').optional(),
+  /** comma-separated origins allowed to call the authentication endpoints */
+  OPENRIVE_TRUSTED_ORIGINS: z.string().optional(),
   /** who may use the sign-up page: anyone, only the first (administrator) account, or nobody */
-  OPENRIVE_SIGNUP: z.enum(['open', 'first', 'off']).default('open'),
+  OPENRIVE_SIGNUP: z.enum(['open', 'first', 'off']).default('first'),
   PORT: z.coerce.number().int().positive().max(65535).default(3000),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 });
@@ -38,12 +40,15 @@ export type Env = z.infer<typeof envSchema>;
 
 function read(): Env {
   const source: Record<string, string | undefined> = typeof process === 'undefined' ? {} : process.env;
+  const optional = (value: string | undefined) => (value?.trim() ? value : undefined);
   const parsed = envSchema.safeParse({
     ...source,
     // legacy names from before the project was renamed to OpenRive
     DATABASE_URL: source.DATABASE_URL || source.OPENRIVE_DATABASE_URL || undefined,
     OPENRIVE_DATA_DIR: source.OPENRIVE_DATA_DIR || source.RIVE_EDITOR_DATA_DIR || undefined,
-    OPENRIVE_ACCESS_TOKEN: source.OPENRIVE_ACCESS_TOKEN || source.RIVE_EDITOR_ACCESS_TOKEN || undefined,
+    OPENRIVE_ACCESS_TOKEN: optional(source.OPENRIVE_ACCESS_TOKEN || source.RIVE_EDITOR_ACCESS_TOKEN),
+    OPENRIVE_AUTH_SECRET: optional(source.OPENRIVE_AUTH_SECRET),
+    OPENRIVE_TRUSTED_ORIGINS: optional(source.OPENRIVE_TRUSTED_ORIGINS),
     OPENRIVE_USER: source.OPENRIVE_USER || source.RIVE_EDITOR_USER || undefined,
   });
   if (!parsed.success) {

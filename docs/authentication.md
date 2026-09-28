@@ -29,7 +29,7 @@ the **administrator** and is signed in straight away; everyone who signs up late
 ## Who may sign up
 
 ```env
-OPENRIVE_SIGNUP=open    # default: anyone who can reach the server can create an account
+OPENRIVE_SIGNUP=first   # default: only the initial administrator can sign up
 OPENRIVE_SIGNUP=first   # only the administrator account; an admin adds the rest
 OPENRIVE_SIGNUP=off     # nobody: accounts are created with `openrive users add`
 ```
@@ -72,8 +72,14 @@ Cookies are signed with `OPENRIVE_AUTH_SECRET`. Leave it unset and OpenRive gene
 in the database, so sessions survive a restart; set it explicitly to share one secret across several app containers:
 
 ```env
-OPENRIVE_AUTH_SECRET=a-long-random-string
+OPENRIVE_AUTH_SECRET=a-long-random-string-at-least-32-characters
 ```
+
+When authentication is enabled in production, set `OPENRIVE_URL` to the public
+origin, for example `https://openrive.example.com`. If the browser is served
+from additional origins, list them in `OPENRIVE_TRUSTED_ORIGINS` as a
+comma-separated value. Authentication requests are rate limited and the limits
+are stored in the database so multiple app processes share them.
 
 ## Passwords
 
@@ -90,6 +96,7 @@ scrypt.
 | `accounts` | how an account signs in — one `credential` row per password |
 | `sessions` | who is signed in, from which browser and until when |
 | `verifications` | short-lived tokens; empty unless something asks for one |
+| `rate_limit` | Better Auth request-rate windows |
 
 One row per person in `users`, whether they sign in or are just a name a local, login-free run attributes files to.
 
