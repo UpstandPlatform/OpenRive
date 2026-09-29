@@ -80,7 +80,10 @@ services:
       - openrive-minio:/data
 
   minio-init:
-    image: quay.io/minio/mc:latest
+    # The MinIO server image also contains the matching mc client. Keeping the
+    # initializer on the same first-party image avoids a second registry and
+    # prevents client/server version drift.
+    image: quay.io/minio/minio:latest
     restart: "no"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER}
