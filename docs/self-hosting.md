@@ -48,7 +48,7 @@ POSTGRES_PASSWORD=another-long-random-password
 # OPENRIVE_ACCESS_TOKEN=a-long-random-password
 # OPENRIVE_PORT=3000
 # Redis is included by the Compose stack; its URL inside the stack is
-# redis://redis:6379 and its data is memory-only by design.
+# redis://openrive-redis:6379 and its data is memory-only by design.
 ```
 
 Start it:

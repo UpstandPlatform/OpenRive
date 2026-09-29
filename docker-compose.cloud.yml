@@ -16,15 +16,15 @@ services:
       OPENRIVE_SIGNUP: ${OPENRIVE_SIGNUP:-first}
       OPENRIVE_AUTH_SECRET: ${OPENRIVE_AUTH_SECRET:?Set a random 32+ character auth secret}
       OPENRIVE_TRUSTED_ORIGINS: ${OPENRIVE_TRUSTED_ORIGINS:-}
-      OPENRIVE_REDIS_URL: redis://redis:6379
+      OPENRIVE_REDIS_URL: redis://openrive-redis:6379
       OPENRIVE_REDIS_MAXMEMORY: ${OPENRIVE_REDIS_MAXMEMORY:-128mb}
-      OPENRIVE_STORAGE_ENDPOINT: http://minio:9000
+      OPENRIVE_STORAGE_ENDPOINT: ${OPENRIVE_STORAGE_ENDPOINT:-http://openrive-minio:9000}
       OPENRIVE_STORAGE_REGION: ${OPENRIVE_STORAGE_REGION:-us-east-1}
       OPENRIVE_STORAGE_BUCKET: ${OPENRIVE_STORAGE_BUCKET:-openrive}
       OPENRIVE_STORAGE_ACCESS_KEY_ID: ${OPENRIVE_STORAGE_ACCESS_KEY_ID:?Set OPENRIVE_STORAGE_ACCESS_KEY_ID}
       OPENRIVE_STORAGE_SECRET_ACCESS_KEY: ${OPENRIVE_STORAGE_SECRET_ACCESS_KEY:?Set OPENRIVE_STORAGE_SECRET_ACCESS_KEY}
-      OPENRIVE_STORAGE_FORCE_PATH_STYLE: "true"
-      DATABASE_URL: postgres://${POSTGRES_USER:-openrive}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-openrive}
+      OPENRIVE_STORAGE_FORCE_PATH_STYLE: ${OPENRIVE_STORAGE_FORCE_PATH_STYLE:-true}
+      DATABASE_URL: postgres://${POSTGRES_USER:-openrive}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@openrive-db:5432/${POSTGRES_DB:-openrive}
       OPENRIVE_ACCESS_TOKEN: ${OPENRIVE_ACCESS_TOKEN:-}
     volumes:
       - openrive-data:/data
@@ -35,7 +35,6 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
-
   db:
     image: postgres:17-alpine
     restart: unless-stopped
@@ -50,6 +49,10 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+    networks:
+      default:
+        aliases:
+          - openrive-db
 
   redis:
     image: redis:7.4-alpine
@@ -70,6 +73,10 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+    networks:
+      default:
+        aliases:
+          - openrive-redis
 
   minio:
     image: quay.io/minio/minio:latest
@@ -85,6 +92,10 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+    networks:
+      default:
+        aliases:
+          - openrive-minio
 
   minio-init:
     # The MinIO server image also contains the matching mc client. Keeping the
@@ -100,10 +111,14 @@ services:
       MINIO_BUCKET: ${OPENRIVE_STORAGE_BUCKET:-openrive}
     entrypoint: ["/bin/sh", "-c"]
     command:
-      - 'if [ "$${#OPENRIVE_STORAGE_ACCESS_KEY_ID}" -gt 20 ] || [ "$${#OPENRIVE_STORAGE_SECRET_ACCESS_KEY}" -gt 40 ]; then echo "MinIO application credentials exceed its compatibility limits"; exit 1; fi; until mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"; do sleep 2; done; mc mb --ignore-existing "local/$${MINIO_BUCKET}"; mc admin user remove local "$${OPENRIVE_STORAGE_ACCESS_KEY_ID}" >/dev/null 2>&1 || true; mc admin user add local "$${OPENRIVE_STORAGE_ACCESS_KEY_ID}" "$${OPENRIVE_STORAGE_SECRET_ACCESS_KEY}"; mc admin policy attach local readwrite --user "$${OPENRIVE_STORAGE_ACCESS_KEY_ID}"; mc alias set app http://minio:9000 "$${OPENRIVE_STORAGE_ACCESS_KEY_ID}" "$${OPENRIVE_STORAGE_SECRET_ACCESS_KEY}"; mc stat "app/$${MINIO_BUCKET}" >/dev/null'
+      - 'if [ "$${#OPENRIVE_STORAGE_ACCESS_KEY_ID}" -gt 20 ] || [ "$${#OPENRIVE_STORAGE_SECRET_ACCESS_KEY}" -gt 40 ]; then echo "MinIO application credentials exceed its compatibility limits"; exit 1; fi; until mc alias set local http://openrive-minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"; do sleep 2; done; mc mb --ignore-existing "local/$${MINIO_BUCKET}"; mc admin user remove local "$${OPENRIVE_STORAGE_ACCESS_KEY_ID}" >/dev/null 2>&1 || true; mc admin user add local "$${OPENRIVE_STORAGE_ACCESS_KEY_ID}" "$${OPENRIVE_STORAGE_SECRET_ACCESS_KEY}"; mc admin policy attach local readwrite --user "$${OPENRIVE_STORAGE_ACCESS_KEY_ID}"; mc alias set app http://openrive-minio:9000 "$${OPENRIVE_STORAGE_ACCESS_KEY_ID}" "$${OPENRIVE_STORAGE_SECRET_ACCESS_KEY}"; mc stat "app/$${MINIO_BUCKET}" >/dev/null'
     depends_on:
       minio:
         condition: service_healthy
+    networks:
+      default:
+        aliases:
+          - openrive-minio-init
 
 volumes:
   openrive-data:
