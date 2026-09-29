@@ -200,6 +200,28 @@ use https instead of ssh on the build host:
 git config --global url."https://github.com/".insteadOf "git@github.com:"
 ```
 
+### Private cloud Compose deployment
+
+Use `docker-compose.cloud.yml` when the deployment is intended to be the cloud edition. It runs PostgreSQL, ephemeral
+Redis, and MinIO. MinIO's data volume is persistent because it contains project files; Redis deliberately has no
+volume and no RDB/AOF persistence. Set these values in the deployment platform rather than committing them:
+
+```env
+OPENRIVE_EDITION=cloud
+OPENRIVE_URL=https://openrive.example.com
+OPENRIVE_TAG=0.0.12
+OPENRIVE_AUTH_SECRET=<random 32+ character secret>
+POSTGRES_PASSWORD=<random database password>
+MINIO_ROOT_USER=<random storage access key>
+MINIO_ROOT_PASSWORD=<random storage secret>
+OPENRIVE_STORAGE_ACCESS_KEY_ID=<random application access key>
+OPENRIVE_STORAGE_SECRET_ACCESS_KEY=<random application storage secret>
+OPENRIVE_STORAGE_BUCKET=openrive
+```
+
+The cloud stack can later point at AWS S3 or Cloudflare R2 by replacing the storage endpoint and credentials in the
+application environment; the application code does not change. Billing is not part of this edition.
+
 ## HTTPS with a reverse proxy
 
 Put OpenRive behind a proxy that handles TLS.

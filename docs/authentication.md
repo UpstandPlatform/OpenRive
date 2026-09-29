@@ -6,6 +6,7 @@ OpenRive has two ways of knowing who you are:
 | --- | --- | --- |
 | **Login-free** | a local run or the desktop app | pick a user from the header, as OpenRive has always worked |
 | **Sign-in** | self-hosted (a `DATABASE_URL` is set) | an email and a password, sessions, and an admin dashboard |
+| **Cloud sign-in** | `OPENRIVE_EDITION=cloud` | mandatory Better Auth sign-in with PostgreSQL sessions and Redis rate limits |
 
 Set `OPENRIVE_AUTH` to choose explicitly:
 
@@ -14,6 +15,8 @@ OPENRIVE_AUTH=auto   # default: sign-in required when DATABASE_URL is set
 OPENRIVE_AUTH=on     # always require sign-in (also with the embedded database)
 OPENRIVE_AUTH=off    # never require sign-in (single user on a trusted machine)
 ```
+
+Cloud deployments always require authentication; `OPENRIVE_AUTH=off` is rejected by startup configuration.
 
 Accounts are handled by [Better Auth](https://better-auth.com): email and password, no external provider.
 

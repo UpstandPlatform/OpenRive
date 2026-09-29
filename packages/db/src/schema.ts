@@ -108,6 +108,8 @@ export const projects = pgTable('projects', {
   doc: text('doc'),
   /** exported Rive file */
   riv: bytes('riv'),
+  /** object-storage key used by cloud deployments; null means the file is in riv */
+  rivStorageKey: text('riv_storage_key'),
 });
 
 /** Small key/value store: first-run marker, schema housekeeping. */

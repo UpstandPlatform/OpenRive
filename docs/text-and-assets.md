@@ -11,7 +11,8 @@ Rive text objects are fully supported and render with the official text engine.
 - **Fonts**: Inter Regular and Bold are bundled and embedded automatically. Upload a `.ttf`/`.otf` from the inspector,
   or import one in the Assets tab.
 
-Fonts are embedded in the `.riv` in full. Inter adds about 340 KB, and font subsetting is not implemented yet.
+Fonts are embedded in the `.riv` in full. Inter adds about 340 KB; the current format pipeline intentionally keeps the
+bundled font data complete for predictable offline rendering.
 
 ## Assets tab
 

@@ -5,6 +5,8 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { z } from 'zod';
 
 const envSchema = z.object({
+  /** Explicit product edition. When omitted, local is inferred without PostgreSQL and self_hosted with it. */
+  OPENRIVE_EDITION: z.enum(['local', 'self_hosted', 'cloud']).optional(),
   /** PostgreSQL connection string. Without it an embedded PostgreSQL (PGlite) runs from OPENRIVE_DATA_DIR. */
   DATABASE_URL: z.string().url().optional(),
   /** Folder for the embedded database and for CLI imports/exports. */
@@ -24,6 +26,16 @@ const envSchema = z.object({
   OPENRIVE_DB_WAIT_SECONDS: z.coerce.number().int().nonnegative().max(600).default(60),
   /** Redis for distributed rate limits, locks and other ephemeral coordination. */
   OPENRIVE_REDIS_URL: z.string().url().optional(),
+  /** S3-compatible object storage used by the cloud edition for project files. */
+  OPENRIVE_STORAGE_ENDPOINT: z.string().url().optional(),
+  OPENRIVE_STORAGE_REGION: z.string().trim().min(1).default('us-east-1'),
+  OPENRIVE_STORAGE_BUCKET: z.string().trim().min(1).optional(),
+  OPENRIVE_STORAGE_ACCESS_KEY_ID: z.string().trim().min(1).optional(),
+  OPENRIVE_STORAGE_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+  OPENRIVE_STORAGE_FORCE_PATH_STYLE: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
   /** 'auto' requires sign-in when DATABASE_URL is set (a shared deployment) */
   OPENRIVE_AUTH: z.enum(['auto', 'on', 'off']).default('auto'),
   /** how long a sign-in lasts */
@@ -38,7 +50,8 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 });
 
-export type Env = z.infer<typeof envSchema>;
+export type Edition = 'local' | 'self_hosted' | 'cloud';
+export type Env = Omit<z.infer<typeof envSchema>, 'OPENRIVE_EDITION'> & { OPENRIVE_EDITION: Edition };
 
 function read(): Env {
   const source: Record<string, string | undefined> = typeof process === 'undefined' ? {} : process.env;
@@ -52,13 +65,36 @@ function read(): Env {
     OPENRIVE_AUTH_SECRET: optional(source.OPENRIVE_AUTH_SECRET),
     OPENRIVE_TRUSTED_ORIGINS: optional(source.OPENRIVE_TRUSTED_ORIGINS),
     OPENRIVE_REDIS_URL: optional(source.OPENRIVE_REDIS_URL),
+    OPENRIVE_STORAGE_ENDPOINT: optional(source.OPENRIVE_STORAGE_ENDPOINT),
+    OPENRIVE_STORAGE_BUCKET: optional(source.OPENRIVE_STORAGE_BUCKET),
+    OPENRIVE_STORAGE_ACCESS_KEY_ID: optional(source.OPENRIVE_STORAGE_ACCESS_KEY_ID),
+    OPENRIVE_STORAGE_SECRET_ACCESS_KEY: optional(source.OPENRIVE_STORAGE_SECRET_ACCESS_KEY),
     OPENRIVE_USER: source.OPENRIVE_USER || source.RIVE_EDITOR_USER || undefined,
   });
   if (!parsed.success) {
     const lines = parsed.error.issues.map((i) => `  ${i.path.join('.')}: ${i.message}`).join('\n');
     throw new Error(`Invalid environment configuration:\n${lines}`);
   }
-  return parsed.data;
+  const data = parsed.data;
+  const edition = data.OPENRIVE_EDITION ?? (data.DATABASE_URL ? 'self_hosted' : 'local');
+  const errors: string[] = [];
+
+  if (edition === 'cloud') {
+    if (!data.DATABASE_URL) errors.push('DATABASE_URL is required for the cloud edition');
+    if (!data.OPENRIVE_REDIS_URL) errors.push('OPENRIVE_REDIS_URL is required for the cloud edition');
+    if (!data.OPENRIVE_AUTH_SECRET) errors.push('OPENRIVE_AUTH_SECRET is required for the cloud edition');
+    if (data.OPENRIVE_AUTH === 'off') errors.push('OPENRIVE_AUTH=off is not allowed for the cloud edition');
+    if (!data.OPENRIVE_STORAGE_ENDPOINT) errors.push('OPENRIVE_STORAGE_ENDPOINT is required for the cloud edition');
+    if (!data.OPENRIVE_STORAGE_BUCKET) errors.push('OPENRIVE_STORAGE_BUCKET is required for the cloud edition');
+    if (!data.OPENRIVE_STORAGE_ACCESS_KEY_ID) errors.push('OPENRIVE_STORAGE_ACCESS_KEY_ID is required for the cloud edition');
+    if (!data.OPENRIVE_STORAGE_SECRET_ACCESS_KEY) errors.push('OPENRIVE_STORAGE_SECRET_ACCESS_KEY is required for the cloud edition');
+    if (data.NODE_ENV === 'production' && !data.OPENRIVE_URL.startsWith('https://')) {
+      errors.push('OPENRIVE_URL must use https:// in cloud production');
+    }
+  }
+
+  if (errors.length) throw new Error(`Invalid environment configuration:\n${errors.map((error) => `  ${error}`).join('\n')}`);
+  return { ...data, OPENRIVE_EDITION: edition };
 }
 
 let cached: Env | null = null;
@@ -73,6 +109,7 @@ export function env(): Env {
  * layer can answer it too (it seeds a local user only when it does not).
  */
 export function authRequired(): boolean {
+  if (env().OPENRIVE_EDITION === 'cloud') return true;
   const mode = env().OPENRIVE_AUTH;
   if (mode === 'on') return true;
   if (mode === 'off') return false;

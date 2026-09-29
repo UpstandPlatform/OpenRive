@@ -9,6 +9,7 @@ import { getTemplate, TEMPLATES } from '@openrive/rive/templates';
 import type { ProjectMeta } from '@openrive/shared';
 import { env } from '@openrive/shared/env';
 import { parseDoc, stringifyDoc } from '@openrive/shared/serialize';
+import { createObjectStorage, legacyProjectRivKey, projectRivKey, type ObjectStorage } from '@openrive/storage';
 
 /** Repository root (apps/cli/src -> ../../..), used for bundled fonts and examples. */
 export const PROJECT_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '../../..');
@@ -17,6 +18,60 @@ const WEB_PUBLIC = path.join(PROJECT_ROOT, 'apps', 'web', 'public');
 export { storage, TEMPLATES, EXAMPLES };
 
 export class StoreError extends Error {}
+
+let objectStorage: Promise<ObjectStorage> | null = null;
+const cloudEdition = () => env().OPENRIVE_EDITION === 'cloud';
+const blobs = () => (objectStorage ??= Promise.resolve().then(() => createObjectStorage()));
+
+async function saveProjectRiv(id: string, bytes: Uint8Array) {
+  if (!cloudEdition()) return { riv: bytes } as const;
+  const previous = await storage.getProjectAsset(id);
+  const key = projectRivKey(id);
+  await (await blobs()).put(key, bytes, 'application/octet-stream');
+  const updated = await storage.updateProject(id, { riv: null, rivStorageKey: key });
+  if (!updated) {
+    await (await blobs()).delete(key);
+    throw new StoreError(`Project "${id}" disappeared while saving its file`);
+  }
+  if (previous?.rivStorageKey && previous.rivStorageKey !== key) await (await blobs()).delete(previous.rivStorageKey);
+  return { rivStorageKey: key } as const;
+}
+
+async function createStoredProject(input: Parameters<typeof storage.createProject>[0], bytes: Uint8Array) {
+  const meta = await storage.createProject({ ...input, riv: cloudEdition() ? undefined : bytes });
+  if (!cloudEdition()) return meta;
+  let key: string | undefined;
+  try {
+    key = projectRivKey(meta.id);
+    await (await blobs()).put(key, bytes, 'application/octet-stream');
+    const pointed = await storage.updateProject(meta.id, { riv: null, rivStorageKey: key });
+    if (!pointed) throw new StoreError(`Project "${meta.id}" disappeared while saving its file`);
+    return pointed;
+  } catch (error) {
+    await storage.deleteProject(meta.id);
+    if (key) await (await blobs()).delete(key);
+    throw error;
+  }
+}
+
+export async function getProjectRiv(id: string): Promise<Uint8Array | null> {
+  const asset = await storage.getProjectAsset(id);
+  if (!asset) return null;
+  if (asset.riv && cloudEdition()) {
+    const key = legacyProjectRivKey(id);
+    await (await blobs()).put(key, asset.riv, 'application/octet-stream');
+    await storage.updateProject(id, { riv: null, rivStorageKey: key });
+    return asset.riv;
+  }
+  if (asset.riv) return asset.riv;
+  return asset.rivStorageKey ? (await blobs()).get(asset.rivStorageKey) : null;
+}
+
+export async function deleteProject(id: string) {
+  const asset = await storage.getProjectAsset(id);
+  await storage.deleteProject(id);
+  if (cloudEdition() && asset?.rivStorageKey) await (await blobs()).delete(asset.rivStorageKey);
+}
 
 export function loadFont(name = 'Inter') {
   const file = name === 'Inter Bold' ? 'Inter-Bold.ttf' : 'Inter-Regular.ttf';
@@ -67,7 +122,7 @@ export async function loadDoc(ref: string): Promise<{ meta: ProjectMeta; doc: Ri
 }
 
 export async function saveDoc(id: string, doc: RiveDoc) {
-  return storage.updateProject(id, { doc: stringifyDoc(doc), riv: exportRiv(doc), ...stats(doc) });
+  return storage.updateProject(id, { doc: stringifyDoc(doc), ...stats(doc), ...(await saveProjectRiv(id, exportRiv(doc))) });
 }
 
 /** Loads a project, applies a change and saves it (an open editor picks the change up automatically). */
@@ -85,23 +140,22 @@ export async function createProject(name: string, template = 'blank', ownerId?: 
     throw new StoreError(`Unknown template "${template}". Available: ${[...TEMPLATES, ...EXAMPLES].map((x) => x.id).join(', ')}`);
   }
   const doc = fromTemplate ? fromTemplate.build(loadFont()) : importRiv(new Uint8Array(readFileSync(path.join(WEB_PUBLIC, example!.file))));
-  const meta = await storage.createProject({
+  const riv = exportRiv(doc);
+  return createStoredProject({
     name,
     ownerId: ownerId ?? (await defaultOwner()),
     doc: stringifyDoc(doc),
-    riv: exportRiv(doc),
     ...stats(doc),
-  });
-  return meta;
+  }, riv);
 }
 
 export async function importFile(file: string, name?: string, ownerId?: string) {
   const doc = importRiv(new Uint8Array(readFileSync(file)));
-  return storage.createProject({
+  const riv = exportRiv(doc);
+  return createStoredProject({
     name: name ?? path.basename(file).replace(/\.riv$/i, ''),
     ownerId: ownerId ?? (await defaultOwner()),
     doc: stringifyDoc(doc),
-    riv: exportRiv(doc),
     ...stats(doc),
-  });
+  }, riv);
 }

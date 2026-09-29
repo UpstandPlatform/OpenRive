@@ -15,6 +15,22 @@ or in `docker-compose.yml`.
 | `OPENRIVE_DB_WAIT_SECONDS` | `60` | How long to wait for a PostgreSQL server that is still starting before giving up |
 | `OPENRIVE_REDIS_URL` | – | Optional Redis URL for distributed rate limits, locks and ephemeral coordination. The Compose stack uses `redis://redis:6379`. |
 
+`OPENRIVE_EDITION` is `local`, `self_hosted`, or `cloud`. If omitted, OpenRive infers `local` without `DATABASE_URL` and
+`self_hosted` with it. Cloud is strict: it requires PostgreSQL, Redis, Better Auth, an HTTPS public URL in production,
+and all object-storage settings below.
+
+For cloud, `.riv` files are stored in an S3-compatible object store. Use `OPENRIVE_STORAGE_FORCE_PATH_STYLE=true` for
+MinIO and `false` for AWS S3 or R2:
+
+| Variable | Description |
+| --- | --- |
+| `OPENRIVE_STORAGE_ENDPOINT` | S3, R2, or MinIO endpoint |
+| `OPENRIVE_STORAGE_REGION` | Provider region, usually `us-east-1` |
+| `OPENRIVE_STORAGE_BUCKET` | Bucket name |
+| `OPENRIVE_STORAGE_ACCESS_KEY_ID` | Provider access key |
+| `OPENRIVE_STORAGE_SECRET_ACCESS_KEY` | Provider secret key |
+| `OPENRIVE_STORAGE_FORCE_PATH_STYLE` | `true` for MinIO; `false` for AWS/R2 |
+
 ## Access
 
 | Variable | Default | Description |
@@ -41,6 +57,10 @@ or in `docker-compose.yml`.
 | --- | --- | --- |
 | `OPENRIVE_PORT` | `3000` | Host port published by compose |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `openrive` | Credentials of the bundled PostgreSQL. **Change the password.** |
+
+The regular `docker-compose.yml` is self-hosted. The private cloud stack is `docker-compose.cloud.yml`; it adds
+persistent MinIO object storage while keeping Redis memory-only. It requires `OPENRIVE_URL`, `OPENRIVE_AUTH_SECRET`,
+`POSTGRES_PASSWORD`, `MINIO_ROOT_USER`, and `MINIO_ROOT_PASSWORD`.
 
 ## CLI, MCP and the desktop app
 

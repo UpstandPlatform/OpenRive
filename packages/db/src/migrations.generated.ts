@@ -56,5 +56,12 @@ export const migrations: EmbeddedMigration[] = [
     "statements": [
       "CREATE TABLE \"rate_limit\" (\n\t\"id\" text PRIMARY KEY NOT NULL,\n\t\"key\" text NOT NULL,\n\t\"count\" integer NOT NULL,\n\t\"last_request\" bigint NOT NULL,\n\tCONSTRAINT \"rate_limit_key_unique\" UNIQUE(\"key\")\n);"
     ]
+  },
+  {
+    "tag": "0004_rare_jetstream",
+    "hash": "4736072bd358a8551520c058a5a33d5181f8bbc5c9c829c9e49cb6164205ce74",
+    "statements": [
+      "ALTER TABLE \"projects\" ADD COLUMN \"riv_storage_key\" text;"
+    ]
   }
 ];

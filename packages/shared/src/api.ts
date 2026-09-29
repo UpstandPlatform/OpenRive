@@ -52,7 +52,14 @@ export const updateUserSchema = z.object({
 });
 
 export const projectDocSchema = z.object({ meta: projectMetaSchema, doc: z.unknown().nullable() });
-export const healthSchema = z.object({ ok: z.boolean(), storage: z.string(), error: z.string().optional() });
+export const healthSchema = z.object({
+  ok: z.boolean(),
+  storage: z.string(),
+  edition: z.enum(['local', 'self_hosted', 'cloud']).optional(),
+  objectStorage: z.enum(['disabled', 'ready']).optional(),
+  redis: z.enum(['disabled', 'ready']).optional(),
+  error: z.string().optional(),
+});
 export const usersSchema = z.array(userSchema);
 export const projectsSchema = z.array(projectMetaSchema);
 

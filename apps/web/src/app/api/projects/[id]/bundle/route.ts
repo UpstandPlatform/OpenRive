@@ -2,10 +2,11 @@
 // the .riv file and — unless ?runtime=cdn — the Rive runtime itself.
 import { buildBundle, bundleFileName } from '@openrive/rive/bundle';
 import { importRiv } from '@openrive/rive/document';
-import { getProjectMeta, getProjectRiv } from '@openrive/db';
+import { getProjectMeta } from '@openrive/db';
 import { handler, notFound, routeId } from '@/lib/server/route';
 import { canSeeProject, requireUser } from '@/lib/server/auth';
 import { runtimeFiles, runtimeInfo } from '@/lib/server/riveRuntime';
+import { readProjectRiv } from '@/lib/server/project-storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +15,7 @@ export const GET = handler(async (request: Request, ctx: RouteContext<'/api/proj
   if (error) return error;
   const guard = await requireUser();
   if (guard.error) return guard.error;
-  const [meta, stored] = await Promise.all([getProjectMeta(id), getProjectRiv(id)]);
+  const [meta, stored] = await Promise.all([getProjectMeta(id), readProjectRiv(id)]);
   if (!meta || !stored) return notFound();
   if (!canSeeProject(guard.user, meta)) return notFound();
 

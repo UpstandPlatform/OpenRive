@@ -16,6 +16,7 @@
     "@openrive/db": "workspace:*",
     "@openrive/rive": "workspace:*",
     "@openrive/shared": "workspace:*",
+    "@openrive/storage": "workspace:*",
     "@opentui/core": "^0.5.12",
     "@opentui/react": "^0.5.12",
     "nanoid": "catalog:",

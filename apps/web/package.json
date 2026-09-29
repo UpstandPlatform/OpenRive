@@ -16,6 +16,7 @@
     "@openrive/db": "workspace:*",
     "@openrive/rive": "workspace:*",
     "@openrive/shared": "workspace:*",
+    "@openrive/storage": "workspace:*",
     "@openrive/ui": "workspace:*",
     "@rive-app/canvas-advanced": "^2.42.2",
     "better-auth": "1.7.6",

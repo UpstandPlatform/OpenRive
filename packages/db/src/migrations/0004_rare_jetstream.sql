@@ -1,0 +1,1 @@
+ALTER TABLE "projects" ADD COLUMN "riv_storage_key" text;

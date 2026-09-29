@@ -90,11 +90,21 @@ export async function getProjectRiv(id: string): Promise<Uint8Array | null> {
   return row?.riv ?? null;
 }
 
+export async function getProjectAsset(id: string): Promise<{ riv: Uint8Array | null; rivStorageKey: string | null } | null> {
+  const conn = await db();
+  const [row] = await conn
+    .select({ riv: projects.riv, rivStorageKey: projects.rivStorageKey })
+    .from(projects)
+    .where(eq(projects.id, safeId(id)));
+  return row ? { riv: row.riv, rivStorageKey: row.rivStorageKey } : null;
+}
+
 export interface CreateProject {
   name: string;
   ownerId: string;
   doc: string;
   riv?: Uint8Array;
+  rivStorageKey?: string;
   thumbnail?: string;
   artboards?: number;
   animations?: number;
@@ -114,6 +124,7 @@ export async function createProject(input: CreateProject): Promise<ProjectMeta> 
       updatedAt: now,
       doc: input.doc,
       riv: input.riv,
+      rivStorageKey: input.rivStorageKey,
       thumbnail: input.thumbnail,
       artboards: input.artboards,
       animations: input.animations,
@@ -125,7 +136,8 @@ export async function createProject(input: CreateProject): Promise<ProjectMeta> 
 
 export type UpdateProject = Partial<Pick<ProjectMeta, 'name' | 'thumbnail' | 'artboards' | 'animations' | 'stateMachines' | 'ownerId' | 'sharedWith'>> & {
   doc?: string;
-  riv?: Uint8Array;
+  riv?: Uint8Array | null;
+  rivStorageKey?: string | null;
 };
 
 export async function updateProject(id: string, patch: UpdateProject): Promise<ProjectMeta | null> {
@@ -151,7 +163,7 @@ export async function duplicateProject(id: string, ownerId: string): Promise<Pro
   const now = Date.now();
   const [copy] = await conn
     .insert(projects)
-    .values({ ...row, id: nanoid(12), name: `${row.name} Copy`, ownerId, createdAt: now, updatedAt: now })
+    .values({ ...row, id: nanoid(12), name: `${row.name} Copy`, ownerId, createdAt: now, updatedAt: now, rivStorageKey: null })
     .returning();
   return toMeta(copy!);
 }

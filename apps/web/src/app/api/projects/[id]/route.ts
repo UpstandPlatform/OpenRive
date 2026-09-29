@@ -1,8 +1,9 @@
-import { deleteProject, getProject, getProjectMeta, listUsers, updateProject } from '@openrive/db';
+import { deleteProject, getProject, getProjectAsset, getProjectMeta, listUsers, updateProject } from '@openrive/db';
 import { updateProjectSchema } from '@openrive/shared';
 import { fromBase64 } from '@openrive/shared/serialize';
 import { body, fail, handler, json, notFound, routeId } from '@/lib/server/route';
 import { canSeeProject, canTransferProject, requireEdit, requireProjectManager, requireUser } from '@/lib/server/auth';
+import { cloudEdition, pointProjectRiv, removeProjectRiv, uploadProjectRiv } from '@/lib/server/project-storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,7 +48,22 @@ export const PUT = handler(async (request: Request, ctx: RouteContext<'/api/proj
     ...(ownerId !== undefined ? { ownerId } : {}),
     ...(sharedWith !== undefined ? { sharedWith: [...new Set(sharedWith)] } : {}),
   };
-  const meta = await updateProject(id, { ...patch, ...(riv ? { riv: fromBase64(riv) } : {}), ...accessPatch });
+  const bytes = riv ? fromBase64(riv) : undefined;
+  const oldAsset = bytes && cloudEdition() ? await getProjectAsset(id) : null;
+  const newKey = bytes && cloudEdition() ? await uploadProjectRiv(id, bytes) : undefined;
+  let meta: Awaited<ReturnType<typeof updateProject>>;
+  try {
+    meta = await updateProject(id, { ...patch, ...(bytes && !cloudEdition() ? { riv: bytes } : {}), ...accessPatch });
+    if (meta && newKey) await pointProjectRiv(id, newKey);
+  } catch (error) {
+    if (newKey) await removeProjectRiv(newKey);
+    throw error;
+  }
+  if (!meta) {
+    if (newKey) await removeProjectRiv(newKey);
+    return notFound();
+  }
+  if (newKey && oldAsset?.rivStorageKey && oldAsset.rivStorageKey !== newKey) await removeProjectRiv(oldAsset.rivStorageKey);
   return meta ? json(meta) : notFound();
 });
 
@@ -60,6 +76,8 @@ export const DELETE = handler(async (_request: Request, ctx: RouteContext<'/api/
   if (!existing) return notFound();
   const denied = requireProjectManager(guard.user, existing);
   if (denied) return denied;
+  const asset = await getProjectAsset(id);
   await deleteProject(id);
+  if (cloudEdition()) await removeProjectRiv(asset?.rivStorageKey);
   return json({ ok: true });
 });

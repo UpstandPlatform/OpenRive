@@ -4,7 +4,7 @@ import { createRoot, useKeyboard } from '@opentui/react';
 import type { ProjectMeta, User } from '@openrive/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { editorUrl } from '../commands';
-import { createProject, EXAMPLES, storage, TEMPLATES } from '../project-store';
+import { createProject, deleteProject, EXAMPLES, getProjectRiv, storage, TEMPLATES } from '../project-store';
 
 type Screen = { kind: 'projects' } | { kind: 'new' } | { kind: 'users' } | { kind: 'confirm'; project: ProjectMeta };
 
@@ -76,7 +76,7 @@ export function App() {
         const file = `${selected.name.replace(/[^\w\- ]+/g, '').trim() || selected.id}.riv`;
         run(
           `Exported ${file}`,
-          storage.getProjectRiv(selected.id).then((bytes) => {
+          getProjectRiv(selected.id).then((bytes) => {
             if (!bytes) throw new Error('This project has not been saved yet');
             return Bun.write(file, bytes);
           }),
@@ -84,7 +84,7 @@ export function App() {
       }
     } else if (screen.kind === 'confirm') {
       if (key.name === 'y') {
-        run(`Deleted "${screen.project.name}"`, storage.deleteProject(screen.project.id));
+        run(`Deleted "${screen.project.name}"`, deleteProject(screen.project.id));
         setIndex(0);
         setScreen({ kind: 'projects' });
       }

@@ -1,0 +1,100 @@
+# OpenRive cloud edition for a private cloud deployment.
+#
+# The application stores metadata and editor documents in PostgreSQL and .riv
+# objects in the S3-compatible service. Replace the MinIO endpoint and
+# credentials with an AWS S3 or Cloudflare R2 endpoint for another provider.
+services:
+  openrive:
+    image: ghcr.io/upstandplatform/openrive:${OPENRIVE_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "${OPENRIVE_PORT:-3000}:3000"
+    environment:
+      OPENRIVE_EDITION: cloud
+      OPENRIVE_URL: ${OPENRIVE_URL:?Set OPENRIVE_URL to the public HTTPS origin}
+      OPENRIVE_AUTH: on
+      OPENRIVE_SIGNUP: ${OPENRIVE_SIGNUP:-first}
+      OPENRIVE_AUTH_SECRET: ${OPENRIVE_AUTH_SECRET:?Set a random 32+ character auth secret}
+      OPENRIVE_TRUSTED_ORIGINS: ${OPENRIVE_TRUSTED_ORIGINS:-}
+      OPENRIVE_REDIS_URL: redis://redis:6379
+      OPENRIVE_REDIS_MAXMEMORY: ${OPENRIVE_REDIS_MAXMEMORY:-128mb}
+      OPENRIVE_STORAGE_ENDPOINT: http://minio:9000
+      OPENRIVE_STORAGE_REGION: ${OPENRIVE_STORAGE_REGION:-us-east-1}
+      OPENRIVE_STORAGE_BUCKET: ${OPENRIVE_STORAGE_BUCKET:-openrive}
+      OPENRIVE_STORAGE_ACCESS_KEY_ID: ${OPENRIVE_STORAGE_ACCESS_KEY_ID:?Set OPENRIVE_STORAGE_ACCESS_KEY_ID}
+      OPENRIVE_STORAGE_SECRET_ACCESS_KEY: ${OPENRIVE_STORAGE_SECRET_ACCESS_KEY:?Set OPENRIVE_STORAGE_SECRET_ACCESS_KEY}
+      OPENRIVE_STORAGE_FORCE_PATH_STYLE: "true"
+      DATABASE_URL: postgres://${POSTGRES_USER:-openrive}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-openrive}
+      OPENRIVE_ACCESS_TOKEN: ${OPENRIVE_ACCESS_TOKEN:-}
+    volumes:
+      - openrive-data:/data
+    depends_on:
+      - db
+      - redis
+      - minio
+      - minio-init
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-openrive}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-openrive}
+    volumes:
+      - openrive-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    # Redis is coordination only. It must never become a second source of truth.
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - ${OPENRIVE_REDIS_MAXMEMORY:-128mb}
+      - --maxmemory-policy
+      - noeviction
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: quay.io/minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD}
+    volumes:
+      - openrive-minio:/data
+
+  minio-init:
+    image: quay.io/minio/mc:latest
+    restart: "no"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD}
+      OPENRIVE_STORAGE_ACCESS_KEY_ID: ${OPENRIVE_STORAGE_ACCESS_KEY_ID:?Set OPENRIVE_STORAGE_ACCESS_KEY_ID}
+      OPENRIVE_STORAGE_SECRET_ACCESS_KEY: ${OPENRIVE_STORAGE_SECRET_ACCESS_KEY:?Set OPENRIVE_STORAGE_SECRET_ACCESS_KEY}
+      MINIO_BUCKET: ${OPENRIVE_STORAGE_BUCKET:-openrive}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - 'until mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"; do sleep 2; done; mc mb --ignore-existing "local/$${MINIO_BUCKET}"; mc admin user add local "$${OPENRIVE_STORAGE_ACCESS_KEY_ID}" "$${OPENRIVE_STORAGE_SECRET_ACCESS_KEY}" || true; mc admin policy attach local readwrite --user "$${OPENRIVE_STORAGE_ACCESS_KEY_ID}"'
+    depends_on:
+      - minio
+
+volumes:
+  openrive-data:
+  openrive-db:
+  openrive-minio:
