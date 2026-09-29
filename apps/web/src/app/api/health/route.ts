@@ -11,7 +11,11 @@ export async function GET() {
     const [{ backend }, redis, objectStorage] = await Promise.all([describeDatabase(), redisHealth(), objectStorageHealth()]);
     return Response.json({ ok: true, storage: backend, edition: env().OPENRIVE_EDITION, redis, objectStorage });
   } catch (e) {
-    console.error('[health]', e);
+    const settings = env();
+    console.error('[health]', e, {
+      edition: settings.OPENRIVE_EDITION,
+      storageAccessKeyLength: settings.OPENRIVE_STORAGE_ACCESS_KEY_ID?.length ?? 0,
+    });
     return Response.json({ ok: false, storage: 'unknown' }, { status: 503 });
   }
 }
