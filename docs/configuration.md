@@ -61,6 +61,8 @@ MinIO and `false` for AWS S3 or R2:
 The regular `docker-compose.yml` is self-hosted. The private cloud stack is `docker-compose.cloud.yml`; it adds
 persistent MinIO object storage while keeping Redis memory-only. It requires `OPENRIVE_URL`, `OPENRIVE_AUTH_SECRET`,
 `POSTGRES_PASSWORD`, `MINIO_ROOT_USER`, and `MINIO_ROOT_PASSWORD`.
+The cloud stack defaults `OPENRIVE_SIGNUP` to `open` so users can create accounts; the first account is still the
+administrator. Set it to `first` or `off` when the deployment should restrict account creation.
 
 ## CLI, MCP and the desktop app
 

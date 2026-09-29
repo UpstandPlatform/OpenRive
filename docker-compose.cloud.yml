@@ -13,7 +13,7 @@ services:
       OPENRIVE_EDITION: cloud
       OPENRIVE_URL: ${OPENRIVE_URL:?Set OPENRIVE_URL to the public HTTPS origin}
       OPENRIVE_AUTH: on
-      OPENRIVE_SIGNUP: ${OPENRIVE_SIGNUP:-first}
+      OPENRIVE_SIGNUP: ${OPENRIVE_SIGNUP:-open}
       OPENRIVE_AUTH_SECRET: ${OPENRIVE_AUTH_SECRET:?Set a random 32+ character auth secret}
       OPENRIVE_TRUSTED_ORIGINS: ${OPENRIVE_TRUSTED_ORIGINS:-}
       OPENRIVE_REDIS_URL: redis://openrive-redis:6379
