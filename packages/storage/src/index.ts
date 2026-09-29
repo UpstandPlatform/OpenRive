@@ -1,7 +1,7 @@
 import {
   DeleteObjectCommand,
   GetObjectCommand,
-  HeadBucketCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
@@ -77,7 +77,9 @@ class S3ObjectStorage implements ObjectStorage {
   }
 
   async health(): Promise<void> {
-    await this.client.send(new HeadBucketCommand({ Bucket: this.config.bucket }));
+    // Listing one key is more portable than HeadBucket: some S3-compatible
+    // providers authorize bucket listing but reject HEAD bucket probes.
+    await this.client.send(new ListObjectsV2Command({ Bucket: this.config.bucket, MaxKeys: 1 }));
   }
 
   close(): void {
