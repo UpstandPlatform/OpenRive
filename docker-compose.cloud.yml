@@ -29,10 +29,12 @@ services:
     volumes:
       - openrive-data:/data
     depends_on:
-      - db
-      - redis
-      - minio
-      - minio-init
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
 
   db:
     image: postgres:17-alpine
@@ -93,7 +95,7 @@ services:
       MINIO_BUCKET: ${OPENRIVE_STORAGE_BUCKET:-openrive}
     entrypoint: ["/bin/sh", "-c"]
     command:
-      - 'until mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"; do sleep 2; done; mc mb --ignore-existing "local/$${MINIO_BUCKET}"; mc admin user add local "$${OPENRIVE_STORAGE_ACCESS_KEY_ID}" "$${OPENRIVE_STORAGE_SECRET_ACCESS_KEY}" || true; mc admin policy attach local readwrite --user "$${OPENRIVE_STORAGE_ACCESS_KEY_ID}"'
+      - 'until mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"; do sleep 2; done; mc mb --ignore-existing "local/$${MINIO_BUCKET}"; if ! mc alias set app http://minio:9000 "$${OPENRIVE_STORAGE_ACCESS_KEY_ID}" "$${OPENRIVE_STORAGE_SECRET_ACCESS_KEY}" || ! mc stat "app/$${MINIO_BUCKET}" >/dev/null 2>&1; then mc admin user remove local "$${OPENRIVE_STORAGE_ACCESS_KEY_ID}" >/dev/null 2>&1 || true; mc admin user add local "$${OPENRIVE_STORAGE_ACCESS_KEY_ID}" "$${OPENRIVE_STORAGE_SECRET_ACCESS_KEY}"; mc admin policy attach local readwrite --user "$${OPENRIVE_STORAGE_ACCESS_KEY_ID}"; mc alias set app http://minio:9000 "$${OPENRIVE_STORAGE_ACCESS_KEY_ID}" "$${OPENRIVE_STORAGE_SECRET_ACCESS_KEY}"; fi; mc stat "app/$${MINIO_BUCKET}" >/dev/null'
     depends_on:
       - minio
 
