@@ -19,6 +19,10 @@ export async function GET() {
     const settings = env();
     console.error('[health]', e, {
       edition: settings.OPENRIVE_EDITION,
+      storageEndpoint: settings.OPENRIVE_STORAGE_ENDPOINT,
+      storageBucket: settings.OPENRIVE_STORAGE_BUCKET,
+      storageRegion: settings.OPENRIVE_STORAGE_REGION,
+      storageForcePathStyle: settings.OPENRIVE_STORAGE_FORCE_PATH_STYLE,
       storageAccessKeyFingerprint: fingerprint(settings.OPENRIVE_STORAGE_ACCESS_KEY_ID),
       storageSecretFingerprint: fingerprint(settings.OPENRIVE_STORAGE_SECRET_ACCESS_KEY),
     });
