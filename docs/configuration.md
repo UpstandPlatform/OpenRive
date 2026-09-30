@@ -71,6 +71,11 @@ administrator. Set it to `first` or `off` when the deployment should restrict ac
 | `OPENRIVE_USER` | first admin | Owner (user id or name) for files created by the CLI and MCP tools |
 | `OPENRIVE_URL` | `http://localhost:3000` | Base URL used in the editor links these tools print |
 
+The web MCP endpoint is `POST/GET/DELETE /api/mcp`. Authenticated self-hosted and cloud instances use Better Auth
+MCP API keys; create one with `POST /api/mcp/keys` from a signed-in browser session and pass it as a Bearer token.
+The local desktop app exposes the same endpoint on its per-run `127.0.0.1` origin and does not require a key by
+default. Remote `.riv` imports use base64 bytes over MCP, while local stdio MCP may use file paths.
+
 The CLI also accepts `--data <dir>` and `--db <url>` on any command.
 
 ## Legacy names

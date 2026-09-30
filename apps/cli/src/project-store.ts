@@ -1,6 +1,6 @@
 // Project access for the CLI, the TUI and the MCP server. Talks to the database
 // through @openrive/db, so it works with or without the web app running.
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import * as storage from '@openrive/db';
 import { exportRiv, importRiv, type RiveDoc } from '@openrive/rive/document';
@@ -14,6 +14,12 @@ import { createObjectStorage, legacyProjectRivKey, projectRivKey, type ObjectSto
 /** Repository root (apps/cli/src -> ../../..), used for bundled fonts and examples. */
 export const PROJECT_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '../../..');
 const WEB_PUBLIC = path.join(PROJECT_ROOT, 'apps', 'web', 'public');
+
+/** The standalone desktop server keeps the workspace layout under its cwd. */
+function publicDir(): string {
+  const candidates = [WEB_PUBLIC, path.join(process.cwd(), 'apps', 'web', 'public'), path.join(process.cwd(), 'public')];
+  return candidates.find((candidate) => existsSync(candidate)) ?? WEB_PUBLIC;
+}
 
 export { storage, TEMPLATES, EXAMPLES };
 
@@ -75,7 +81,7 @@ export async function deleteProject(id: string) {
 
 export function loadFont(name = 'Inter') {
   const file = name === 'Inter Bold' ? 'Inter-Bold.ttf' : 'Inter-Regular.ttf';
-  const p = path.join(WEB_PUBLIC, 'fonts', file);
+  const p = path.join(publicDir(), 'fonts', file);
   try {
     return { name: name === 'Inter Bold' ? 'Inter Bold' : 'Inter', bytes: new Uint8Array(readFileSync(p)) };
   } catch {
@@ -139,7 +145,7 @@ export async function createProject(name: string, template = 'blank', ownerId?: 
   if (!fromTemplate && !example) {
     throw new StoreError(`Unknown template "${template}". Available: ${[...TEMPLATES, ...EXAMPLES].map((x) => x.id).join(', ')}`);
   }
-  const doc = fromTemplate ? fromTemplate.build(loadFont()) : importRiv(new Uint8Array(readFileSync(path.join(WEB_PUBLIC, example!.file))));
+  const doc = fromTemplate ? fromTemplate.build(loadFont()) : importRiv(new Uint8Array(readFileSync(path.join(publicDir(), example!.file))));
   const riv = exportRiv(doc);
   return createStoredProject({
     name,
@@ -150,10 +156,15 @@ export async function createProject(name: string, template = 'blank', ownerId?: 
 }
 
 export async function importFile(file: string, name?: string, ownerId?: string) {
-  const doc = importRiv(new Uint8Array(readFileSync(file)));
+  return importBytes(new Uint8Array(readFileSync(file)), name ?? path.basename(file).replace(/\.riv$/i, ''), ownerId);
+}
+
+/** Imports already-uploaded bytes; used by the HTTP MCP transport as well as the CLI. */
+export async function importBytes(bytes: Uint8Array, name?: string, ownerId?: string) {
+  const doc = importRiv(bytes);
   const riv = exportRiv(doc);
   return createStoredProject({
-    name: name ?? path.basename(file).replace(/\.riv$/i, ''),
+    name: name ?? 'Untitled',
     ownerId: ownerId ?? (await defaultOwner()),
     doc: stringifyDoc(doc),
     ...stats(doc),

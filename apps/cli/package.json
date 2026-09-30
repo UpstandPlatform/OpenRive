@@ -6,6 +6,9 @@
   "bin": {
     "openrive": "./src/index.ts"
   },
+  "exports": {
+    "./mcp-server": "./src/mcp-server.ts"
+  },
   "scripts": {
     "check-types": "tsc --noEmit",
     "start": "bun src/index.ts",

@@ -7,7 +7,8 @@ Base URL: `http://localhost:3000/api`
 
 When the server requires a sign-in ([Accounts and sign-in](authentication.md)), every endpoint except `/health` and
 `/auth/*` needs the session cookie from `POST /auth/login`; without it they answer `401`, and `403` when the account
-lacks the right. In login-free mode the API acts as the local administrator.
+lacks the right. MCP also accepts a Better Auth API key as `Authorization: Bearer <key>`. In login-free mode the API
+acts as the local administrator.
 
 ## Accounts
 
@@ -49,6 +50,7 @@ lacks the right. In login-free mode the API acts as the local administrator.
 | `POST /projects/:id/duplicate` | `{ ownerId }` | `201 ProjectMeta` |
 | `GET /projects/:id/riv` | – | the `.riv` file (`application/octet-stream`) |
 | `GET /projects/:id/bundle` | – | a [preview bundle](preview-bundles.md) zip (`application/zip`); `?runtime=cdn` leaves the Rive runtime out |
+| `POST /projects/import` | multipart `file=<name>.riv`, optional `name` | `201 ProjectMeta`; validates and imports the `.riv` server-side (100 MB limit) |
 
 - `doc` is the editor document serialized as a **string** (see `src/lib/serialize.ts`: binary data is base64 tagged).
 - `riv` is a **base64** string of the exported file.
@@ -65,6 +67,19 @@ interface ProjectMeta {
 
 Creating a project from a template is easiest with the CLI (`openrive new`) or MCP (`create_project`), which build the
 document for you.
+
+## MCP API keys
+
+These endpoints are available when Better Auth is enabled. They are intended for AI clients that cannot retain the
+browser session cookie.
+
+| Method & path | Body | Response |
+| --- | --- | --- |
+| `POST /mcp/keys` | `{ name?, expiresIn? }` | `201` with the secret (returned only on creation) |
+| `GET /mcp/keys` | – | key metadata, never key secrets |
+| `DELETE /mcp/keys` | `{ keyId }` | revokes the key immediately |
+
+Use the returned secret only in an `Authorization: Bearer` header when connecting an MCP client to `POST /mcp`.
 
 ## Users
 

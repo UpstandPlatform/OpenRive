@@ -9,6 +9,7 @@
 // tables through the Drizzle adapter (see packages/db/src/schema.ts), so an
 // account and the person a file belongs to are the same row.
 import { betterAuth } from 'better-auth';
+import { apiKey } from '@better-auth/api-key';
 import { APIError } from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { hashPassword as hashScrypt, verifyPassword as verifyScrypt } from 'better-auth/crypto';
@@ -112,6 +113,7 @@ async function build() {
         account: schema.accounts,
         verification: schema.verifications,
         rateLimit: schema.rateLimit,
+        apikey: schema.apiKeys,
       },
     }),
     emailAndPassword: {
@@ -200,6 +202,17 @@ async function build() {
       // behind a reverse proxy the host and protocol arrive in headers
       trustedProxyHeaders: true,
     },
+    plugins: [
+      apiKey({
+        configId: 'mcp',
+        defaultPrefix: 'openrive_mcp_',
+        requireName: true,
+        enableMetadata: true,
+        keyExpiration: { defaultExpiresIn: 60 * 60 * 24 * 90, maxExpiresIn: 365 },
+        rateLimit: { enabled: true, timeWindow: 60_000, maxRequests: 120 },
+        permissions: { defaultPermissions: { mcp: ['read', 'write'] } },
+      }),
+    ],
   });
 }
 

@@ -247,6 +247,8 @@ export function UpdateMenuSection({ onDone }: { onDone?: () => void }) {
 
 /** Help links, shared by the user menu and the editor's menu. */
 export function HelpMenuItems({ onDone }: { onDone?: () => void }) {
+  const shell = useDesktop();
+  const [copied, setCopied] = useState(false);
   const item = (label: string, url: string) => (
     <button
       className="menu-item"
@@ -262,6 +264,18 @@ export function HelpMenuItems({ onDone }: { onDone?: () => void }) {
     <>
       <div className="menu-sep" />
       <div className="px-2.5 py-1.5 label">Help</div>
+      {shell && (
+        <button
+          className="menu-item"
+          onClick={async () => {
+            await navigator.clipboard?.writeText(`${window.location.origin}/api/mcp`);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          }}
+        >
+          {copied ? 'MCP endpoint copied' : 'Copy MCP endpoint'}
+        </button>
+      )}
       {item('Documentation', LINKS.docs)}
       {item('openrive.upstand.dev', LINKS.site)}
       {item('GitHub repository', LINKS.repo)}

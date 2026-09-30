@@ -4,8 +4,8 @@ OpenRive includes a [Model Context Protocol](https://modelcontextprotocol.io) se
 edit Rive animations for you: *"Make a loading animation with three bouncing dots in brand purple that pauses when
 clicked."*
 
-It runs over **stdio** and uses the same storage as the app. Open the printed editor link to watch the result appear
-live.
+It runs over **stdio** or the web app's authenticated **Streamable HTTP** endpoint and uses the same storage as the
+app. Open the returned editor link to watch the result appear live.
 
 ## Connect a client
 
@@ -36,6 +36,32 @@ Using Docker? Run it inside the container:
 ```json
 { "command": "docker", "args": ["compose", "-f", "/path/to/OpenRive/docker-compose.yml", "exec", "-T", "openrive", "openrive", "mcp"] }
 ```
+
+## Cloud and self-hosted HTTP MCP
+
+Authenticated self-hosted and cloud deployments expose MCP at `/api/mcp`. Create a short-lived, user-scoped bearer
+key from a signed-in browser session:
+
+```bash
+curl -sS -X POST https://openrive.example.com/api/mcp/keys \
+  -H 'content-type: application/json' \
+  -H 'cookie: openrive.session_token=…' \
+  -d '{"name":"Claude","expiresIn":7776000}'
+```
+
+The response contains the secret once. Store it in the AI client and connect its Streamable HTTP transport to
+`https://openrive.example.com/api/mcp` with `Authorization: Bearer <key>`. Keys can be listed with `GET /api/mcp/keys`
+and revoked with `DELETE /api/mcp/keys` and `{"keyId":"…"}`. The key is hashed in PostgreSQL, rate-limited, and
+scoped to the account that created it.
+
+Remote clients send `.riv` bytes to `import_riv` as `dataBase64`; `export_riv` returns `dataBase64` when no local path
+is supplied. Remote MCP never accepts server filesystem paths. A multi-instance cloud deployment must keep one MCP
+session on the same application instance (sticky routing), because the MCP transport is stateful; a single-instance
+self-hosted server and the desktop app need no extra service.
+
+The local desktop app serves the same `/api/mcp` route on its loopback origin. Its bundled server has authentication
+off by default and is bound to `127.0.0.1`; use the loopback URL shown by the desktop integration when configuring a
+local AI client.
 
 ## Tools (30)
 

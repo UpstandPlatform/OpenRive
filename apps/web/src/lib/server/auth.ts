@@ -8,13 +8,14 @@ import {
   canSeeProject,
   canTransferProject,
   isAdmin,
+  getAccount,
   sessionUser,
   SESSION_COOKIE,
   type Account,
 } from '@openrive/auth';
 import { listUsers } from '@openrive/db';
 import type { ProjectMeta } from '@openrive/shared';
-import { headers } from 'next/headers';
+import { headers as nextHeaders } from 'next/headers';
 import { fail } from './route';
 
 export { auth, authEnabled, canEditProject, canManageProject, canSeeProject, canTransferProject, isAdmin, SESSION_COOKIE };
@@ -28,7 +29,23 @@ export type { Account };
  * user keeps working without signing in.
  */
 export async function currentUser(): Promise<Account | null> {
-  if (authEnabled()) return sessionUser(await headers());
+  return currentUserFromHeaders(await nextHeaders());
+}
+
+/** Resolves either a Better Auth session or a scoped Better Auth API key. */
+export async function currentUserFromHeaders(requestHeaders: Headers): Promise<Account | null> {
+  const authorization = requestHeaders.get('authorization');
+  if (authorization?.startsWith('Bearer ')) {
+    const key = authorization.slice('Bearer '.length).trim();
+    if (!key) return null;
+    const result = await (await auth()).api.verifyApiKey({
+      body: { configId: 'mcp', key, permissions: { mcp: ['read', 'write'] } },
+    });
+    if (!result.valid || !result.key) return null;
+    const account = await getAccount(result.key.referenceId);
+    return account && !account.disabled ? account : null;
+  }
+  if (authEnabled()) return sessionUser(requestHeaders);
   const users = await listUsers();
   const local = users.find((u) => u.role === 'admin') ?? users[0];
   return local ? { ...local, email: null, disabled: false, lastLoginAt: null, hasPassword: false } : null;

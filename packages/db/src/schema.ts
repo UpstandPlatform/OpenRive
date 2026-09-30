@@ -1,6 +1,6 @@
 // Drizzle schema. PostgreSQL everywhere: a server via DATABASE_URL, or the
 // embedded PGlite build of PostgreSQL for a local run with no setup.
-import { bigint, boolean, integer, jsonb, pgTable, text, timestamp, customType } from 'drizzle-orm/pg-core';
+import { bigint, boolean, index, integer, jsonb, pgTable, text, timestamp, customType } from 'drizzle-orm/pg-core';
 
 /** bytea mapped to Uint8Array (the exported .riv file). */
 const bytes = customType<{ data: Uint8Array; driverData: Buffer }>({
@@ -91,6 +91,36 @@ export const rateLimit = pgTable('rate_limit', {
   count: integer('count').notNull(),
   lastRequest: bigint('last_request', { mode: 'number' }).notNull(),
 });
+
+/** Better Auth API-key plugin storage, used by remote MCP clients. */
+export const apiKeys = pgTable(
+  'apikey',
+  {
+    id: text('id').primaryKey(),
+    configId: text('config_id').notNull().default('mcp'),
+    name: text('name'),
+    start: text('start'),
+    referenceId: text('reference_id').notNull(),
+    prefix: text('prefix'),
+    key: text('key').notNull(),
+    refillInterval: integer('refill_interval'),
+    refillAmount: integer('refill_amount'),
+    lastRefillAt: timestamp('last_refill_at', { withTimezone: true }),
+    enabled: boolean('enabled').notNull().default(true),
+    rateLimitEnabled: boolean('rate_limit_enabled').notNull().default(true),
+    rateLimitTimeWindow: integer('rate_limit_time_window').notNull().default(86_400_000),
+    rateLimitMax: integer('rate_limit_max').notNull().default(10),
+    requestCount: integer('request_count').notNull().default(0),
+    remaining: integer('remaining'),
+    lastRequest: timestamp('last_request', { withTimezone: true }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    permissions: text('permissions'),
+    metadata: text('metadata'),
+  },
+  (table) => [index('apikey_reference_id_idx').on(table.referenceId), index('apikey_key_idx').on(table.key)],
+);
 
 export const projects = pgTable('projects', {
   id: text('id').primaryKey(),

@@ -1,5 +1,5 @@
 'use client';
-import { exportRiv, importRiv, RiveDoc } from '@openrive/rive/document';
+import { exportRiv, RiveDoc } from '@openrive/rive/document';
 import { newDoc } from '@openrive/rive/factory';
 import { stringifyDoc, toBase64 } from '@openrive/shared/serialize';
 import type { ProjectMeta } from '@openrive/shared';
@@ -24,10 +24,13 @@ export async function createBlankProject(ownerId: string, name = 'Untitled') {
   return createProjectFromDoc(name, ownerId, newDoc('Artboard'));
 }
 
-export async function importRivFile(file: File, ownerId: string) {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const doc = importRiv(bytes);
-  return createProjectFromDoc(file.name.replace(/\.riv$/i, ''), ownerId, doc);
+export async function importRivFile(file: File) {
+  const form = new FormData();
+  form.set('file', file, file.name);
+  const res = await fetch('/api/projects/import', { method: 'POST', body: form, cache: 'no-store' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((data as { error?: string }).error || `Import failed (${res.status})`);
+  return data as ProjectMeta;
 }
 
 export function downloadBytes(bytes: Uint8Array, filename: string) {

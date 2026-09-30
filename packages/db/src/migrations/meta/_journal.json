@@ -36,6 +36,13 @@
       "when": 1790689134512,
       "tag": "0004_rare_jetstream",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790793166770,
+      "tag": "0005_low_queen_noir",
+      "breakpoints": true
     }
   ]
 }

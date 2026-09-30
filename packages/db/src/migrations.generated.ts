@@ -63,5 +63,14 @@ export const migrations: EmbeddedMigration[] = [
     "statements": [
       "ALTER TABLE \"projects\" ADD COLUMN \"riv_storage_key\" text;"
     ]
+  },
+  {
+    "tag": "0005_low_queen_noir",
+    "hash": "57e800c9925185eaf3fe8d0245186ddc9fa6b901995e483837ff1811b56cd4f6",
+    "statements": [
+      "CREATE TABLE \"apikey\" (\n\t\"id\" text PRIMARY KEY NOT NULL,\n\t\"config_id\" text DEFAULT 'mcp' NOT NULL,\n\t\"name\" text,\n\t\"start\" text,\n\t\"reference_id\" text NOT NULL,\n\t\"prefix\" text,\n\t\"key\" text NOT NULL,\n\t\"refill_interval\" integer,\n\t\"refill_amount\" integer,\n\t\"last_refill_at\" timestamp with time zone,\n\t\"enabled\" boolean DEFAULT true NOT NULL,\n\t\"rate_limit_enabled\" boolean DEFAULT true NOT NULL,\n\t\"rate_limit_time_window\" integer DEFAULT 86400000 NOT NULL,\n\t\"rate_limit_max\" integer DEFAULT 10 NOT NULL,\n\t\"request_count\" integer DEFAULT 0 NOT NULL,\n\t\"remaining\" integer,\n\t\"last_request\" timestamp with time zone,\n\t\"expires_at\" timestamp with time zone,\n\t\"created_at\" timestamp with time zone DEFAULT now() NOT NULL,\n\t\"updated_at\" timestamp with time zone DEFAULT now() NOT NULL,\n\t\"permissions\" text,\n\t\"metadata\" text\n);",
+      "CREATE INDEX \"apikey_reference_id_idx\" ON \"apikey\" USING btree (\"reference_id\");",
+      "CREATE INDEX \"apikey_key_idx\" ON \"apikey\" USING btree (\"key\");"
+    ]
   }
 ];

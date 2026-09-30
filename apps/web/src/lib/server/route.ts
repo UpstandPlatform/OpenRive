@@ -7,6 +7,25 @@ export const json = (data: unknown, status = 200) => Response.json(data, { statu
 export const fail = (error: string, status = 400) => Response.json({ error }, { status });
 export const notFound = () => fail('Not found', 404);
 
+/**
+ * Cookie-authenticated mutations must come from this origin. Bearer-authenticated
+ * MCP calls are exempt because they do not carry the browser session cookie.
+ */
+export function requireSameOrigin(request: Request): Response | null {
+  if (request.headers.get('authorization')?.startsWith('Bearer ')) return null;
+  const origin = request.headers.get('origin');
+  if (origin) {
+    try {
+      if (new URL(origin).origin !== new URL(request.url).origin) return fail('Cross-origin request rejected', 403);
+    } catch {
+      return fail('Invalid request origin', 403);
+    }
+  } else if (request.headers.get('sec-fetch-site') === 'cross-site') {
+    return fail('Cross-origin request rejected', 403);
+  }
+  return null;
+}
+
 /** Parses a JSON body with a schema; returns a 400 response when it doesn't fit. */
 export async function body<S extends z.ZodType>(request: Request, schema: S): Promise<{ data: z.infer<S>; error?: never } | { data?: never; error: Response }> {
   const raw = await request.json().catch(() => ({}));

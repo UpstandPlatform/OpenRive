@@ -88,7 +88,7 @@ export default function Dashboard() {
               : `${f.name} is not a .riv file`,
           );
         }
-        last = await importRivFile(f, user.id);
+        last = await importRivFile(f);
       }
       await load();
       if (last && files.length === 1) router.push(`/editor/${last.id}`);

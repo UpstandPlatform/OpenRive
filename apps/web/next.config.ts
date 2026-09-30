@@ -8,7 +8,7 @@ const nextConfig: NextConfig = {
   // the workspace root, so standalone builds trace files across packages
   outputFileTracingRoot: fileURLToPath(new URL('../../', import.meta.url)),
   // workspace packages ship TypeScript sources
-  transpilePackages: ['@openrive/rive', '@openrive/shared', '@openrive/ui', '@openrive/db'],
+  transpilePackages: ['@openrive/cli', '@openrive/rive', '@openrive/shared', '@openrive/ui', '@openrive/db'],
   // native/optional server dependencies must not be bundled
   serverExternalPackages: ['pg', '@electric-sql/pglite'],
   poweredByHeader: false,
