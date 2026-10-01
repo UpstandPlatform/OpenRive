@@ -71,7 +71,7 @@ document for you.
 ## MCP API keys
 
 These endpoints are available when Better Auth is enabled. They are intended for AI clients that cannot retain the
-browser session cookie.
+browser session cookie. Signed-in users can manage the same keys from the web app's **AI & API** page.
 
 | Method & path | Body | Response |
 | --- | --- | --- |

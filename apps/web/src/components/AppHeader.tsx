@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, LogOut, Shield, Users } from 'lucide-react';
+import { Bot, Check, ChevronDown, LogOut, Shield, Users } from 'lucide-react';
 import { useCurrentUser, useSession } from '@/lib/client/session';
 import { ROLE_INFO } from '@openrive/shared';
 import { Avatar } from './Avatar';
@@ -107,6 +107,12 @@ export function AppHeader() {
         {tab('/', 'Files')}
         {user?.role === 'admin' ? tab('/admin', 'Admin') : null}
         {!authEnabled && tab('/users', 'Users')}
+        <Link
+          href="/settings/integrations"
+          className={`px-3 h-8 inline-flex items-center gap-1.5 rounded-md ${path.startsWith('/settings/integrations') ? 'bg-bg3 text-t0' : 'text-t1 hover:text-t0'}`}
+        >
+          <Bot size={14} /> AI &amp; API
+        </Link>
       </nav>
       <div className="flex-1" />
       <UserSwitcher />

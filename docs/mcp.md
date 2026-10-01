@@ -7,6 +7,10 @@ clicked."*
 It runs over **stdio** or the web app's authenticated **Streamable HTTP** endpoint and uses the same storage as the
 app. Open the returned editor link to watch the result appear live.
 
+The web app's **AI & API** page is the central connection surface. It shows the correct MCP endpoint for the current
+edition, lets signed-in cloud and self-hosted users create or revoke scoped API keys, and explains the key-free local
+CLI or desktop connection.
+
 ## Connect a client
 
 ### Claude Code
