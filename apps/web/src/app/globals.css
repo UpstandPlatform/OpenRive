@@ -75,6 +75,23 @@ html.desktop-chrome .window-drag {
   -webkit-app-region: drag;
   app-region: drag;
 }
+
+/* The desktop window is frameless, so give the rendered shell its own subtle
+   corner treatment instead of leaving the app surface perfectly square. */
+html.desktop-chrome {
+  background: transparent;
+}
+
+html.desktop-chrome,
+html.desktop-chrome body {
+  border-radius: 10px;
+}
+
+html.desktop-chrome body {
+  overflow: auto;
+  border: 1px solid var(--line);
+  box-sizing: border-box;
+}
 html.desktop-chrome .window-drag button,
 html.desktop-chrome .window-drag a,
 html.desktop-chrome .window-drag input,
@@ -260,6 +277,194 @@ select.field {
   height: 1px;
   background: var(--line-2);
   margin: 4px 2px;
+}
+
+.editor-workspace {
+  container-type: inline-size;
+  container-name: editor-workspace;
+  overflow: hidden;
+}
+
+.editor-topbar {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.editor-topbar::-webkit-scrollbar {
+  display: none;
+}
+
+.editor-topbar > * {
+  flex-shrink: 0;
+}
+
+.editor-sidebar,
+.editor-inspector {
+  position: relative;
+  transition: box-shadow 160ms ease;
+  min-width: 0;
+  z-index: 2;
+}
+
+.editor-panel-tabs,
+.editor-inspector-header {
+  display: flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-1);
+}
+
+.editor-panel-tabs {
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+.editor-inspector-header {
+  padding-left: 12px;
+}
+
+.editor-panel-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 4px;
+  height: 100%;
+}
+
+.editor-rail-separator {
+  width: 24px;
+  height: 1px;
+  background: var(--line);
+  margin: 1px 0 2px;
+}
+
+.editor-sidebar .section,
+.editor-inspector .section {
+  padding: 12px;
+}
+
+.editor-sidebar .panel-title,
+.editor-inspector .panel-title {
+  line-height: 1.25;
+}
+
+.editor-panel-rail-right {
+  border-left: 0;
+}
+
+.editor-splitter {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: transparent;
+  background: transparent;
+  border: 0;
+  z-index: 10;
+  cursor: col-resize;
+  padding: 0;
+  touch-action: none;
+}
+
+.editor-splitter-right {
+  right: -5px;
+}
+
+.editor-splitter-left {
+  left: -5px;
+}
+
+.editor-splitter:hover,
+.editor-splitter:focus-visible {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  outline: none;
+}
+
+.editor-drawer-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.42);
+  z-index: 3;
+  cursor: default;
+}
+
+.editor-layout-compact .editor-sidebar,
+.editor-layout-compact .editor-inspector {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 48px !important;
+  box-shadow: none;
+}
+
+.editor-layout-compact .editor-sidebar-left {
+  left: 0;
+}
+
+.editor-layout-compact .editor-inspector {
+  right: 0;
+}
+
+.editor-layout-compact .editor-sidebar.editor-drawer-open,
+.editor-layout-compact .editor-inspector.editor-drawer-open {
+  width: min(320px, calc(100% - 56px)) !important;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.5);
+  z-index: 4;
+}
+
+.editor-layout-compact .editor-inspector.editor-drawer-open {
+  right: 0;
+}
+
+.editor-layout-compact .editor-drawer-close {
+  position: absolute;
+  top: 6px;
+  left: min(320px, calc(100% - 56px));
+  transform: translateX(-100%);
+  z-index: 5;
+}
+
+.editor-layout-compact .editor-drawer-close-right {
+  left: auto;
+  right: min(320px, calc(100% - 56px));
+  transform: translateX(100%);
+}
+
+@container editor-workspace (max-width: 960px) {
+  .editor-workspace .editor-canvas-column {
+    width: 100%;
+  }
+}
+
+@media (max-width: 960px) {
+  .editor-topbar .editor-groups-label,
+  .editor-topbar .editor-save-state,
+  .editor-topbar .editor-action-label {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .editor-layout-compact .editor-sidebar.editor-drawer-open,
+  .editor-layout-compact .editor-inspector.editor-drawer-open {
+    width: min(300px, calc(100% - 44px)) !important;
+  }
+
+  .editor-layout-compact .editor-drawer-close {
+    left: min(300px, calc(100% - 44px));
+  }
+
+  .editor-layout-compact .editor-drawer-close-right {
+    right: min(300px, calc(100% - 44px));
+  }
 }
 
 }

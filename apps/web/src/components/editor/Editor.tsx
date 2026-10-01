@@ -1,6 +1,5 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FileImage, Layers, Palette } from 'lucide-react';
 import { exportRiv, RiveDoc } from '@openrive/rive/document';
 import { artboardPos, prop } from '@openrive/rive/scene';
 import { downloadBytes, docStats } from '@/lib/client/projects';
@@ -10,17 +9,10 @@ import { usePrefs } from '@/lib/client/prefs';
 import { useEditor } from '@/lib/store/editor';
 import type { ProjectMeta } from '@openrive/shared';
 import { TopBar } from './TopBar';
-import { Hierarchy } from './Hierarchy';
-import { Inspector } from './Inspector';
-import { Stage } from './Stage';
-import { AnimatePanel } from './Timeline';
 import { ShortcutsDialog } from './ShortcutsDialog';
 import { PreferencesDialog } from './PreferencesDialog';
-import { ThemePanel } from './ThemePanel';
-import { Tabs } from '@openrive/ui';
 import { ContextMenuHost } from './ContextMenu';
-import { AssetsPanel } from './AssetsPanel';
-import { CodePanel } from './CodePanel';
+import { EditorWorkspace } from './EditorWorkspace';
 import { Toaster } from '@/components/Toaster';
 import { toast } from '@/lib/client/toast';
 import { imageSizes } from '@openrive/rive/assets';
@@ -84,7 +76,13 @@ export function Editor() {
   const exportFile = useCallback(() => {
     const s = useEditor.getState();
     if (!s.doc) return;
-    downloadBytes(exportRiv(s.doc), `${s.projectName.replace(/[^\w\- ]+/g, '').trim() || 'file'}.riv`);
+    const filename = `${s.projectName.replace(/[^\w\- ]+/g, '').trim() || 'file'}.riv`;
+    try {
+      downloadBytes(exportRiv(s.doc), filename);
+      toast(`Exported ${filename}`);
+    } catch (error) {
+      toast(`Export failed: ${(error as Error).message}`);
+    }
   }, []);
 
   // The bundle is built server side from the saved .riv, so save first.
@@ -235,28 +233,7 @@ export function Editor() {
           </button>
         </div>
       )}
-      <div className="flex-1 flex min-h-0">
-        <aside className="w-[240px] shrink-0 border-r border-line bg-bg1 flex flex-col">
-          <Tabs
-            items={[
-              { id: 'layers', label: 'Layers', icon: <Layers size={12} />, title: 'Layers (Alt+T to switch)' },
-              { id: 'theme', label: 'Theme', icon: <Palette size={12} />, title: 'Theme (Alt+T to switch)' },
-              { id: 'assets', label: 'Assets', icon: <FileImage size={12} />, title: 'Assets (Alt+T to switch)' },
-            ]}
-            value={leftTab}
-            onChange={(id) => s.set('leftTab', id)}
-          />
-          {leftTab === 'layers' ? <Hierarchy /> : leftTab === 'theme' ? <ThemePanel /> : <AssetsPanel />}
-        </aside>
-        <div className="flex-1 flex flex-col min-w-0">
-          <Stage />
-          {codeOpen && <CodePanel />}
-          {mode === 'animate' && <AnimatePanel />}
-        </div>
-        <aside className="w-[272px] shrink-0 border-l border-line bg-bg1 flex flex-col">
-          <Inspector />
-        </aside>
-      </div>
+      <EditorWorkspace mode={mode} leftTab={leftTab} codeOpen={codeOpen} onLeftTabChange={(tab) => s.set('leftTab', tab)} />
       {dialog === 'shortcuts' && <ShortcutsDialog onClose={() => setDialog(null)} />}
       {dialog === 'prefs' && <PreferencesDialog onClose={() => setDialog(null)} />}
       <ContextMenuHost />

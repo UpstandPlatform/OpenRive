@@ -32,6 +32,8 @@ RUN bun install --frozen-lockfile --ignore-scripts
 FROM deps AS build
 WORKDIR /app
 COPY . .
+ARG OPENRIVE_VERSION=0.0.0-dev
+ENV OPENRIVE_VERSION=$OPENRIVE_VERSION
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN bun run scripts/copy-wasm.ts && bun run --cwd apps/web build
 

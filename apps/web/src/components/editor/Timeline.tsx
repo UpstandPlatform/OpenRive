@@ -69,10 +69,29 @@ export function AnimatePanel() {
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
   };
+  const resizeByKeyboard = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown' && e.key !== 'Home' && e.key !== 'End') return;
+    e.preventDefault();
+    const max = Math.max(160, window.innerHeight - 200);
+    const next = e.key === 'Home' ? 160 : e.key === 'End' ? max : height + (e.key === 'ArrowUp' ? 16 : -16);
+    useEditor.getState().set('timelineHeight', Math.min(max, Math.max(160, next)));
+  };
   if (!ab) return null;
   return (
     <div className="flex border-t border-line bg-bg1 relative" style={{ height }}>
-      <div className="absolute -top-1 left-0 right-0 h-2 cursor-ns-resize z-10" onPointerDown={startResize} />
+      <div
+        className="absolute -top-1 left-0 right-0 h-2 cursor-ns-resize z-10"
+        role="separator"
+        aria-label="Resize timeline"
+        aria-orientation="horizontal"
+        aria-valuemin={160}
+        aria-valuemax={Math.max(160, typeof window === 'undefined' ? 800 : window.innerHeight - 200)}
+        aria-valuenow={height}
+        tabIndex={0}
+        title="Resize timeline. Use arrow keys to resize."
+        onPointerDown={startResize}
+        onKeyDown={resizeByKeyboard}
+      />
       <AnimationList ab={ab} />
       {stateMachineId ? <StateMachineGraph /> : <TimelineView ab={ab} />}
     </div>

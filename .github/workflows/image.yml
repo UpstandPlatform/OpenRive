@@ -118,6 +118,8 @@ jobs:
         with:
           context: .
           platforms: ${{ matrix.platform }}
+          build-args: |
+            OPENRIVE_VERSION=${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '0.0.0-dev' }}
           labels: ${{ steps.meta.outputs.labels }}
           # a pull request only has to prove the image still builds
           outputs: ${{ github.event_name == 'pull_request' && 'type=cacheonly' || format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', 'ghcr.io/upstandplatform/openrive') }}

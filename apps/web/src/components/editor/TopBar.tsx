@@ -9,6 +9,8 @@ import {
   Hand,
   Hexagon,
   Menu,
+  PanelLeft,
+  PanelLeftClose,
   MousePointer2,
   PenTool,
   Redo2,
@@ -32,6 +34,7 @@ import { Avatar } from '../Avatar';
 import { AppIcon } from '../AppHeader';
 import { HelpMenuItems, UpdateMenuSection, WindowControls } from '../desktop';
 import { usePrefs } from '@/lib/client/prefs';
+import { useEditorToolbarLayout } from '@/lib/client/useEditorLayout';
 
 const SHAPE_TOOLS: { tool: Tool; label: string; key: string; icon: React.ReactNode }[] = [
   { tool: 'rectangle', label: 'Rectangle', key: 'R', icon: <Square size={15} /> },
@@ -56,6 +59,7 @@ export function TopBar({ onSave, onExport, saveState }: { onSave: () => void; on
   const lastShape = SHAPE_TOOLS.find((t) => t.tool === tool) ?? pickedShape;
   const ref = useRef<HTMLDivElement>(null);
   const s = useEditor.getState();
+  const { leftOpen, toggleLeftSidebar } = useEditorToolbarLayout();
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
@@ -72,7 +76,7 @@ export function TopBar({ onSave, onExport, saveState }: { onSave: () => void; on
   );
 
   return (
-    <div ref={ref} className="window-drag h-11 flex items-center gap-1 px-2 border-b border-line bg-bg1 shrink-0 relative z-30">
+    <div ref={ref} className="window-drag editor-topbar h-11 flex items-center gap-1 px-2 border-b border-line bg-bg1 shrink-0 relative z-30">
       <div className="relative">
         <button className="flex items-center gap-1 h-8 px-1 rounded hover:bg-bg3" onClick={() => setMenu(menu === 'file' ? null : 'file')} title="OpenRive menu">
           <AppIcon size={22} />
@@ -123,6 +127,16 @@ export function TopBar({ onSave, onExport, saveState }: { onSave: () => void; on
           </div>
         )}
       </div>
+      <button
+        className="icon-btn w-8 h-8"
+        onClick={toggleLeftSidebar}
+        title={leftOpen ? 'Collapse left sidebar' : 'Expand left sidebar'}
+        aria-label={leftOpen ? 'Collapse left sidebar' : 'Expand left sidebar'}
+        aria-expanded={leftOpen}
+        type="button"
+      >
+        {leftOpen ? <PanelLeftClose size={15} /> : <PanelLeft size={15} />}
+      </button>
       <div className="w-px h-5 bg-line2 mx-1" />
       {toolBtn('select', <MousePointer2 size={15} />, 'Select (V)')}
       {toolBtn('artboard', <Frame size={15} />, 'Artboard (A)')}
@@ -176,7 +190,7 @@ export function TopBar({ onSave, onExport, saveState }: { onSave: () => void; on
             s.set('selectionContext', null);
           }}
         />
-        <span className="text-[11px] text-t1">Groups</span>
+        <span className="editor-groups-label text-[11px] text-t1">Groups</span>
       </label>
       <div className="w-px h-5 bg-line2 mx-1" />
       <button className="icon-btn w-8 h-8" disabled={!canUndo || readOnly} onClick={() => s.undo()} title="Undo">
@@ -188,7 +202,7 @@ export function TopBar({ onSave, onExport, saveState }: { onSave: () => void; on
 
       <div className="flex-1 flex items-center justify-center gap-2 min-w-0">
         <NameField />
-        <span className="text-t3 text-[11px] whitespace-nowrap">{readOnly ? 'Read only' : saveState}</span>
+        <span className="editor-save-state text-t3 text-[11px] whitespace-nowrap">{readOnly ? 'Read only' : saveState}</span>
       </div>
 
       <div className="flex bg-bg3 rounded-md p-0.5 mr-2">
@@ -208,13 +222,13 @@ export function TopBar({ onSave, onExport, saveState }: { onSave: () => void; on
         onClick={() => s.set('codeOpen', !codeOpen)}
         title="Code: automation scripts and embed snippets (Alt+C)"
       >
-        <Braces size={14} /> Code
+        <Braces size={14} /> <span className="editor-action-label">Code</span>
       </button>
       <button className="btn h-8 mr-1" onClick={() => runAction('file.preview')} title="Open a live preview in a new tab (Ctrl+P)">
-        <Play size={14} /> Preview
+        <Play size={14} /> <span className="editor-action-label">Preview</span>
       </button>
-      <button className="btn btn-primary h-8" onClick={onExport}>
-        <Download size={14} /> Export
+      <button className="btn btn-primary h-8 editor-export-button" onClick={onExport} title="Export .riv file" aria-label="Export .riv file" type="button">
+        <Download size={14} /> <span className="editor-action-label">Export</span>
       </button>
       {user && (
         <div className="ml-2">

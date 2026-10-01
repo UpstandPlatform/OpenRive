@@ -12,6 +12,7 @@
 // token it generated for this run.
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Download, Minus, RefreshCw, Square, Copy as Restore, X } from 'lucide-react';
+import { APP_VERSION } from '@/lib/appVersion';
 
 export const LINKS = {
   site: 'https://openrive.upstand.dev',
@@ -207,13 +208,22 @@ export function UpdateMenuSection({ onDone }: { onDone?: () => void }) {
   const shell = useDesktop();
   const { state, check, download, install } = useUpdates(!!shell);
 
-  if (!shell || !state) return null;
+  if (!shell || !state) {
+    return (
+      <>
+        <div className="menu-sep" />
+        <div className="px-2.5 py-1.5 label">OpenRive {APP_VERSION}</div>
+      </>
+    );
+  }
+
+  const displayVersion = state.version && state.version !== '0.0.0' ? state.version : APP_VERSION;
 
   return (
     <>
       <div className="menu-sep" />
       <div className="px-2.5 py-1.5 label">
-        OpenRive {state.version}
+        OpenRive {displayVersion}
         {state.channel && state.channel !== 'stable' ? ` · ${state.channel}` : ''}
       </div>
       {!state.supported ? (
