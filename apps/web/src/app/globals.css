@@ -299,6 +299,19 @@ select.field {
   flex-shrink: 0;
 }
 
+/* The toolbar scrolls horizontally on narrow windows, but the file menu must
+   remain visible below the bar instead of being clipped by overflow-y:hidden. */
+.editor-file-menu {
+  position: fixed !important;
+  top: 44px !important;
+  left: 8px !important;
+}
+
+.editor-shape-menu {
+  position: fixed !important;
+  z-index: 110;
+}
+
 .editor-sidebar,
 .editor-inspector {
   position: relative;

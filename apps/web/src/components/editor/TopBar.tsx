@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Circle,
   ChevronDown,
@@ -55,11 +55,18 @@ export function TopBar({ onSave, onExport, saveState }: { onSave: () => void; on
   const canRedo = useEditor((s) => s.future.length > 0);
   const user = useCurrentUser();
   const [menu, setMenu] = useState<'file' | 'shapes' | null>(null);
+  const [shapeMenuPosition, setShapeMenuPosition] = useState<{ left: number; top: number } | null>(null);
   const [pickedShape, setLastShape] = useState(SHAPE_TOOLS[0]);
   const lastShape = SHAPE_TOOLS.find((t) => t.tool === tool) ?? pickedShape;
   const ref = useRef<HTMLDivElement>(null);
+  const shapeMenuButtonRef = useRef<HTMLButtonElement>(null);
   const s = useEditor.getState();
   const { leftOpen, toggleLeftSidebar } = useEditorToolbarLayout();
+
+  const updateShapeMenuPosition = useCallback(() => {
+    const rect = shapeMenuButtonRef.current?.getBoundingClientRect();
+    if (rect) setShapeMenuPosition({ left: rect.left, top: rect.bottom + 4 });
+  }, []);
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
@@ -68,6 +75,18 @@ export function TopBar({ onSave, onExport, saveState }: { onSave: () => void; on
     window.addEventListener('mousedown', close);
     return () => window.removeEventListener('mousedown', close);
   }, []);
+
+  useEffect(() => {
+    if (menu !== 'shapes') return;
+    updateShapeMenuPosition();
+    const scrollContainer = ref.current;
+    window.addEventListener('resize', updateShapeMenuPosition);
+    scrollContainer?.addEventListener('scroll', updateShapeMenuPosition);
+    return () => {
+      window.removeEventListener('resize', updateShapeMenuPosition);
+      scrollContainer?.removeEventListener('scroll', updateShapeMenuPosition);
+    };
+  }, [menu, updateShapeMenuPosition]);
 
   const toolBtn = (t: Tool, icon: React.ReactNode, title: string) => (
     <button className={`icon-btn w-8 h-8 ${tool === t ? 'active' : ''}`} disabled={readOnly && t !== 'select' && t !== 'hand'} onClick={() => s.set('tool', t)} title={title}>
@@ -83,7 +102,7 @@ export function TopBar({ onSave, onExport, saveState }: { onSave: () => void; on
           <Menu size={13} className="text-t2" />
         </button>
         {menu === 'file' && (
-          <div className="menu absolute left-0 top-10 w-72">
+          <div className="menu editor-file-menu absolute left-0 top-10 w-72">
             <Link href="/" className="menu-item">
               Back to files
             </Link>
@@ -142,11 +161,25 @@ export function TopBar({ onSave, onExport, saveState }: { onSave: () => void; on
       {toolBtn('artboard', <Frame size={15} />, 'Artboard (A)')}
       <div className="relative flex">
         {toolBtn(lastShape.tool, lastShape.icon, `${lastShape.label}${lastShape.key ? ` (${lastShape.key})` : ''}`)}
-        <button className="w-4 h-8 text-t2 hover:text-t0" disabled={readOnly} onClick={() => setMenu(menu === 'shapes' ? null : 'shapes')}>
+        <button
+          ref={shapeMenuButtonRef}
+          className="w-4 h-8 text-t2 hover:text-t0"
+          disabled={readOnly}
+          aria-label="Open shape menu"
+          aria-expanded={menu === 'shapes'}
+          onClick={() => {
+            if (menu === 'shapes') setMenu(null);
+            else {
+              updateShapeMenuPosition();
+              setMenu('shapes');
+            }
+          }}
+          type="button"
+        >
           <ChevronDown size={12} />
         </button>
         {menu === 'shapes' && (
-          <div className="menu absolute left-0 top-10">
+          <div className="menu editor-shape-menu" style={{ left: shapeMenuPosition?.left ?? 0, top: shapeMenuPosition?.top ?? 0 }}>
             {SHAPE_TOOLS.map((t) => (
               <button
                 key={t.tool}
@@ -183,6 +216,7 @@ export function TopBar({ onSave, onExport, saveState }: { onSave: () => void; on
         }
       >
         <input
+          aria-label="Click selects whole groups"
           type="checkbox"
           checked={selectMode === 'group'}
           onChange={(e) => {
