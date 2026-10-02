@@ -31,21 +31,25 @@ __riveEditor.getState().selection
 ## Project layout
 
 ```
-src/
-  app/                    pages (files, users, editor, preview) + REST API (app/api)
-  components/             shared UI (header, template gallery, player, toaster)
-  components/editor/      editor panels, stage, actions registry, menus, dialogs
-  lib/rive/               format + editing core (DOM-free except engine/runtime)
-  lib/store/editor.ts     Zustand store: document, history, selection, modes
-  lib/client/             browser helpers (session, prefs, fonts, toasts)
-  lib/server/             storage-core + drivers (file, postgres)
-  proxy.ts                optional access token
+apps/web/                 editor UI + REST API
 apps/cli/                 CLI (OpenTUI), MCP server, shared project store
-scripts/                  tests and generators
-apps/cli/src/index.ts          launcher (tsx)
-docs/                     user & operator documentation
-contribution/             these guides
-.claude/                  agents and skills for AI-assisted contributions
+apps/desktop/             Electrobun desktop app
+packages/rive/            .riv format and editing core (DOM-free)
+packages/db/              Drizzle schema, migrations and queries
+packages/shared/          zod schemas and shared types
+packages/ui/              shared React components
+vendor/                   forked Rive SDK submodules
+docs/                     user and operator documentation
+contribution/             contributor guides
+```
+
+The web app's source is organized under `apps/web/src/`:
+
+```
+apps/web/src/app/         pages and REST API route handlers
+apps/web/src/components/  shared UI and editor panels
+apps/web/src/lib/         browser helpers, state and rendering
+apps/cli/src/index.ts     CLI launcher
 ```
 
 See [docs/architecture.md](../docs/architecture.md) for the data flow.
@@ -58,7 +62,7 @@ Most features touch these layers, in this order:
    it's user-facing (see `api.ts`). Add a round-trip test if it creates new object types.
 2. **CLI / MCP** (`apps/cli/`): expose it if it's useful for automation (`registerTool` in `mcp-server.ts`).
 3. **UI**: call it inside `useEditor.getState().commit((doc) => …)`, so it's one undo step.
-4. **Action** (`apps/web/apps/web/src/components/editor/actions.ts`): register a command with label, category, default keys, `when`,
+4. **Action** (`apps/web/src/components/editor/actions.ts`): register a command with label, category, default keys, `when`,
    `enabled` and `run`. Menus and the shortcuts dialog pick it up automatically.
 5. **Docs**: update `docs/`.
 

@@ -16,11 +16,15 @@ and features.
 
 ## Quick start for code contributions
 
+OpenRive requires [Bun](https://bun.sh) 1.4 or newer and Git. Docker is optional
+for PostgreSQL-backed development. The full setup and architecture notes are in
+the [development guide](contribution/development.md).
+
 ```bash
 git clone https://github.com/UpstandPlatform/OpenRive.git
 cd OpenRive
-npm install
-npm run dev                 # http://localhost:3000
+bun install
+bun run dev                 # http://localhost:3000
 ```
 
 1. **Open or find an issue** first for anything bigger than a small fix, so we can agree on the approach.
@@ -28,24 +32,43 @@ npm run dev                 # http://localhost:3000
 3. **Make the change** following the [code style](contribution/code-style.md).
 4. **Check it**:
    ```bash
-   npx tsc --noEmit
-   npm run lint
-   npm test
+   bun run check-types
+   bun run lint
+   bun run test
    ```
-   Also run `npm run test:mcp` if you touched `api.ts` or tools, and `npm run test:corpus` if you touched the format
-   layer (see [testing](contribution/testing.md)).
+   Also run `bun run test:mcp` if you touched the editing API or tools, and
+   `bun run test:corpus -- <rive-runtime>/tests` if you touched the format layer
+   (see [testing](contribution/testing.md)).
 5. **Open a pull request** using the template. Include screenshots or a short recording for UI changes, and attach
    `.riv` files for format fixes.
+
+## Project layout
+
+| Area | Path |
+| --- | --- |
+| Web editor and REST API | `apps/web/` |
+| CLI, TUI and MCP server | `apps/cli/` |
+| Electrobun desktop app | `apps/desktop/` |
+| `.riv` format and editing core | `packages/rive/` |
+| Database schema and queries | `packages/db/` |
+| Shared zod schemas and types | `packages/shared/` |
+| Shared React components | `packages/ui/` |
+
+The shared, DOM-free editing API lives in `packages/rive/src/api.ts`. Editor
+commands belong in `apps/web/src/components/editor/actions.ts`, and database
+changes belong in `packages/db/src/schema.ts`.
 
 ## Ground rules
 
 - **Never break files.** Unmodified `.riv` files must round-trip byte for byte. Format changes need tests.
 - **Local-first and login-free.** Don't add accounts, telemetry or required network calls. Optional integrations must
   be off by default.
-- **One editing API.** Features that create or change content belong in `src/lib/rive/api.ts` (or a DOM-free module
-  next to it), so the UI, CLI, MCP and Code panel all get them.
-- **Keyboard and menus.** New commands go in the action registry (`src/components/editor/actions.ts`) with a sensible
-  shortcut when appropriate.
+- **One editing API.** Features that create or change content belong in
+  `packages/rive/src/api.ts` (or a DOM-free module next to it), so the UI, CLI,
+  MCP and Code panel all get them.
+- **Keyboard and menus.** New commands go in the action registry
+  (`apps/web/src/components/editor/actions.ts`) with a sensible shortcut when
+  appropriate.
 - **Docs with features.** User-visible changes update the relevant page in `docs/`.
 - Be kind and constructive. Assume good intent.
 
