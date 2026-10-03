@@ -10,13 +10,43 @@ export const notFound = () => fail('Not found', 404);
 /**
  * Cookie-authenticated mutations must come from this origin. Bearer-authenticated
  * MCP calls are exempt because they do not carry the browser session cookie.
+ *
+ * A reverse proxy can make `request.url` describe the internal HTTP hop while
+ * the browser sees the public HTTPS URL. In production, OPENRIVE_URL is the
+ * canonical public origin; OPENRIVE_TRUSTED_ORIGINS can add explicitly trusted
+ * browser origins. With neither configured, local development falls back to
+ * the request URL (and forwarded proxy headers when available).
  */
 export function requireSameOrigin(request: Request): Response | null {
   if (request.headers.get('authorization')?.startsWith('Bearer ')) return null;
   const origin = request.headers.get('origin');
   if (origin) {
     try {
-      if (new URL(origin).origin !== new URL(request.url).origin) return fail('Cross-origin request rejected', 403);
+      const requestOrigin = new URL(origin).origin;
+      const configured = [
+        process.env.OPENRIVE_URL,
+        ...(process.env.OPENRIVE_TRUSTED_ORIGINS?.split(',') ?? []),
+      ]
+        .map((value) => {
+          try {
+            return value?.trim() ? new URL(value.trim()).origin : null;
+          } catch {
+            return null;
+          }
+        })
+        .filter((value): value is string => !!value);
+      const fallbackOrigins = [new URL(request.url).origin];
+      const forwardedProto = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim();
+      const forwardedHost = (request.headers.get('x-forwarded-host') ?? request.headers.get('host'))?.split(',')[0]?.trim();
+      if (forwardedProto && forwardedHost) {
+        try {
+          fallbackOrigins.push(new URL(`${forwardedProto}://${forwardedHost}`).origin);
+        } catch {
+          // Ignore malformed proxy metadata and rely on the configured origin.
+        }
+      }
+      const allowedOrigins = configured.length ? configured : fallbackOrigins;
+      if (!allowedOrigins.includes(requestOrigin)) return fail('Cross-origin request rejected', 403);
     } catch {
       return fail('Invalid request origin', 403);
     }
