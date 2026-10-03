@@ -39,6 +39,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: desktop-${{ github.ref }}
@@ -175,6 +176,16 @@ jobs:
             git tag -a "${TAG}" -m "OpenRive ${TAG}"
             git push origin "${TAG}"
           fi
+
+      # The release job creates tags with GITHUB_TOKEN. GitHub does not start
+      # push-triggered workflows for those tags, so explicitly dispatch the
+      # container workflow against the release tag.
+      - name: Publish the matching container image
+        if: github.ref_type != 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: gh workflow run image.yml --repo "${GITHUB_REPOSITORY}" --ref "${TAG}"
 
       - uses: actions/download-artifact@v4
         with:
