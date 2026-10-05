@@ -17,7 +17,10 @@ const journal = JSON.parse(readFileSync(path.join(dir, 'meta', '_journal.json'),
 const migrations = journal.entries
   .sort((a, b) => a.idx - b.idx)
   .map((entry) => {
-    const sql = readFileSync(path.join(dir, `${entry.tag}.sql`), 'utf8');
+    // Keep the embedded representation stable across Windows and Linux
+    // checkouts. The migration files are text, so their line endings must not
+    // change the migrator hash or the generated TypeScript output.
+    const sql = readFileSync(path.join(dir, `${entry.tag}.sql`), 'utf8').replace(/\r\n?/g, '\n');
     return {
       tag: entry.tag,
       // same hash as drizzle-kit's migrator, so both ways of applying agree

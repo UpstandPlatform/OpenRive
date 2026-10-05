@@ -72,7 +72,9 @@ jobs:
       - name: Drizzle migrations are up to date
         run: |
           bun run db:generate
-          git diff --exit-code packages/db/src/migrations packages/db/src/migrations.generated.ts || {
+          # Drizzle emits LF on Linux and CRLF on Windows; compare the
+          # generated content without treating line endings as schema drift.
+          git diff --ignore-space-at-eol --exit-code packages/db/src/migrations packages/db/src/migrations.generated.ts || {
             echo "::error::Schema changed without a migration. Run 'bun run db:generate' and commit the result."
             exit 1
           }
