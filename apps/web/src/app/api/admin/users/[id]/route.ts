@@ -1,5 +1,5 @@
-import { deleteAccount, getAccount, listAccounts, revokeUserSessions, updateAccount } from '@openrive/auth';
-import { listProjects, updateProject } from '@openrive/db';
+import { deleteAccountAndTransferProjects, getAccount, listAccounts, revokeUserSessions, updateAccount } from '@openrive/auth';
+import { listProjects } from '@openrive/db';
 import { adminUpdateUserSchema } from '@openrive/shared';
 import { requireAdmin } from '@/lib/server/auth';
 import { routeId } from '@/lib/server/route';
@@ -42,19 +42,20 @@ export const DELETE = handler(async (request: Request, ctx: RouteContext<'/api/a
   const accounts = await listAccounts();
   const target = accounts.find((a) => a.id === id);
   if (!target) return notFound();
-  if (target.role === 'admin' && accounts.filter((a) => a.role === 'admin').length === 1) {
+  const activeAdmins = accounts.filter((a) => a.role === 'admin' && !a.disabled);
+  if (target.role === 'admin' && !target.disabled && activeAdmins.length === 1) {
     return fail('Cannot delete the last administrator');
   }
 
   // the removed account's files move to another user, so nothing is orphaned
   const transferTo = new URL(request.url).searchParams.get('transferTo');
-  const heir = accounts.find((a) => a.id === transferTo && a.id !== id) ?? accounts.find((a) => a.role === 'admin' && a.id !== id)!;
-  for (const project of await listProjects()) {
-    if (project.ownerId === id) await updateProject(project.id, { ownerId: heir.id });
-  }
+  const heir = accounts.find((a) => a.id === transferTo && a.id !== id && !a.disabled) ?? activeAdmins.find((a) => a.id !== id);
+  const hasOwnedProjects = (await listProjects()).some((project) => project.ownerId === id);
+  if (hasOwnedProjects && !heir) return fail('An active user is required to receive the account files', 409);
   await revokeUserSessions(id);
-  await deleteAccount(id);
-  return json({ ok: true, transferredTo: heir.id });
+  const deleted = await deleteAccountAndTransferProjects(id, heir?.id);
+  if (!deleted) return notFound();
+  return json({ ok: true, transferredTo: heir?.id ?? null });
 });
 
 export const GET = handler(async (_request: Request, ctx: RouteContext<'/api/admin/users/[id]'>) => {

@@ -21,6 +21,13 @@ const envSchema = z.object({
     .enum(['true', 'false'])
     .transform((v) => v === 'true')
     .optional(),
+  /** Inline PEM CA used to verify a private PostgreSQL certificate. */
+  OPENRIVE_DB_SSL_CA: z.string().min(1).optional(),
+  /** Explicit escape hatch for private, isolated compose networks. */
+  OPENRIVE_ALLOW_INSECURE_INTERNAL_SERVICES: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
   OPENRIVE_DB_POOL: z.coerce.number().int().positive().max(100).default(10),
   /** how long to wait for a PostgreSQL server that is still starting */
   OPENRIVE_DB_WAIT_SECONDS: z.coerce.number().int().nonnegative().max(600).default(60),
@@ -46,6 +53,8 @@ const envSchema = z.object({
   OPENRIVE_TRUSTED_ORIGINS: z.string().optional(),
   /** who may use the sign-up page: anyone, only the first (administrator) account, or nobody */
   OPENRIVE_SIGNUP: z.enum(['open', 'first', 'off']).default('first'),
+  /** Cloud defaults to stateless MCP so requests can reach any replica. */
+  OPENRIVE_MCP_STATELESS: z.enum(['auto', 'true', 'false']).default('auto'),
   PORT: z.coerce.number().int().positive().max(65535).default(3000),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 });
@@ -63,6 +72,7 @@ function read(): Env {
     OPENRIVE_DATA_DIR: source.OPENRIVE_DATA_DIR || source.RIVE_EDITOR_DATA_DIR || undefined,
     OPENRIVE_ACCESS_TOKEN: optional(source.OPENRIVE_ACCESS_TOKEN || source.RIVE_EDITOR_ACCESS_TOKEN),
     OPENRIVE_AUTH_SECRET: optional(source.OPENRIVE_AUTH_SECRET),
+    OPENRIVE_DB_SSL_CA: optional(source.OPENRIVE_DB_SSL_CA),
     OPENRIVE_TRUSTED_ORIGINS: optional(source.OPENRIVE_TRUSTED_ORIGINS),
     OPENRIVE_REDIS_URL: optional(source.OPENRIVE_REDIS_URL),
     OPENRIVE_STORAGE_ENDPOINT: optional(source.OPENRIVE_STORAGE_ENDPOINT),
@@ -88,6 +98,18 @@ function read(): Env {
     if (!data.OPENRIVE_STORAGE_BUCKET) errors.push('OPENRIVE_STORAGE_BUCKET is required for the cloud edition');
     if (!data.OPENRIVE_STORAGE_ACCESS_KEY_ID) errors.push('OPENRIVE_STORAGE_ACCESS_KEY_ID is required for the cloud edition');
     if (!data.OPENRIVE_STORAGE_SECRET_ACCESS_KEY) errors.push('OPENRIVE_STORAGE_SECRET_ACCESS_KEY is required for the cloud edition');
+    const databaseUrl = data.DATABASE_URL ? new URL(data.DATABASE_URL) : null;
+    const databaseTls = data.OPENRIVE_DB_SSL || ['require', 'verify-ca', 'verify-full'].includes(databaseUrl?.searchParams.get('sslmode') ?? '');
+    const internalServicesAreExplicit = data.OPENRIVE_ALLOW_INSECURE_INTERNAL_SERVICES;
+    if (data.NODE_ENV === 'production' && !databaseTls && !internalServicesAreExplicit) {
+      errors.push('Cloud production requires PostgreSQL TLS or OPENRIVE_ALLOW_INSECURE_INTERNAL_SERVICES=true for an isolated private network');
+    }
+    if (data.NODE_ENV === 'production' && data.OPENRIVE_REDIS_URL && !data.OPENRIVE_REDIS_URL.startsWith('rediss://') && !internalServicesAreExplicit) {
+      errors.push('Cloud production requires a rediss:// Redis URL or OPENRIVE_ALLOW_INSECURE_INTERNAL_SERVICES=true for an isolated private network');
+    }
+    if (data.NODE_ENV === 'production' && data.OPENRIVE_STORAGE_ENDPOINT && !data.OPENRIVE_STORAGE_ENDPOINT.startsWith('https://') && !internalServicesAreExplicit) {
+      errors.push('Cloud production requires an https:// object-storage endpoint or OPENRIVE_ALLOW_INSECURE_INTERNAL_SERVICES=true for an isolated private network');
+    }
     if (data.NODE_ENV === 'production' && !data.OPENRIVE_URL.startsWith('https://')) {
       errors.push('OPENRIVE_URL must use https:// in cloud production');
     }

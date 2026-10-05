@@ -44,6 +44,7 @@ export function passwordProblem(password: string): string | null {
 // that until a request actually needs an account.
 
 const SECRET_KEY = 'auth.secret';
+const FIRST_ADMIN_CLAIM = 'auth.first-admin-claim';
 
 let redisInstance: Promise<RedisInfrastructure | undefined> | null = null;
 
@@ -173,11 +174,20 @@ async function build() {
                 message: existing ? 'An administrator creates the accounts on this server' : 'Accounts on this server are created with the openrive command',
               });
             }
+            // Claim the first administrator through a unique database row. A
+            // read-then-insert count lets two simultaneous signups both become
+            // administrators; the conflict-safe claim makes the decision once
+            // across every application replica.
+            const [claim] = await conn
+              .insert(schema.settings)
+              .values({ key: FIRST_ADMIN_CLAIM, value: crypto.randomUUID() })
+              .onConflictDoNothing()
+              .returning();
             const count = await conn.$count(schema.users);
             return {
               data: {
                 ...user,
-                role: existing ? 'editor' : 'admin',
+                role: existing || !claim ? 'editor' : 'admin',
                 color: COLORS[count % COLORS.length]!,
                 position: count,
               },
@@ -439,6 +449,24 @@ export async function revokeUserSessions(userId: string) {
 export async function deleteAccount(userId: string) {
   const conn = await db();
   await conn.delete(schema.users).where(eq(schema.users.id, userId));
+}
+
+/** Transfers owned projects and deletes an account atomically. */
+export async function deleteAccountAndTransferProjects(userId: string, heirId?: string) {
+  const conn = await db();
+  return conn.transaction(async (tx) => {
+    if (heirId) {
+      await tx
+        .update(schema.projects)
+        .set({ ownerId: heirId, updatedAt: Date.now() })
+        .where(eq(schema.projects.ownerId, userId));
+    } else {
+      const [owned] = await tx.select({ id: schema.projects.id }).from(schema.projects).where(eq(schema.projects.ownerId, userId)).limit(1);
+      if (owned) throw new Error('A remaining user is required to receive the account files');
+    }
+    const deleted = await tx.delete(schema.users).where(eq(schema.users.id, userId)).returning();
+    return deleted.length > 0;
+  });
 }
 
 /** Housekeeping: drops sessions that expired. */

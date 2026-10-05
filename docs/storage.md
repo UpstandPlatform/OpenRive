@@ -44,7 +44,9 @@ DATABASE_URL=postgres://user:password@host:5432/openrive bun run start
 ```
 
 Any PostgreSQL 14+ works: the Docker Compose service, a local install, or a managed one (Neon, Supabase, RDS, Cloud
-SQL…). Add `?sslmode=require` or `OPENRIVE_DB_SSL=true` for TLS. Migrations are applied automatically at startup.
+SQL…). Add `?sslmode=require` or `OPENRIVE_DB_SSL=true` for TLS; certificates are verified by default, and
+`OPENRIVE_DB_SSL_CA` supplies a private CA when needed. Migrations are applied automatically at startup under a
+PostgreSQL advisory lock.
 
 For local development against a server instead of the embedded database:
 

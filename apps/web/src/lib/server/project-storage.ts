@@ -19,7 +19,7 @@ export async function readProjectRiv(id: string): Promise<Uint8Array | null> {
     // operator migration. The deterministic key also makes concurrent reads safe.
     const key = legacyProjectRivKey(id);
     await (await objectStorage()).put(key, asset.riv, 'application/octet-stream');
-    await pointProjectRiv(id, key);
+    await pointProjectRiv(id, key, asset.updatedAt);
     return asset.riv;
   }
   if (!asset.rivStorageKey) return null;
@@ -33,8 +33,8 @@ export async function uploadProjectRiv(id: string, bytes: Uint8Array): Promise<s
   return key;
 }
 
-export async function pointProjectRiv(id: string, key: string): Promise<void> {
-  const updated = await updateProject(id, { riv: null, rivStorageKey: key });
+export async function pointProjectRiv(id: string, key: string, expectedUpdatedAt?: number): Promise<void> {
+  const updated = await updateProject(id, { riv: null, rivStorageKey: key }, { expectedUpdatedAt });
   if (!updated) throw new Error('Project disappeared while saving its file');
 }
 

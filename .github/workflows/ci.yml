@@ -40,6 +40,12 @@ jobs:
       - name: Build
         run: bun run build
 
+      - name: Dependency security audit
+        # braces has no patched release yet and is reachable only through the
+        # development-only Next lint preset. Keep the audit failing on every
+        # actionable high/critical advisory while documenting this exception.
+        run: bun audit --audit-level=high --ignore GHSA-vfj7-8cjw-p6xm
+
   database:
     runs-on: ubuntu-latest
     services:
@@ -66,7 +72,7 @@ jobs:
       - name: Drizzle migrations are up to date
         run: |
           bun run db:generate
-          git diff --exit-code packages/db/src/migrations || {
+          git diff --exit-code packages/db/src/migrations packages/db/src/migrations.generated.ts || {
             echo "::error::Schema changed without a migration. Run 'bun run db:generate' and commit the result."
             exit 1
           }

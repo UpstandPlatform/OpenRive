@@ -65,3 +65,5 @@ apps/web/public/rive/runtime.json
 /scripts/databind-test-out.riv
 /scripts/databind-converted.riv
 /scripts/tmp/
+/output/
+/.playwright-cli/

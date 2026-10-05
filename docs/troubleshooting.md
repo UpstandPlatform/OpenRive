@@ -40,7 +40,8 @@ and restart.
   it, or pass `--data` / `--db` to the CLI.
 - Check `DATABASE_URL` (`postgres://user:password@host:5432/db`). Special characters in the password must be
   URL-encoded.
-- Managed databases usually need TLS: add `?sslmode=require` or `OPENRIVE_DB_SSL=true`.
+- Managed databases usually need TLS: add `?sslmode=require` or `OPENRIVE_DB_SSL=true`; certificates are verified by
+  default, so use `OPENRIVE_DB_SSL_CA` for a private CA instead of disabling verification.
 - With Docker Compose, the app waits for the `db` health check. Look at `docker compose logs db`.
 - `openrive storage` shows what the CLI connects to.
 

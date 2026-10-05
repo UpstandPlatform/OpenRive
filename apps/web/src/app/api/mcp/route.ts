@@ -1,8 +1,9 @@
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
-import { canCreateProjects, canEditProject, canManageProject, canSeeProject } from '@openrive/auth';
+import { canCreateProjects, canEditProject, canManageProject, canSeeProject, type Account } from '@openrive/auth';
 import { createMcpServer } from '@openrive/cli/mcp-server';
 import { env } from '@openrive/shared/env';
 import { requireUser } from '@/lib/server/auth';
+import { limitedRequest, MAX_MCP_BODY_BYTES, requireSameOrigin } from '@/lib/server/route';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -14,10 +15,9 @@ type Session = {
   transport: WebStandardStreamableHTTPServerTransport;
 };
 
-// MCP clients hold a protocol session between initialize and tool calls. Keep
-// the bounded session map in the server process; desktop and single-instance
-// self-hosted deployments need no extra service, while cloud deployments can
-// use sticky routing at the load balancer.
+// Stateful mode is retained for local/self-hosted clients that use session
+// resumability. Cloud defaults to stateless mode so every request is safe to
+// route to any replica without depending on in-process session memory.
 const sessions = new Map<string, Session>();
 const SESSION_TTL_MS = 30 * 60 * 1000;
 const MAX_SESSIONS = 256;
@@ -42,11 +42,41 @@ async function userForRequest() {
   return guard.error ? { response: guard.error } : { user: guard.user };
 }
 
+async function statelessHandle(request: Request, user: Account): Promise<Response> {
+  const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
+  const server = createMcpServer({
+    ownerId: user.id,
+    canCreateProjects: canCreateProjects(user),
+    canSeeProject: (project) => canSeeProject(user, project),
+    canEditProject: (project) => canEditProject(user, project),
+    canManageProject: (project) => canManageProject(user, project),
+    allowFilePaths: false,
+    editorUrlBase: env().OPENRIVE_URL,
+  });
+  await server.connect(transport);
+  try {
+    return await transport.handleRequest(request);
+  } finally {
+    await transport.close().catch(() => {});
+    await server.close().catch(() => {});
+  }
+}
+
 async function handle(request: Request): Promise<Response> {
+  const originError = requireSameOrigin(request);
+  if (originError) return originError;
+  const bounded = await limitedRequest(request, MAX_MCP_BODY_BYTES);
+  if (bounded instanceof Response) return bounded;
+  request = bounded;
   reapSessions();
   const guard = await userForRequest();
   if (guard.response) return guard.response;
   const user = guard.user;
+  const settings = env();
+  if (settings.OPENRIVE_MCP_STATELESS === 'true' || (settings.OPENRIVE_MCP_STATELESS === 'auto' && settings.OPENRIVE_EDITION === 'cloud')) {
+    if (request.method !== 'POST') return Response.json({ error: 'Stateless MCP accepts POST requests only' }, { status: 405, headers: { allow: 'POST' } });
+    return statelessHandle(request, user);
+  }
   const sessionId = request.headers.get('mcp-session-id');
   let session = sessionId ? sessions.get(sessionId) : undefined;
 

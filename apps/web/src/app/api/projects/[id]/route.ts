@@ -1,9 +1,9 @@
 import { deleteProject, getProject, getProjectAsset, getProjectMeta, listUsers, updateProject } from '@openrive/db';
 import { updateProjectSchema } from '@openrive/shared';
 import { fromBase64 } from '@openrive/shared/serialize';
-import { body, fail, handler, json, notFound, routeId } from '@/lib/server/route';
+import { body, fail, handler, json, notFound, routeId, MAX_PROJECT_JSON_BODY_BYTES } from '@/lib/server/route';
 import { canSeeProject, canTransferProject, requireEdit, requireProjectManager, requireUser } from '@/lib/server/auth';
-import { cloudEdition, pointProjectRiv, removeProjectRiv, uploadProjectRiv } from '@/lib/server/project-storage';
+import { cloudEdition, removeProjectRiv, uploadProjectRiv } from '@/lib/server/project-storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,9 +32,9 @@ export const PUT = handler(async (request: Request, ctx: RouteContext<'/api/proj
   if (!existing) return notFound();
   const denied = requireEdit(guard.user, existing);
   if (denied) return denied;
-  const parsed = await body(request, updateProjectSchema);
+  const parsed = await body(request, updateProjectSchema, MAX_PROJECT_JSON_BODY_BYTES);
   if (parsed.error) return parsed.error;
-  const { riv, ownerId, sharedWith, ...patch } = parsed.data;
+  const { riv, ownerId, sharedWith, expectedUpdatedAt, ...patch } = parsed.data;
   if (ownerId !== undefined || sharedWith !== undefined) {
     if (ownerId !== undefined && !canTransferProject(guard.user)) return fail('Only an administrator may transfer ownership', 403);
     const managed = requireProjectManager(guard.user, existing);
@@ -53,18 +53,27 @@ export const PUT = handler(async (request: Request, ctx: RouteContext<'/api/proj
   const newKey = bytes && cloudEdition() ? await uploadProjectRiv(id, bytes) : undefined;
   let meta: Awaited<ReturnType<typeof updateProject>>;
   try {
-    meta = await updateProject(id, { ...patch, ...(bytes && !cloudEdition() ? { riv: bytes } : {}), ...accessPatch });
-    if (meta && newKey) await pointProjectRiv(id, newKey);
+    meta = await updateProject(
+      id,
+      {
+        ...patch,
+        ...(bytes && cloudEdition() ? { riv: null, rivStorageKey: newKey } : {}),
+        ...(bytes && !cloudEdition() ? { riv: bytes } : {}),
+        ...accessPatch,
+      },
+      { expectedUpdatedAt },
+    );
   } catch (error) {
     if (newKey) await removeProjectRiv(newKey);
     throw error;
   }
   if (!meta) {
     if (newKey) await removeProjectRiv(newKey);
-    return notFound();
+    const current = await getProjectMeta(id);
+    return current ? fail('Project changed while it was being saved; reload and try again', 409) : notFound();
   }
   if (newKey && oldAsset?.rivStorageKey && oldAsset.rivStorageKey !== newKey) await removeProjectRiv(oldAsset.rivStorageKey);
-  return meta ? json(meta) : notFound();
+  return json(meta);
 });
 
 export const DELETE = handler(async (_request: Request, ctx: RouteContext<'/api/projects/[id]'>) => {
@@ -77,7 +86,8 @@ export const DELETE = handler(async (_request: Request, ctx: RouteContext<'/api/
   const denied = requireProjectManager(guard.user, existing);
   if (denied) return denied;
   const asset = await getProjectAsset(id);
-  await deleteProject(id);
+  const deleted = await deleteProject(id, { expectedUpdatedAt: existing.updatedAt });
+  if (!deleted) return fail('Project changed while it was being deleted; reload and try again', 409);
   if (cloudEdition()) await removeProjectRiv(asset?.rivStorageKey);
   return json({ ok: true });
 });

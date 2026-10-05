@@ -10,9 +10,10 @@ export const GET = handler(async (_request: Request, ctx: RouteContext<'/api/pro
   if (error) return error;
   const guard = await requireUser();
   if (guard.error) return guard.error;
-  const [meta, bytes] = await Promise.all([getProjectMeta(id), readProjectRiv(id)]);
-  if (!meta || !bytes) return notFound();
-  if (!canSeeProject(guard.user, meta)) return notFound();
+  const meta = await getProjectMeta(id);
+  if (!meta || !canSeeProject(guard.user, meta)) return notFound();
+  const bytes = await readProjectRiv(id);
+  if (!bytes) return notFound();
   const filename = `${meta.name.replace(/[^\w\- ]+/g, '').trim() || 'file'}.riv`;
   return new Response(new Uint8Array(bytes), {
     headers: {

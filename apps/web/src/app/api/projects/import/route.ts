@@ -1,15 +1,17 @@
 import { canCreateProjects } from '@openrive/auth';
-import { fail, handler, json, requireSameOrigin } from '@/lib/server/route';
+import { MAX_RIV_BYTES } from '@openrive/shared';
+import { fail, handler, json, limitedRequest, requireSameOrigin } from '@/lib/server/route';
 import { requireUser } from '@/lib/server/auth';
 import { importProjectBytes, InvalidRivError } from '@/lib/server/project-import';
 
 export const dynamic = 'force-dynamic';
-const MAX_RIV_BYTES = 100 * 1024 * 1024;
-
 /** Multipart upload endpoint used by the dashboard and the desktop build. */
 export const POST = handler(async (request: Request) => {
   const originError = requireSameOrigin(request);
   if (originError) return originError;
+  const bounded = await limitedRequest(request, MAX_RIV_BYTES + 2 * 1024 * 1024);
+  if (bounded instanceof Response) return bounded;
+  request = bounded;
   const guard = await requireUser();
   if (guard.error) return guard.error;
   if (!canCreateProjects(guard.user)) return fail('Viewers cannot create files', 403);

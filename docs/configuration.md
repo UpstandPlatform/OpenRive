@@ -10,10 +10,12 @@ or in `docker-compose.yml`.
 | --- | --- | --- |
 | `DATABASE_URL` | – | PostgreSQL connection URL. Without it, an embedded PostgreSQL (PGlite) runs inside the data folder. `OPENRIVE_DATABASE_URL` also works. |
 | `OPENRIVE_DATA_DIR` | `./data` | Folder for the embedded database and CLI imports/exports. A relative path is resolved against the workspace root. |
-| `OPENRIVE_DB_SSL` | `false` | `true` forces TLS (also enabled by `?sslmode=require` in the URL). Certificates are not verified, which suits managed databases with private CAs. |
+| `OPENRIVE_DB_SSL` | `false` | `true` forces TLS (also enabled by `?sslmode=require` in the URL). Certificates are verified by default. |
+| `OPENRIVE_DB_SSL_CA` | – | Inline PEM certificate authority for a private PostgreSQL certificate. |
+| `OPENRIVE_ALLOW_INSECURE_INTERNAL_SERVICES` | `false` | Explicitly allows plaintext/private-network PostgreSQL, Redis, and object storage in isolated Compose networks. Keep `false` for internet-connected services. |
 | `OPENRIVE_DB_POOL` | `10` | Maximum database connections (server mode) |
 | `OPENRIVE_DB_WAIT_SECONDS` | `60` | How long to wait for a PostgreSQL server that is still starting before giving up |
-| `OPENRIVE_REDIS_URL` | – | Optional Redis URL for distributed rate limits, locks and ephemeral coordination. The cloud Compose stack uses `redis://openrive-redis:6379`. |
+| `OPENRIVE_REDIS_URL` | – | Optional Redis URL for distributed rate limits, locks and ephemeral coordination. Use `rediss://` outside an explicitly isolated private network. |
 
 `OPENRIVE_EDITION` is `local`, `self_hosted`, or `cloud`. If omitted, OpenRive infers `local` without `DATABASE_URL` and
 `self_hosted` with it. Cloud is strict: it requires PostgreSQL, Redis, Better Auth, an HTTPS public URL in production,
@@ -42,6 +44,7 @@ MinIO and `false` for AWS S3 or R2:
 | `OPENRIVE_AUTH_SECRET` | generated | Optional 32+ character secret. If omitted, a durable secret is generated in the database. |
 | `OPENRIVE_SIGNUP` | `first` | `open`, `first`, or `off`; use `first` or `off` on public deployments. |
 | `OPENRIVE_ACCESS_TOKEN` | – | When set, every request needs HTTP Basic auth with this password (any user name). `/api/health` stays open. Can be combined with accounts. |
+| `OPENRIVE_MCP_STATELESS` | `auto` | `auto` enables stateless HTTP MCP in cloud deployments so requests can reach any replica; set `false` only when a self-hosted load balancer guarantees session affinity. |
 
 ## Server
 

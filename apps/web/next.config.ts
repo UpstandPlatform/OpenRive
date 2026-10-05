@@ -16,6 +16,12 @@ const nextConfig: NextConfig = {
   // native/optional server dependencies must not be bundled
   serverExternalPackages: ['pg', '@electric-sql/pglite'],
   poweredByHeader: false,
+  // Route handlers enforce their own schema-specific limits; this prevents
+  // Next's proxy layer from buffering a large valid editor/upload request into
+  // an unbounded application body before those checks run.
+  experimental: {
+    proxyClientMaxBodySize: '192mb',
+  },
   env: {
     NEXT_PUBLIC_APP_VERSION: appVersion,
   },

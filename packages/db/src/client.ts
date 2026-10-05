@@ -29,10 +29,18 @@ function isStarting(error: unknown): boolean {
 }
 
 async function connect() {
-  const { DATABASE_URL, OPENRIVE_DB_SSL, OPENRIVE_DB_POOL, OPENRIVE_DB_WAIT_SECONDS } = env();
+  const { DATABASE_URL, OPENRIVE_DB_SSL, OPENRIVE_DB_SSL_CA, OPENRIVE_ALLOW_INSECURE_INTERNAL_SERVICES, OPENRIVE_DB_POOL, OPENRIVE_DB_WAIT_SECONDS } = env();
   if (DATABASE_URL) {
     const [{ drizzle }, pg] = await Promise.all([import('drizzle-orm/node-postgres'), import('pg')]);
-    const ssl = OPENRIVE_DB_SSL || /[?&]sslmode=(require|verify)/.test(DATABASE_URL) ? { rejectUnauthorized: false } : undefined;
+    const sslRequested = OPENRIVE_DB_SSL || /[?&]sslmode=(require|verify(?:-ca|-full)?)/.test(DATABASE_URL);
+    const ssl = sslRequested
+      ? {
+          // Certificate verification is the secure default. Private CAs must
+          // be supplied explicitly instead of silently accepting any cert.
+          rejectUnauthorized: !OPENRIVE_ALLOW_INSECURE_INTERNAL_SERVICES,
+          ...(OPENRIVE_DB_SSL_CA ? { ca: OPENRIVE_DB_SSL_CA } : {}),
+        }
+      : undefined;
     const pool = new pg.default.Pool({ connectionString: DATABASE_URL, ssl, max: OPENRIVE_DB_POOL });
     const db = drizzle(pool, { schema });
     // compose starts the app beside PostgreSQL, so the first connection often
@@ -52,7 +60,7 @@ async function connect() {
         await new Promise((resolve) => setTimeout(resolve, Math.min(2000, 250 * attempt)));
       }
     }
-    await applyMigrations(db);
+    await applyMigrations(db, { lock: true });
     return {
       db,
       backend: 'postgres' as const,

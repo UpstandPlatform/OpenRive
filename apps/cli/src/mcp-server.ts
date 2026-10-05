@@ -15,7 +15,7 @@ import { z } from 'zod';
 import * as api from '@openrive/rive/api';
 import { exportRiv, importRiv, type RiveDoc } from '@openrive/rive/document';
 import { fromBase64, toBase64 } from '@openrive/shared/serialize';
-import type { ProjectMeta } from '@openrive/shared';
+import { MAX_RIV_BASE64_CHARS, type ProjectMeta } from '@openrive/shared';
 import { env } from '@openrive/shared/env';
 import { addTheme, applyTheme, setSwatchColor } from '@openrive/rive/theme';
 import { createProject, deleteProject, edit, EXAMPLES, importFile, importBytes, loadDoc, loadFont, resolveProject, storage, TEMPLATES } from './project-store';
@@ -143,7 +143,7 @@ tool(
 tool(
   'import_riv',
   'Import a .riv file as a new project. Use dataBase64 for remote HTTP MCP sessions; path is available only to local stdio MCP.',
-  { path: z.string().optional().describe('Absolute path to a .riv file (local stdio only)'), dataBase64: z.string().base64().optional().describe('Base64 encoded .riv bytes (for HTTP MCP)'), name: z.string().optional() },
+  { path: z.string().optional().describe('Absolute path to a .riv file (local stdio only)'), dataBase64: z.string().base64().max(MAX_RIV_BASE64_CHARS).optional().describe('Base64 encoded .riv bytes (for HTTP MCP)'), name: z.string().max(200).optional() },
   async ({ path: p, dataBase64, name }) => {
     if (!!p === !!dataBase64) throw new Error('Provide exactly one of path or dataBase64');
     if (p && !options.allowFilePaths) throw new Error('Filesystem paths are not available through HTTP MCP; send dataBase64');
@@ -169,7 +169,7 @@ tool(
   },
 );
 
-tool('inspect_riv', 'Describe a .riv file. Use dataBase64 for HTTP MCP; path is available only to local stdio MCP.', { path: z.string().optional(), dataBase64: z.string().base64().optional() }, ({ path: p, dataBase64 }) => {
+tool('inspect_riv', 'Describe a .riv file. Use dataBase64 for HTTP MCP; path is available only to local stdio MCP.', { path: z.string().optional(), dataBase64: z.string().base64().max(MAX_RIV_BASE64_CHARS).optional() }, ({ path: p, dataBase64 }) => {
   if (!!p === !!dataBase64) throw new Error('Provide exactly one of path or dataBase64');
   if (p && !options.allowFilePaths) throw new Error('Filesystem paths are not available through HTTP MCP; send dataBase64');
   return api.outline(importRiv(p ? new Uint8Array(readFileSync(p)) : fromBase64(dataBase64!)));

@@ -1,7 +1,7 @@
 // Users and projects. The only module that talks to the database; the web API,
 // the CLI and the MCP server all go through it.
 import { idSchema, type ProjectMeta, type User } from '@openrive/shared';
-import { asc, desc, eq, notInArray } from 'drizzle-orm';
+import { and, asc, desc, eq, notInArray, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from './client';
 import { projects, settings, users, type ProjectRow, type UserRow } from './schema';
@@ -40,12 +40,31 @@ export async function listUsers(): Promise<User[]> {
   const conn = await db();
   const rows = await conn.select().from(users).orderBy(asc(users.position), asc(users.id));
   if (rows.length) return rows.map(toUser);
-  const admin: User = { id: nanoid(10), name: 'Admin', color: '#7c5cff', role: 'admin', createdAt: Date.now() };
-  await conn
-    .insert(users)
-    .values({ ...admin, createdAt: new Date(admin.createdAt), position: 0 })
-    .onConflictDoNothing();
-  return [admin];
+  return conn.transaction(async (tx) => {
+    const current = await tx.select().from(users).orderBy(asc(users.position), asc(users.id));
+    if (current.length) return current.map(toUser);
+    const generatedAdmin: User = { id: nanoid(10), name: 'Admin', color: '#7c5cff', role: 'admin', createdAt: Date.now() };
+    const [claim] = await tx
+      .insert(settings)
+      .values({ key: 'local.initial-admin', value: generatedAdmin.id })
+      .onConflictDoNothing()
+      .returning();
+    const [storedClaim] = await tx.select().from(settings).where(eq(settings.key, 'local.initial-admin'));
+    const claimedId = typeof storedClaim?.value === 'string' ? storedClaim.value : generatedAdmin.id;
+    const admin = { ...generatedAdmin, id: claimedId };
+    if (!claim) {
+      const afterClaim = await tx.select().from(users).orderBy(asc(users.position), asc(users.id));
+      if (afterClaim.length) return afterClaim.map(toUser);
+    }
+    const [row] = await tx
+      .insert(users)
+      .values({ ...admin, createdAt: new Date(admin.createdAt), position: 0 })
+      .onConflictDoNothing()
+      .returning();
+    if (row) return [toUser(row)];
+    const afterInsert = await tx.select().from(users).orderBy(asc(users.position), asc(users.id));
+    return afterInsert.map(toUser);
+  });
 }
 
 /** Replaces the whole user list (the user manager edits it as one array). */
@@ -90,13 +109,13 @@ export async function getProjectRiv(id: string): Promise<Uint8Array | null> {
   return row?.riv ?? null;
 }
 
-export async function getProjectAsset(id: string): Promise<{ riv: Uint8Array | null; rivStorageKey: string | null } | null> {
+export async function getProjectAsset(id: string): Promise<{ riv: Uint8Array | null; rivStorageKey: string | null; updatedAt: number } | null> {
   const conn = await db();
   const [row] = await conn
-    .select({ riv: projects.riv, rivStorageKey: projects.rivStorageKey })
+    .select({ riv: projects.riv, rivStorageKey: projects.rivStorageKey, updatedAt: projects.updatedAt })
     .from(projects)
     .where(eq(projects.id, safeId(id)));
-  return row ? { riv: row.riv, rivStorageKey: row.rivStorageKey } : null;
+  return row ? { riv: row.riv, rivStorageKey: row.rivStorageKey, updatedAt: row.updatedAt } : null;
 }
 
 export interface CreateProject {
@@ -140,20 +159,65 @@ export type UpdateProject = Partial<Pick<ProjectMeta, 'name' | 'thumbnail' | 'ar
   rivStorageKey?: string | null;
 };
 
-export async function updateProject(id: string, patch: UpdateProject): Promise<ProjectMeta | null> {
+export async function updateProject(id: string, patch: UpdateProject, options: { expectedUpdatedAt?: number } = {}): Promise<ProjectMeta | null> {
   const conn = await db();
   const values = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
+  const where = [eq(projects.id, safeId(id))];
+  if (options.expectedUpdatedAt !== undefined) where.push(eq(projects.updatedAt, options.expectedUpdatedAt));
   const [row] = await conn
     .update(projects)
-    .set({ ...values, updatedAt: Date.now() })
-    .where(eq(projects.id, safeId(id)))
+    // Keep the optimistic concurrency token strictly increasing even when two
+    // updates arrive in the same millisecond.
+    .set({ ...values, updatedAt: sql<number>`GREATEST(${projects.updatedAt} + 1, ${Date.now()})` })
+    .where(and(...where))
     .returning();
   return row ? toMeta(row) : null;
 }
 
-export async function deleteProject(id: string) {
+/** Creates one local user without replacing a concurrently edited user list. */
+export async function createLocalUser(user: User): Promise<User> {
   const conn = await db();
-  await conn.delete(projects).where(eq(projects.id, safeId(id)));
+  const [row] = await conn
+    .insert(users)
+    .values({ ...user, createdAt: new Date(user.createdAt), position: user.createdAt })
+    .returning();
+  return toUser(row!);
+}
+
+/** Updates one local user while serializing administrator-role checks. */
+export async function updateLocalUser(id: string, patch: Partial<Pick<User, 'name' | 'color' | 'role'>>): Promise<User | null> {
+  const conn = await db();
+  return conn.transaction(async (tx) => {
+    const [current] = await tx.select().from(users).where(eq(users.id, safeId(id)));
+    if (!current) return null;
+    if (patch.role && patch.role !== 'admin' && current.role === 'admin') {
+      const admins = await tx.execute(sql`SELECT id FROM users WHERE role = 'admin' FOR UPDATE`);
+      if (admins.rows.length === 1) throw new Error('At least one admin is required');
+    }
+    const [row] = await tx.update(users).set(patch).where(eq(users.id, safeId(id))).returning();
+    return row ? toUser(row) : null;
+  });
+}
+
+/** Transfers owned projects and removes one local user in one transaction. */
+export async function deleteLocalUserAndTransferProjects(id: string, heirId: string): Promise<boolean> {
+  const conn = await db();
+  return conn.transaction(async (tx) => {
+    await tx
+      .update(projects)
+      .set({ ownerId: safeId(heirId), updatedAt: sql<number>`GREATEST(${projects.updatedAt} + 1, ${Date.now()})` })
+      .where(eq(projects.ownerId, safeId(id)));
+    const deleted = await tx.delete(users).where(eq(users.id, safeId(id))).returning();
+    return deleted.length > 0;
+  });
+}
+
+export async function deleteProject(id: string, options: { expectedUpdatedAt?: number } = {}): Promise<boolean> {
+  const conn = await db();
+  const where = [eq(projects.id, safeId(id))];
+  if (options.expectedUpdatedAt !== undefined) where.push(eq(projects.updatedAt, options.expectedUpdatedAt));
+  const deleted = await conn.delete(projects).where(and(...where)).returning();
+  return deleted.length > 0;
 }
 
 export async function duplicateProject(id: string, ownerId: string): Promise<ProjectMeta | null> {

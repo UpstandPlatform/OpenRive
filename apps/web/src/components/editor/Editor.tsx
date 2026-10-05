@@ -42,34 +42,46 @@ export function Editor() {
   const [dialog, setDialog] = useState<'shortcuts' | 'prefs' | null>(null);
   const [externalChange, setExternalChange] = useState<ProjectMeta | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => usePrefs.getState().init(), []);
 
   const save = useCallback(async () => {
-    const s = useEditor.getState();
-    if (!s.doc || !s.projectId || s.readOnly) return;
-    const v = s.version;
     setSaving(true);
-    writing = true;
+    const queued = saveQueue.current.then(async () => {
+      const s = useEditor.getState();
+      if (!s.doc || !s.projectId || s.readOnly) return;
+      const v = s.version;
+      writing = true;
+      try {
+        const riv = exportRiv(s.doc);
+        const meta = await api.json<ProjectMeta>(`/api/projects/${s.projectId}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            doc: stringifyDoc(s.doc),
+            riv: toBase64(riv),
+            thumbnail: captureThumbnail(),
+            expectedUpdatedAt: knownUpdatedAt || undefined,
+            ...docStats(s.doc),
+          }),
+        });
+        knownUpdatedAt = meta.updatedAt;
+        useEditor.getState().markSaved(v);
+        setSaveError(null);
+      } catch (e) {
+        setSaveError((e as Error).message);
+      } finally {
+        writing = false;
+      }
+    });
+    saveQueue.current = queued;
     try {
-      const riv = exportRiv(s.doc);
-      const meta = await api.json<ProjectMeta>(`/api/projects/${s.projectId}`, {
-        method: 'PUT',
-        body: JSON.stringify({
-          doc: stringifyDoc(s.doc),
-          riv: toBase64(riv),
-          thumbnail: captureThumbnail(),
-          ...docStats(s.doc),
-        }),
-      });
-      knownUpdatedAt = meta.updatedAt;
-      useEditor.getState().markSaved(v);
-      setSaveError(null);
-    } catch (e) {
-      setSaveError((e as Error).message);
+      await queued;
     } finally {
-      writing = false;
-      setSaving(false);
+      if (saveQueue.current === queued) {
+        saveQueue.current = Promise.resolve();
+        setSaving(false);
+      }
     }
   }, []);
 

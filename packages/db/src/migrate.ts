@@ -61,7 +61,21 @@ async function baselineExistingSchema(db: Runner, applied: Set<string>) {
   }
 }
 
-export async function applyMigrations(db: Runner): Promise<string[]> {
+export async function applyMigrations(db: Runner, options: { lock?: boolean } = {}): Promise<string[]> {
+  if (options.lock) {
+    // Only the PostgreSQL server path enables this lock. PGlite is already
+    // single-process and does not need (or consistently expose) advisory locks.
+    await db.execute(sql`SELECT pg_advisory_lock(48172631)`);
+    try {
+      return await applyMigrationsUnlocked(db);
+    } finally {
+      await db.execute(sql`SELECT pg_advisory_unlock(48172631)`);
+    }
+  }
+  return applyMigrationsUnlocked(db);
+}
+
+async function applyMigrationsUnlocked(db: Runner): Promise<string[]> {
   await db.execute(sql`CREATE SCHEMA IF NOT EXISTS "drizzle"`);
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS "drizzle"."__drizzle_migrations" (

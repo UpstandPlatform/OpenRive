@@ -11,6 +11,8 @@ const names = [
   'OPENRIVE_STORAGE_BUCKET',
   'OPENRIVE_STORAGE_ACCESS_KEY_ID',
   'OPENRIVE_STORAGE_SECRET_ACCESS_KEY',
+  'OPENRIVE_ALLOW_INSECURE_INTERNAL_SERVICES',
+  'NODE_ENV',
 ] as const;
 const saved = Object.fromEntries(names.map((name) => [name, process.env[name]]));
 
@@ -39,6 +41,17 @@ try {
   process.env.OPENRIVE_STORAGE_BUCKET = 'openrive';
   process.env.OPENRIVE_STORAGE_ACCESS_KEY_ID = 'openrive';
   process.env.OPENRIVE_STORAGE_SECRET_ACCESS_KEY = 'a-secret';
+  process.env.NODE_ENV = 'production';
+  resetEnv();
+  let insecureRejected = false;
+  try {
+    env();
+  } catch {
+    insecureRejected = true;
+  }
+  check(insecureRejected, 'cloud production must reject plaintext service URLs without explicit private-network opt-in');
+
+  process.env.OPENRIVE_ALLOW_INSECURE_INTERNAL_SERVICES = 'true';
   resetEnv();
   check(env().OPENRIVE_EDITION === 'cloud', 'valid cloud configuration must resolve cloud edition');
 

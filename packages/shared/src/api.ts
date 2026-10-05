@@ -3,8 +3,18 @@
 import { z } from 'zod';
 import { projectMetaSchema, roleSchema, userSchema } from './types';
 
-const docString = z.string().min(2, 'doc must be a serialized document');
-const base64 = z.string().base64().optional();
+/** Maximum size accepted for a .riv payload at any HTTP/MCP boundary. */
+export const MAX_RIV_BYTES = 100 * 1024 * 1024;
+/** Base64 expands binary data by four characters for every three bytes. */
+export const MAX_RIV_BASE64_CHARS = Math.ceil(MAX_RIV_BYTES / 3) * 4;
+/** Serialized editor documents are JSON, not arbitrary file uploads. */
+export const MAX_DOC_CHARS = 64 * 1024 * 1024;
+/** Thumbnails are data URLs and should remain small relative to the file. */
+export const MAX_THUMBNAIL_CHARS = 4 * 1024 * 1024;
+
+const docString = z.string().min(2, 'doc must be a serialized document').max(MAX_DOC_CHARS, 'doc is too large');
+const base64 = z.string().base64().max(MAX_RIV_BASE64_CHARS, 'riv is too large').optional();
+const thumbnail = z.string().max(MAX_THUMBNAIL_CHARS, 'thumbnail is too large').optional();
 
 export const projectStatsSchema = z.object({
   artboards: z.number().int().nonnegative().optional(),
@@ -17,7 +27,7 @@ export const createProjectSchema = projectStatsSchema.extend({
   ownerId: z.string().default(''),
   doc: docString,
   riv: base64,
-  thumbnail: z.string().optional(),
+  thumbnail,
 });
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 
@@ -25,9 +35,11 @@ export const updateProjectSchema = projectStatsSchema.extend({
   name: z.string().trim().min(1).max(200).optional(),
   doc: docString.optional(),
   riv: base64,
-  thumbnail: z.string().optional(),
+  thumbnail,
   ownerId: z.string().optional(),
-  sharedWith: z.array(z.string()).optional(),
+  sharedWith: z.array(z.string().max(100)).max(1000).optional(),
+  /** Optimistic concurrency token supplied by the editor/API client. */
+  expectedUpdatedAt: z.number().int().nonnegative().optional(),
 });
 export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
 

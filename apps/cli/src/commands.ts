@@ -1,8 +1,8 @@
 // Non-interactive commands. `openrive` with no arguments opens the TUI instead.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { authEnabled, createAccount, listAccounts, passwordProblem, updateAccount } from '@openrive/auth';
-import { importLegacyDataDir } from '@openrive/db';
+import { authEnabled, createAccount, deleteAccountAndTransferProjects, listAccounts, passwordProblem, updateAccount } from '@openrive/auth';
+import { deleteLocalUserAndTransferProjects, importLegacyDataDir } from '@openrive/db';
 import { outline } from '@openrive/rive/api';
 import { buildBundle, bundleFileName, type BundleFile } from '@openrive/rive/bundle';
 import { exportRiv, importRiv } from '@openrive/rive/document';
@@ -10,6 +10,7 @@ import { roleSchema } from '@openrive/shared';
 import { env } from '@openrive/shared/env';
 import {
   createProject,
+  deleteProject as deleteStoredProject,
   EXAMPLES,
   importFile,
   loadDoc,
@@ -184,7 +185,7 @@ export async function info(args: string[], opts: Options) {
 
 export async function deleteProject(args: string[]) {
   const meta = await resolveProject(args[0] ?? '');
-  await storage.deleteProject(meta.id);
+  await deleteStoredProject(meta.id);
   console.log(`Deleted "${meta.name}" (${meta.id})`);
 }
 
@@ -205,7 +206,7 @@ export function validate(args: string[]) {
 }
 
 export async function users(args: string[], opts: Options) {
-  const list = await storage.listUsers();
+  const list = authEnabled() ? await listAccounts() : await storage.listUsers();
   const sub = args[0];
   if (!sub) {
     for (const u of list) console.log(`${pad(u.id, 14)}${pad(u.name, 24)}${u.role}`);
@@ -250,11 +251,11 @@ export async function users(args: string[], opts: Options) {
     const ref = args.slice(1).join(' ');
     const user = list.find((u) => u.id === ref || u.name.toLowerCase() === ref.toLowerCase());
     if (!user) throw new StoreError(`User "${ref}" not found`);
-    const rest = list.filter((u) => u.id !== user.id);
+    const rest = list.filter((u) => u.id !== user.id && (!('disabled' in u) || !u.disabled));
     const heir = rest.find((u) => u.role === 'admin');
     if (!heir) throw new StoreError('Cannot remove the last admin');
-    for (const p of await storage.listProjects()) if (p.ownerId === user.id) await storage.updateProject(p.id, { ownerId: heir.id });
-    await storage.saveUsers(rest);
+    if (authEnabled()) await deleteAccountAndTransferProjects(user.id, heir.id);
+    else await deleteLocalUserAndTransferProjects(user.id, heir.id);
     console.log(`Removed ${user.name}; their files now belong to ${heir.name}`);
     return;
   }

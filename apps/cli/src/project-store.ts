@@ -6,7 +6,7 @@ import * as storage from '@openrive/db';
 import { exportRiv, importRiv, type RiveDoc } from '@openrive/rive/document';
 import { EXAMPLES, getExample } from '@openrive/rive/examples';
 import { getTemplate, TEMPLATES } from '@openrive/rive/templates';
-import type { ProjectMeta } from '@openrive/shared';
+import { MAX_RIV_BYTES, type ProjectMeta } from '@openrive/shared';
 import { env } from '@openrive/shared/env';
 import { parseDoc, stringifyDoc } from '@openrive/shared/serialize';
 import { createObjectStorage, legacyProjectRivKey, projectRivKey, type ObjectStorage } from '@openrive/storage';
@@ -29,18 +29,12 @@ let objectStorage: Promise<ObjectStorage> | null = null;
 const cloudEdition = () => env().OPENRIVE_EDITION === 'cloud';
 const blobs = () => (objectStorage ??= Promise.resolve().then(() => createObjectStorage()));
 
-async function saveProjectRiv(id: string, bytes: Uint8Array) {
-  if (!cloudEdition()) return { riv: bytes } as const;
+async function prepareProjectRiv(id: string, bytes: Uint8Array) {
+  if (!cloudEdition()) return { patch: { riv: bytes } as const, key: undefined, previousKey: undefined };
   const previous = await storage.getProjectAsset(id);
   const key = projectRivKey(id);
   await (await blobs()).put(key, bytes, 'application/octet-stream');
-  const updated = await storage.updateProject(id, { riv: null, rivStorageKey: key });
-  if (!updated) {
-    await (await blobs()).delete(key);
-    throw new StoreError(`Project "${id}" disappeared while saving its file`);
-  }
-  if (previous?.rivStorageKey && previous.rivStorageKey !== key) await (await blobs()).delete(previous.rivStorageKey);
-  return { rivStorageKey: key } as const;
+  return { patch: { riv: null, rivStorageKey: key } as const, key, previousKey: previous?.rivStorageKey };
 }
 
 async function createStoredProject(input: Parameters<typeof storage.createProject>[0], bytes: Uint8Array) {
@@ -66,7 +60,7 @@ export async function getProjectRiv(id: string): Promise<Uint8Array | null> {
   if (asset.riv && cloudEdition()) {
     const key = legacyProjectRivKey(id);
     await (await blobs()).put(key, asset.riv, 'application/octet-stream');
-    await storage.updateProject(id, { riv: null, rivStorageKey: key });
+    await storage.updateProject(id, { riv: null, rivStorageKey: key }, { expectedUpdatedAt: asset.updatedAt });
     return asset.riv;
   }
   if (asset.riv) return asset.riv;
@@ -75,7 +69,9 @@ export async function getProjectRiv(id: string): Promise<Uint8Array | null> {
 
 export async function deleteProject(id: string) {
   const asset = await storage.getProjectAsset(id);
-  await storage.deleteProject(id);
+  if (!asset) return;
+  const deleted = await storage.deleteProject(id, { expectedUpdatedAt: asset.updatedAt });
+  if (!deleted) throw new StoreError(`Project "${id}" changed while it was being deleted; try again`);
   if (cloudEdition() && asset?.rivStorageKey) await (await blobs()).delete(asset.rivStorageKey);
 }
 
@@ -127,15 +123,31 @@ export async function loadDoc(ref: string): Promise<{ meta: ProjectMeta; doc: Ri
   return { meta, doc: parseDoc<RiveDoc>(project.doc) };
 }
 
-export async function saveDoc(id: string, doc: RiveDoc) {
-  return storage.updateProject(id, { doc: stringifyDoc(doc), ...stats(doc), ...(await saveProjectRiv(id, exportRiv(doc))) });
+export async function saveDoc(id: string, doc: RiveDoc, expectedUpdatedAt?: number) {
+  const prepared = await prepareProjectRiv(id, exportRiv(doc));
+  let updated: ProjectMeta | null;
+  try {
+    updated = await storage.updateProject(id, { doc: stringifyDoc(doc), ...stats(doc), ...prepared.patch }, { expectedUpdatedAt });
+    if (!updated) throw new StoreError(`Project "${id}" changed while it was being saved; reload and try again`);
+  } catch (error) {
+    if (prepared.key) await (await blobs()).delete(prepared.key);
+    throw error;
+  }
+  if (prepared.previousKey && prepared.previousKey !== prepared.key) {
+    try {
+      await (await blobs()).delete(prepared.previousKey);
+    } catch (error) {
+      console.error('Could not remove an old OpenRive object', error instanceof Error ? error.message : error);
+    }
+  }
+  return updated;
 }
 
 /** Loads a project, applies a change and saves it (an open editor picks the change up automatically). */
 export async function edit<T>(ref: string, fn: (doc: RiveDoc) => T): Promise<{ meta: ProjectMeta; result: T }> {
   const { meta, doc } = await loadDoc(ref);
   const result = fn(doc);
-  const next = await saveDoc(meta.id, doc);
+  const next = await saveDoc(meta.id, doc, meta.updatedAt);
   return { meta: next ?? meta, result };
 }
 
@@ -161,6 +173,7 @@ export async function importFile(file: string, name?: string, ownerId?: string) 
 
 /** Imports already-uploaded bytes; used by the HTTP MCP transport as well as the CLI. */
 export async function importBytes(bytes: Uint8Array, name?: string, ownerId?: string) {
+  if (bytes.byteLength > MAX_RIV_BYTES) throw new StoreError('The .riv file is larger than the 100 MB upload limit');
   const doc = importRiv(bytes);
   const riv = exportRiv(doc);
   return createStoredProject({

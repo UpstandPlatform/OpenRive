@@ -1,4 +1,4 @@
-import { listUsers, saveUsers } from '@openrive/db';
+import { createLocalUser, listUsers } from '@openrive/db';
 import { createUserSchema, USER_COLORS, type User } from '@openrive/shared';
 import { nanoid } from 'nanoid';
 import { body, handler, json } from '@/lib/server/route';
@@ -26,6 +26,5 @@ export const POST = handler(async (request: Request) => {
     role: data.role,
     createdAt: Date.now(),
   };
-  await saveUsers([...users, user]);
-  return json(user, 201);
+  return json(await createLocalUser(user), 201);
 });

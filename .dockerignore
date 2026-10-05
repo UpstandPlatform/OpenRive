@@ -15,3 +15,8 @@ docs
 wiki
 contribution
 *.md
+.env
+.env.*
+!.env.example
+output
+.playwright-cli

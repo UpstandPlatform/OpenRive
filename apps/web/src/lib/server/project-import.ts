@@ -1,5 +1,6 @@
 import { createProject, deleteProject, getProjectMeta } from '@openrive/db';
 import { exportRiv, importRiv } from '@openrive/rive/document';
+import { MAX_RIV_BYTES } from '@openrive/shared';
 import { stringifyDoc } from '@openrive/shared/serialize';
 import { cloudEdition, pointProjectRiv, removeProjectRiv, uploadProjectRiv } from './project-storage';
 
@@ -25,6 +26,7 @@ function stats(doc: ReturnType<typeof importRiv>) {
  */
 export async function importProjectBytes(name: string, ownerId: string, bytes: Uint8Array) {
   if (!bytes.length) throw new InvalidRivError('The uploaded .riv file is empty');
+  if (bytes.byteLength > MAX_RIV_BYTES) throw new InvalidRivError('The .riv file is larger than the 100 MB upload limit');
   let doc: ReturnType<typeof importRiv>;
   try {
     doc = importRiv(bytes);

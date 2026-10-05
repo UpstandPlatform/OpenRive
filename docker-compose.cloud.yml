@@ -17,6 +17,9 @@ services:
       OPENRIVE_AUTH_SECRET: ${OPENRIVE_AUTH_SECRET:?Set a random 32+ character auth secret}
       OPENRIVE_TRUSTED_ORIGINS: ${OPENRIVE_TRUSTED_ORIGINS:-}
       OPENRIVE_REDIS_URL: redis://openrive-redis:6379
+      # The bundled services share a private Docker network. This explicit
+      # opt-in is required because public deployments must use TLS/rediss/https.
+      OPENRIVE_ALLOW_INSECURE_INTERNAL_SERVICES: "true"
       OPENRIVE_REDIS_MAXMEMORY: ${OPENRIVE_REDIS_MAXMEMORY:-128mb}
       OPENRIVE_STORAGE_ENDPOINT: ${OPENRIVE_STORAGE_ENDPOINT:-http://openrive-minio:9000}
       OPENRIVE_STORAGE_REGION: ${OPENRIVE_STORAGE_REGION:-us-east-1}

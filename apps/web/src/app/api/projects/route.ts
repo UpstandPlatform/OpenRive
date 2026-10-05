@@ -2,7 +2,7 @@ import { createProject, deleteProject, getProjectMeta, listProjects } from '@ope
 import { createProjectSchema } from '@openrive/shared';
 import { fromBase64 } from '@openrive/shared/serialize';
 import { canCreateProjects } from '@openrive/auth';
-import { body, fail, handler, json } from '@/lib/server/route';
+import { body, fail, handler, json, MAX_PROJECT_JSON_BODY_BYTES } from '@/lib/server/route';
 import { canSeeProject, requireUser } from '@/lib/server/auth';
 import { cloudEdition, pointProjectRiv, removeProjectRiv, uploadProjectRiv } from '@/lib/server/project-storage';
 
@@ -19,7 +19,7 @@ export const POST = handler(async (request: Request) => {
   const guard = await requireUser();
   if (guard.error) return guard.error;
   if (!canCreateProjects(guard.user)) return fail('Viewers cannot create files', 403);
-  const { data, error } = await body(request, createProjectSchema);
+  const { data, error } = await body(request, createProjectSchema, MAX_PROJECT_JSON_BODY_BYTES);
   if (error) return error;
   const bytes = data.riv ? fromBase64(data.riv) : undefined;
   let meta = await createProject({

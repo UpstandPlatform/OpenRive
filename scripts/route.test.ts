@@ -1,4 +1,5 @@
-import { requireSameOrigin } from '../apps/web/src/lib/server/route';
+import { body, requireSameOrigin } from '../apps/web/src/lib/server/route';
+import { z } from 'zod';
 
 function check(condition: unknown, message: string) {
   if (!condition) throw new Error(`Route origin test failed: ${message}`);
@@ -40,19 +41,22 @@ try {
     (await status(
       requireSameOrigin(
         request('http://openrive:3000/api/mcp/keys', {
-          origin: 'https://openrive.example.com',
-          host: 'openrive.example.com',
+          origin: 'https://attacker.example',
+          'x-forwarded-host': 'openrive.example.com',
           'x-forwarded-proto': 'https',
         }),
       ),
-    )) === 200,
-    'forwarded HTTPS metadata must provide a local fallback origin',
+    )) === 403,
+    'client-supplied forwarded headers must not widen the allowed origin',
   );
+  check((await status(requireSameOrigin(request('http://openrive:3000/api/mcp/keys', {})))) === 200, 'same-origin requests without Origin remain allowed');
   check(
     (await status(requireSameOrigin(request('https://openrive.example.com/api/mcp/keys', { 'sec-fetch-site': 'cross-site' })))) === 403,
     'cross-site requests without an Origin header must be rejected',
   );
-  console.log('Route origin checks passed');
+  const tooLarge = await body(new Request('http://openrive:3000/api/projects', { method: 'POST', body: '{"x":1}' }), z.object({}), 4);
+  check(tooLarge.error?.status === 413, 'bounded JSON bodies must return 413 before parsing');
+  console.log('Route origin and body-limit checks passed');
 } finally {
   for (const [name, value] of Object.entries(saved)) {
     if (value === undefined) delete process.env[name as keyof typeof saved];

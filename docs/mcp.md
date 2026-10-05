@@ -59,9 +59,9 @@ and revoked with `DELETE /api/mcp/keys` and `{"keyId":"…"}`. The key is hashed
 scoped to the account that created it.
 
 Remote clients send `.riv` bytes to `import_riv` as `dataBase64`; `export_riv` returns `dataBase64` when no local path
-is supplied. Remote MCP never accepts server filesystem paths. A multi-instance cloud deployment must keep one MCP
-session on the same application instance (sticky routing), because the MCP transport is stateful; a single-instance
-self-hosted server and the desktop app need no extra service.
+is supplied. Remote MCP never accepts server filesystem paths. Cloud HTTP MCP is stateless by default, so requests can
+reach any application replica without sticky routing. Set `OPENRIVE_MCP_STATELESS=false` only for a self-hosted
+deployment that intentionally uses stateful sessions and has load-balancer affinity configured.
 
 The local desktop app serves the same `/api/mcp` route on its loopback origin. Its bundled server has authentication
 off by default and is bound to `127.0.0.1`; use the loopback URL shown by the desktop integration when configuring a

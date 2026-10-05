@@ -1,4 +1,4 @@
-import { listProjects, listUsers, saveUsers, updateProject } from '@openrive/db';
+import { deleteLocalUserAndTransferProjects, listUsers, updateLocalUser } from '@openrive/db';
 import { updateUserSchema } from '@openrive/shared';
 import { body, fail, handler, json, notFound, routeId } from '@/lib/server/route';
 import { authEnabled, requireAdmin } from '@/lib/server/auth';
@@ -17,9 +17,12 @@ export const PUT = handler(async (request: Request, ctx: RouteContext<'/api/user
   if (parsed.data.role && parsed.data.role !== 'admin' && user.role === 'admin' && admins === 1) {
     return fail('At least one admin is required');
   }
-  Object.assign(user, parsed.data);
-  await saveUsers(users);
-  return json(user);
+  try {
+    const updated = await updateLocalUser(id, parsed.data);
+    return updated ? json(updated) : notFound();
+  } catch (e) {
+    return fail((e as Error).message);
+  }
 });
 
 export const DELETE = handler(async (request: Request, ctx: RouteContext<'/api/users/[id]'>) => {
@@ -34,10 +37,8 @@ export const DELETE = handler(async (request: Request, ctx: RouteContext<'/api/u
   const remaining = users.filter((u) => u.id !== id);
   const transferTo = new URL(request.url).searchParams.get('transferTo');
   const heir = remaining.find((u) => u.id === transferTo) ?? remaining.find((u) => u.role === 'admin')!;
-  // the removed user's files move to another user, so nothing becomes unreachable
-  for (const project of await listProjects()) {
-    if (project.ownerId === id) await updateProject(project.id, { ownerId: heir.id });
-  }
-  await saveUsers(remaining);
+  if (!heir) return fail('A remaining user is required to receive the files', 409);
+  const deleted = await deleteLocalUserAndTransferProjects(id, heir.id);
+  if (!deleted) return notFound();
   return json({ ok: true });
 });

@@ -45,7 +45,7 @@ acts as the local administrator.
 | `POST /projects` | `{ name, ownerId, doc, riv?, thumbnail?, artboards?, animations?, stateMachines? }` | `201 ProjectMeta` |
 | `GET /projects/:id` | – | `{ meta: ProjectMeta, doc: object }` |
 | `GET /projects/:id?meta=1` | – | `ProjectMeta` (cheap, used to detect outside changes) |
-| `PUT /projects/:id` | any of `{ name, doc, riv, thumbnail, ownerId, sharedWith, artboards, animations, stateMachines }` | `ProjectMeta` |
+| `PUT /projects/:id` | any of `{ name, doc, riv, thumbnail, ownerId, sharedWith, artboards, animations, stateMachines, expectedUpdatedAt }` | `ProjectMeta` (`409` when the optimistic version is stale) |
 | `DELETE /projects/:id` | – | `{ ok: true }` |
 | `POST /projects/:id/duplicate` | `{ ownerId }` | `201 ProjectMeta` |
 | `GET /projects/:id/riv` | – | the `.riv` file (`application/octet-stream`) |
