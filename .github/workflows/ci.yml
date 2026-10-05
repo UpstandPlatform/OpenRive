@@ -32,6 +32,11 @@ jobs:
       - name: Tests (round-trip + SVG importer)
         run: bun run test
 
+      - name: Rive corpus round-trip
+        run: |
+          bun run rive:init
+          bun run test:corpus -- vendor/rive-runtime/tests
+
       - name: MCP server
         run: bun run test:mcp
         env:
