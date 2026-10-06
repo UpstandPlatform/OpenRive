@@ -15,7 +15,7 @@
     "mcp": "bun src/mcp-server.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "@openrive/db": "workspace:*",
     "@openrive/rive": "workspace:*",
     "@openrive/shared": "workspace:*",
