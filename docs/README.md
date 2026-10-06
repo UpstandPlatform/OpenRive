@@ -34,6 +34,7 @@ it and working on it.
 | --- | --- |
 | [CLI & terminal UI](cli.md) | The `openrive` command and its OpenTUI interface |
 | [MCP server](mcp.md) | Let AI assistants (Claude, Cursor, …) build animations |
+| [AI agent skills](../contribution/ai-collaboration.md) | Install skills that teach agents to create, embed and verify OpenRive animations |
 | [REST API](rest-api.md) | The HTTP API used by the web app |
 
 ## Internals

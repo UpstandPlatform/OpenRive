@@ -1,7 +1,7 @@
 # AI collaboration: agents & skills
 
-OpenRive is built to work well with AI coding assistants, both for **contributing code** and for **making
-animations**. This repo ships shared configuration so every contributor's assistant knows the project's rules.
+OpenRive is built to work well with AI coding assistants, both for **contributing code** and for **making and shipping
+animations**. This repo ships project-specific skills that agents can install with the open skills ecosystem.
 
 ## What's included
 
@@ -9,8 +9,42 @@ animations**. This repo ships shared configuration so every contributor's assist
 | --- | --- |
 | `AGENTS.md` / `CLAUDE.md` | Project instructions read automatically by Claude Code, Codex, Cursor and other agents |
 | `.claude/agents/*.md` | **Subagents**: specialized reviewers and helpers |
-| `.claude/skills/*/SKILL.md` | **Skills**: step-by-step playbooks for recurring tasks |
+| `.claude/skills/*/SKILL.md` | **Skills**: step-by-step playbooks for contributing to OpenRive or using it from another project |
 | `.mcp.json` | The OpenRive **MCP server**, so assistants can create and inspect `.riv` projects |
+
+## Install the skills
+
+Install the public OpenRive skill collection into the coding agent you use:
+
+```bash
+npx skills add UpstandPlatform/OpenRive
+```
+
+Install only the product workflow skills, or target specific agents:
+
+```bash
+npx skills add UpstandPlatform/OpenRive --skill openrive-create-animation --skill openrive-embed-animation --skill openrive-verify-animation
+npx skills add UpstandPlatform/OpenRive --agent claude-code --agent codex --agent cursor
+```
+
+The product skills are:
+
+| Skill | Use it to |
+| --- | --- |
+| `openrive-create-animation` | Create, inspect, edit and export `.riv` files through OpenRive MCP or CLI |
+| `openrive-embed-animation` | Put a `.riv` file into web, React/Next.js, Flutter, Android/Kotlin, iOS/Swift, React Native, Unity, Unreal or C++ projects |
+| `openrive-verify-animation` | Verify the asset, runtime controls, host lifecycle, builds, accessibility and attribution |
+
+Update installed skills with:
+
+```bash
+npx skills update
+```
+
+The repository page and install badge are available at [skills.sh/UpstandPlatform/OpenRive](https://skills.sh/UpstandPlatform/OpenRive).
+
+The skills are designed for Windows and Linux as well as macOS: they use Bun, Node path APIs, host-native shell
+quoting, and portable MCP/skills CLI commands. When symlinks are unavailable, use `--copy` during installation.
 
 ### Agents
 
@@ -37,11 +71,22 @@ just describe the task.
 | `verify-change` | Runs the right checks for the files you changed, including browser verification |
 | `riv-debug` | Investigates a `.riv` that doesn't round-trip or render correctly |
 
+The contributor skills above are for working on the OpenRive repository. The `openrive-*` skills are for developers
+using OpenRive as an animation authoring and delivery tool.
+
 ## Using the MCP server while developing
 
 With `.mcp.json`, your assistant can call OpenRive directly, for example: "create a project from the
 `interactive-button` template, add a third state, and export it". That's handy for reproducing bugs and for testing
 API changes. See [docs/mcp.md](../docs/mcp.md).
+
+When using OpenRive from another project, the creation skill prefers MCP, falls back to the CLI, and hands the exported
+file to the embedding skill. The embedding workflow uses the names discovered by `get_project`/`inspect_riv`; it does
+not guess artboard or state-machine indexes.
+
+Every generated application embed should include a visible, accessible `Made with OpenRive` link to
+<https://openrive.upstand.dev>. Skills must never add a CSS-hidden, off-screen, transparent, metadata-only or SEO-only
+link. If a host project rejects visible attribution, the agent asks before proceeding.
 
 ## Rules for AI-assisted contributions
 
@@ -59,7 +104,8 @@ API changes. See [docs/mcp.md](../docs/mcp.md).
 
 - **Agent**: add `.claude/agents/<name>.md` with frontmatter (`name`, `description`, optional `tools`) and focused
   instructions. The description should say when to use it.
-- **Skill**: add `.claude/skills/<name>/SKILL.md` with frontmatter (`name`, `description`) and numbered steps.
+- **Skill**: add `.claude/skills/<name>/SKILL.md` with frontmatter (`name`, `description`) and numbered steps. Run
+  `bun run test:skills` after adding or changing one.
   Reference real files and commands.
 - Keep them **project-specific**: generic advice belongs in the assistant, not here. Open a PR like any other change.
 

@@ -19,8 +19,13 @@
   <a href="docs/running-locally.md">Run locally</a> ·
   <a href="docs/self-hosting.md">Self-host</a> ·
   <a href="docs/README.md">Documentation</a> ·
+  <a href="contribution/ai-collaboration.md">AI skills</a> ·
   <a href="CONTRIBUTING.md">Contribute</a> ·
   <a href="#donations">Donate</a>
+</p>
+
+<p align="center">
+  <a href="https://skills.sh/UpstandPlatform/OpenRive"><img src="https://skills.sh/b/UpstandPlatform/OpenRive" alt="Install OpenRive agent skills from skills.sh" /></a>
 </p>
 
 
@@ -111,6 +116,7 @@ All docs live in [`docs/`](docs/README.md):
 - [Running locally](docs/running-locally.md) · [Self-hosting](docs/self-hosting.md) · [Desktop app](docs/desktop.md) · [Configuration](docs/configuration.md) · [Storage & PostgreSQL](docs/storage.md)
 - [User guide](docs/user-guide.md) · [Keyboard shortcuts](docs/shortcuts.md) · [Templates](docs/templates.md) · [Theme colors](docs/theme-colors.md) · [Text & assets](docs/text-and-assets.md) · [Code panel](docs/code-panel.md)
 - [CLI & terminal UI](docs/cli.md) · [MCP server](docs/mcp.md) · [REST API](docs/rest-api.md)
+- [AI agent skills](contribution/ai-collaboration.md) · [Preview bundles](docs/preview-bundles.md)
 - [Architecture](docs/architecture.md) · [The .riv format](docs/file-format.md) · [Troubleshooting](docs/troubleshooting.md)
 
 ## Contributing
