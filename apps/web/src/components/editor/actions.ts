@@ -431,6 +431,33 @@ function enterSelection() {
   if (kids.length) s.select(kids.map((k) => k.id));
 }
 
+/** Children of `parentId` that can be selected on the stage, front-most first. */
+function selectableChildren(ab: ArtboardDoc, parentId: string): CoreObj[] {
+  return ab.objects.filter((o) => parentIdOf(ab, o) === parentId && isA(o.type, 'Node') && o.type !== 'Artboard');
+}
+
+/** Selects every object at the level the user is working at: the entered group's contents, else the artboard's. */
+function selectAllHere() {
+  const s = st();
+  const { ab } = getActive();
+  if (!ab) return;
+  const within = s.selectionContext && findObj(ab, s.selectionContext) ? s.selectionContext : ab.artboard.id;
+  s.select(selectableChildren(ab, within).map((o) => o.id));
+}
+
+/** Moves the selection to the sibling above (-1, nearer the front) or below (1) in the layers list, wrapping around. */
+function selectSibling(dir: 1 | -1) {
+  const s = st();
+  const { ab } = getActive();
+  const o = selectedObjects()[0];
+  if (!ab || !o) return;
+  const parent = parentIdOf(ab, o) ?? ab.artboard.id;
+  const sibs = selectableChildren(ab, parent);
+  const i = sibs.findIndex((x) => x.id === o.id);
+  if (i < 0 || sibs.length < 2) return;
+  s.select([sibs[(i + dir + sibs.length) % sibs.length]!.id]);
+}
+
 function selectParent() {
   const { ab } = getActive();
   if (!ab) return;
@@ -582,11 +609,10 @@ export const ACTIONS: Action[] = [
     label: 'Select all',
     category: 'Edit',
     keys: ['Ctrl+A'],
-    run: () => {
-      const { ab } = getActive();
-      if (ab) st().select(ab.objects.filter((o) => o.props.parentId === ab.artboard.id && isA(o.type, 'Node')).map((o) => o.id));
-    },
+    run: selectAllHere,
   },
+  { id: 'edit.selectAbove', label: 'Select layer above', category: 'Edit', keys: ['Alt+]'], run: () => selectSibling(-1), enabled: hasSelection },
+  { id: 'edit.selectBelow', label: 'Select layer below', category: 'Edit', keys: ['Alt+['], run: () => selectSibling(1), enabled: hasSelection },
   {
     id: 'edit.deselect',
     label: 'Deselect / exit',
@@ -686,7 +712,8 @@ export const ACTIONS: Action[] = [
   { id: 'view.zoomOut', label: 'Zoom out', category: 'View', keys: ['Ctrl+-', '-'], run: zoom('out') },
   { id: 'view.zoom100', label: 'Zoom to 100%', category: 'View', keys: ['Shift+0'], run: zoom('100') },
   { id: 'view.zoomFit', label: 'Zoom to fit artboard', category: 'View', keys: ['Shift+1'], run: zoom('fit') },
-  { id: 'view.zoomSelection', label: 'Zoom to selection', category: 'View', keys: ['Shift+2'], run: zoom('selection'), enabled: hasSelection },
+  { id: 'view.zoomSelection', label: 'Focus on selection (or fit the artboard)', category: 'View', keys: ['Shift+2', 'F'], run: zoom('selection') },
+  { id: 'view.zoomAll', label: 'Zoom to fit all artboards', category: 'View', keys: ['Shift+3'], run: zoom('all') },
   { id: 'view.toggleMode', label: 'Toggle Design / Animate', category: 'View', keys: ['Tab'], run: () => st().setMode(st().mode === 'design' ? 'animate' : 'design') },
   {
     id: 'view.themePanel',
@@ -721,6 +748,36 @@ export const ACTIONS: Action[] = [
     keys: ["Ctrl+'"],
     checked: () => getPrefs().showGrid,
     run: () => usePrefs.getState().update({ showGrid: !getPrefs().showGrid }),
+  },
+  {
+    id: 'view.guides',
+    label: 'Show guides',
+    category: 'View',
+    keys: ['Ctrl+;'],
+    checked: () => getPrefs().showGuides,
+    run: () => usePrefs.getState().update({ showGuides: !getPrefs().showGuides }),
+  },
+  {
+    id: 'view.clearGuides',
+    label: 'Clear guides',
+    category: 'View',
+    keys: [],
+    run: () => {
+      const { s, ab } = getActive();
+      if (ab) s.setGuides(ab.id, null);
+    },
+    enabled: () => {
+      const { s, ab } = getActive();
+      return !!ab && !!s.guides[ab.id];
+    },
+  },
+  {
+    id: 'view.smartGuides',
+    label: 'Smart guides',
+    category: 'View',
+    keys: ["Ctrl+Alt+;"],
+    checked: () => getPrefs().smartGuides,
+    run: () => usePrefs.getState().update({ smartGuides: !getPrefs().smartGuides }),
   },
   {
     id: 'view.snapGrid',

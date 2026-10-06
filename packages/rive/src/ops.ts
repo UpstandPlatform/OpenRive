@@ -172,8 +172,17 @@ export function moveBefore(ab: ArtboardDoc, id: string, beforeId: string | null,
 }
 
 export function groupObjects(ab: ArtboardDoc, ids: string[]): string | null {
-  const objs = ids.map((id) => findObj(ab, id)).filter((o): o is CoreObj => !!o && isA(o.type, 'Node'));
+  const picked = new Set(ids);
+  // nested picks travel inside their selected ancestor; draw order (front first) decides the rest
+  const objs = ab.objects.filter(
+    (o) =>
+      picked.has(o.id) &&
+      isA(o.type, 'Node') &&
+      o.type !== 'Artboard' &&
+      !ids.some((other) => other !== o.id && isAncestor(ab, other, o.id)),
+  );
   if (!objs.length) return null;
+  // the group takes the place of the front-most object, so nothing jumps in front of or behind its neighbours
   const parentId = parentIdOf(ab, objs[0]) ?? ab.artboard.id;
   const scene = buildScene(ab);
   const parentWorld = scene.nodes.get(parentId)?.world ?? [1, 0, 0, 1, 0, 0];

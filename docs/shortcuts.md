@@ -33,7 +33,9 @@ different action in each mode.
 | Paste in place (Design) | `Ctrl+Shift+V` |
 | Duplicate | `Ctrl+D` |
 | Delete | `Delete`, `Backspace` |
-| Select all | `Ctrl+A` |
+| Select all (in the current group) | `Ctrl+A` |
+| Select layer above | `Alt+]` |
+| Select layer below | `Alt+[` |
 | Deselect / exit | `Escape` |
 | Rename | `F2` |
 
@@ -97,13 +99,16 @@ different action in each mode.
 | Zoom out | `Ctrl+-`, `-` |
 | Zoom to 100% | `Shift+0` |
 | Zoom to fit artboard | `Shift+1` |
-| Zoom to selection | `Shift+2` |
+| Focus on selection (or fit the artboard) | `Shift+2`, `F` |
+| Zoom to fit all artboards | `Shift+3` |
 | Toggle Design / Animate | `Tab` |
 | Cycle layers / theme / assets panel | `Alt+T` |
 | Click selects groups | `Alt+G` |
 | Show rulers | `Alt+R` |
 | Show grid | `Ctrl+'` |
 | Snap to grid | `Ctrl+Shift+'` |
+| Smart guides | `Ctrl+Alt+;` |
+| Show guides | `Ctrl+;` |
 | Toggle code panel | `Alt+C` |
 
 ## Animate

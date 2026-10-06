@@ -107,6 +107,10 @@ export function PreferencesDialog({ onClose }: { onClose: () => void }) {
               <input type="checkbox" checked={prefs.snapToPixel} onChange={(e) => update({ snapToPixel: e.target.checked })} />
               Snap positions to whole pixels while dragging
             </label>
+            <label className="flex items-center gap-2 text-t1">
+              <input type="checkbox" checked={prefs.smartGuides} onChange={(e) => update({ smartGuides: e.target.checked })} />
+              Smart guides: snap to other objects and the artboard (hold Ctrl to skip)
+            </label>
           </div>
         </div>
       <div className="flex justify-between p-4 border-t border-line">
