@@ -135,6 +135,9 @@ OpenRive is free and open source. If it saves you time, you can support its deve
 | Network | Address |
 | --- | --- |
 | TON | `UQBglMTG79v4lv6j0CyhJSKaB8vNr704qUgcyA0CkUtGEZ7q` |
+| ETH, Base, BSC, Arbitrum | `0x39aAf891Ed40995dC5BAC792BC607630C2ecB09d` |
+| Bitcoin | `bc1qq0qyu27f3qvzfeued6qmhr635ffe6zcvk6v4gh` |
+| TRON | `TRkn78pomDFzB2LDYMwHLZrSiuJ4aZQxJF` |
 
 
 Thank you! Stars, bug reports and pull requests help too.
