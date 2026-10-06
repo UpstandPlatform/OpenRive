@@ -12,6 +12,8 @@ import {
   hitTestShape,
   invert,
   isEmpty,
+  isHidden,
+  isLocked,
   Mat,
   mul,
   objectBounds,
@@ -25,7 +27,7 @@ import {
   vertexControls,
 } from '@openrive/rive/scene';
 import { isA } from '@openrive/rive/schema';
-import { findArtboard, findObj, insertObjects, isAncestor, parentIdOf } from '@openrive/rive/ops';
+import { duplicateObjects, findArtboard, findObj, insertObjects, isAncestor, parentIdOf } from '@openrive/rive/ops';
 import { newArtboard, newParametricShape, newPenShape, PenPoint, ShapeKind, solidStroke } from '@openrive/rive/factory';
 import { ensureFontAsset, newTextObjects, textBox, textRuns, textStyles } from '@openrive/rive/text';
 import { getPrefs, usePrefs } from '@/lib/client/prefs';
@@ -34,6 +36,8 @@ import { openContextMenu } from './ContextMenu';
 import { canvasMenu, objectMenu } from './menus';
 import { animationFrames, getActive, useEditor } from '@/lib/store/editor';
 import { engineRef } from './engineRef';
+import { Box, dragRect, Guide, snapBox, snapPoint } from '@/lib/snap';
+import { cancelViewTween, tweenView } from '@/lib/viewTween';
 
 type Handle = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 
@@ -47,6 +51,11 @@ type Drag =
       sy: number;
       start: Map<string, { x: number; y: number; inv: Mat }>;
       moved: boolean;
+      /** the moving objects' bounds at the start, and what they may snap to (artboard space) */
+      box: Box | null;
+      targets: Box[];
+      /** Alt was held: the first real movement leaves a copy behind and drags the copy instead */
+      dup: boolean;
     }
   | { kind: 'moveArtboard'; ids: string[]; sx: number; sy: number; start: Map<string, { x: number; y: number }> }
   | {
@@ -68,7 +77,21 @@ type Drag =
     }
   | { kind: 'resizeArtboard'; abId: string; handle: Handle; x: number; y: number; w: number; h: number; sx: number; sy: number }
   | { kind: 'rotate'; abId: string; id: string; cx: number; cy: number; a0: number; rot0: number }
-  | { kind: 'create'; tool: ShapeKind | 'artboard'; abId: string | null; x0: number; y0: number; x1: number; y1: number }
+  | {
+      kind: 'create';
+      tool: ShapeKind | 'artboard';
+      abId: string | null;
+      x0: number;
+      y0: number;
+      x1: number;
+      y1: number;
+      shift: boolean;
+      alt: boolean;
+      /** snap lines in stage space */
+      targets: Box[];
+    }
+  /** dragging a guide out of a ruler (or an existing one); `orig` is where an existing guide started */
+  | { kind: 'guide'; axis: 'x' | 'y'; abId: string; pos: number; orig: number | null }
   | { kind: 'penHandle'; index: number }
   | { kind: 'vertex'; abId: string; id: string; which: 'pt' | 'in' | 'out'; inv: Mat };
 
@@ -99,6 +122,10 @@ export function Stage() {
   const [drag, setDrag] = useState<Drag | null>(null);
   const [pen, setPen] = useState<{ abId: string; points: PenPoint[]; cursor: [number, number] | null } | null>(null);
   const [spaceDown, setSpaceDown] = useState(false);
+  /** smart guides shown while dragging (artboard space) */
+  const [guides, setGuides] = useState<Guide[]>([]);
+  /** small readout next to the pointer: size while creating/resizing, angle while rotating */
+  const [badge, setBadge] = useState<{ x: number; y: number; text: string } | null>(null);
 
   const doc = useEditor((s) => s.doc);
   const view = useEditor((s) => s.view);
@@ -115,6 +142,9 @@ export function Stage() {
   const selectMode = usePrefs((s) => s.prefs.selectMode);
   const showRuler = usePrefs((s) => s.prefs.showRuler);
   const showGrid = usePrefs((s) => s.prefs.showGrid);
+  const showGuides = usePrefs((s) => s.prefs.showGuides);
+  const guideLines = useEditor((s) => s.guides);
+  const [guideHover, setGuideHover] = useState<'x' | 'y' | null>(null);
   const gridSize = usePrefs((s) => s.prefs.gridSize);
   const readOnly = useEditor((s) => s.readOnly);
   const editTextId = useEditor((s) => s.editTextId);
@@ -207,7 +237,7 @@ export function Stage() {
     c.height = size.h * dpr;
   }, [size]);
 
-  const zoomToFit = useCallback(() => {
+  const zoomToFit = useCallback((animate = true) => {
     const s = useEditor.getState();
     const d = s.doc;
     if (!d) return;
@@ -219,7 +249,7 @@ export function Stage() {
     const r = wrapRef.current!.getBoundingClientRect();
     if (r.width < 200 || r.height < 150) return false;
     const zoom = Math.min(4, Math.max(0.05, Math.min((r.width - 120) / w, (r.height - 120) / h)));
-    s.set('view', { zoom, panX: r.width / 2 - (p.x + w / 2) * zoom, panY: r.height / 2 - (p.y + h / 2) * zoom });
+    tweenView({ zoom, panX: r.width / 2 - (p.x + w / 2) * zoom, panY: r.height / 2 - (p.y + h / 2) * zoom }, animate ? 220 : 0);
     return true;
   }, []);
   // center the first artboard on load
@@ -227,7 +257,7 @@ export function Stage() {
   const projectId = useEditor((s) => s.projectId);
   useEffect(() => {
     if (!doc || centered.current === projectId || size.w < 200) return;
-    if (zoomToFit()) centered.current = projectId;
+    if (zoomToFit(false)) centered.current = projectId;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc, size, projectId]);
 
@@ -271,6 +301,7 @@ export function Stage() {
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
+      cancelViewTween();
       const s = useEditor.getState();
       const v = s.view;
       const r = el.getBoundingClientRect();
@@ -312,11 +343,36 @@ export function Stage() {
     setPen(null);
   };
 
+  /** Abandons the gesture in progress: nothing is committed and the document goes back to how it was. */
+  const cancelDrag = () => {
+    const s = useEditor.getState();
+    const restored = s.gestureStart;
+    if (restored) {
+      useEditor.setState({ doc: restored, gestureStart: null, version: s.version + 1 });
+      const ab = findArtboard(restored, s.activeArtboardId);
+      s.select(s.selection.filter((id) => !!ab && !!findObj(ab, id)));
+    }
+    setDrag(null);
+    setGuides([]);
+    setBadge(null);
+  };
+
   // space to pan, escape/enter for pen
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT') return;
+      if (drag && drag.kind !== 'pan' && drag.kind !== 'penHandle') {
+        if (e.key === 'Escape') {
+          // abandon the gesture: nothing is committed and the document goes back to how it was
+          e.stopImmediatePropagation();
+          e.preventDefault();
+          cancelDrag();
+          return;
+        }
+        if (e.key === 'Alt') e.preventDefault(); // keep Alt from focusing the browser menu mid-drag
+      }
+      if (drag?.kind === 'create' && (e.key === 'Shift' || e.key === 'Alt')) setDrag({ ...drag, shift: e.shiftKey, alt: e.altKey });
       if (e.code === 'Space') {
         setSpaceDown(true);
         e.preventDefault();
@@ -330,6 +386,7 @@ export function Stage() {
     };
     const up = (e: KeyboardEvent) => {
       if (e.code === 'Space') setSpaceDown(false);
+      if (drag?.kind === 'create' && (e.key === 'Shift' || e.key === 'Alt')) setDrag({ ...drag, shift: e.shiftKey, alt: e.altKey });
     };
     window.addEventListener('keydown', down, true);
     window.addEventListener('keyup', up);
@@ -342,6 +399,52 @@ export function Stage() {
   // ---- selection geometry ----------------------------------------------
   const activeAb = doc ? findArtboard(doc, activeArtboardId) : undefined;
   const activeScene = activeAb ? scenes.get(activeAb.id) : undefined;
+
+  /** Corners of an object's own bounding box in stage space (follows its rotation), or null when it has no extent. */
+  const nodeCorners = (scene: Scene, ab: ArtboardDoc, id: string): [number, number][] | null => {
+    const node = scene.nodes.get(id);
+    if (!node || !isA(node.obj.type, 'Node')) return null;
+    const box = objectBounds(scene, id, invert(node.world));
+    if (isEmpty(box)) return null;
+    const p = abPos(ab);
+    return [
+      [box.minX, box.minY],
+      [box.maxX, box.minY],
+      [box.maxX, box.maxY],
+      [box.minX, box.maxY],
+    ].map(([x, y]) => {
+      const [ax, ay] = apply(node.world, x, y);
+      return [ax + p.x, ay + p.y] as [number, number];
+    });
+  };
+
+  /** Edges and centers other things can snap to: every visible object not in (or around) `moving`, in artboard space. */
+  const snapTargets = (scene: Scene, ab: ArtboardDoc, moving: string[]): Box[] => {
+    // other objects and the artboard's edges are only targets with Smart guides on; ruler guides and the grid always are
+    const objects = getPrefs().smartGuides;
+    const out: Box[] = objects ? [{ minX: 0, minY: 0, maxX: prop(ab.artboard, 'width'), maxY: prop(ab.artboard, 'height') }] : [];
+    for (const o of ab.objects) {
+      if (!objects || out.length > 400) break;
+      if (o.type !== 'Shape' && o.type !== 'Text' && o.type !== 'Image' && o.type !== 'Node') continue;
+      if (moving.some((m) => m === o.id || isAncestor(ab, m, o.id) || isAncestor(ab, o.id, m))) continue;
+      if (isHidden(scene, o.id)) continue;
+      const b = objectBounds(scene, o.id);
+      if (!isEmpty(b)) out.push({ minX: b.minX, minY: b.minY, maxX: b.maxX, maxY: b.maxY });
+    }
+    // ruler guides and, when snapping to the grid, grid lines: edges stick to them like to any other object
+    const w = prop(ab.artboard, 'width');
+    const h = prop(ab.artboard, 'height');
+    const g = useEditor.getState().guides[ab.id];
+    for (const x of g?.x ?? []) out.push({ minX: x, maxX: x, minY: 0, maxY: h });
+    for (const y of g?.y ?? []) out.push({ minX: 0, maxX: w, minY: y, maxY: y });
+    const prefs = getPrefs();
+    if (prefs.snapToGrid && prefs.gridSize > 0) {
+      const step = Math.max(1, prefs.gridSize);
+      for (let x = step; x < w; x += step) out.push({ minX: x, maxX: x, minY: 0, maxY: h });
+      for (let y = step; y < h; y += step) out.push({ minX: 0, maxX: w, minY: y, maxY: y });
+    }
+    return out;
+  };
 
   /** Oriented box for a single object, or AABB for multi-selection, in stage space. */
   const selectionBox = useMemo(() => {
@@ -400,10 +503,50 @@ export function Stage() {
     ];
   };
 
+  /** Snap lines for placing a new object, in stage space: other artboards for an artboard, else everything on `ab`. */
+  const createTargets = (ab: ArtboardDoc | null): Box[] => {
+    if (!doc) return [];
+    if (!ab) {
+      if (!getPrefs().smartGuides) return [];
+      return doc.artboards.map((a) => {
+        const p = abPos(a);
+        return { minX: p.x, minY: p.y, maxX: p.x + prop(a.artboard, 'width'), maxY: p.y + prop(a.artboard, 'height') };
+      });
+    }
+    const scene = scenes.get(ab.id);
+    if (!scene) return [];
+    const p = abPos(ab);
+    return snapTargets(scene, ab, []).map((b) => ({ minX: b.minX + p.x, maxX: b.maxX + p.x, minY: b.minY + p.y, maxY: b.maxY + p.y }));
+  };
+
+  /** Snaps a point being placed (stage space): to the grid or whole pixels when those are on, otherwise to other objects. */
+  const snapCreatePoint = (x: number, y: number, origin: { x: number; y: number }, targets: Box[], free: boolean) => {
+    const prefs = getPrefs();
+    if (prefs.snapToGrid) {
+      const g = Math.max(1, prefs.gridSize);
+      return { x: origin.x + Math.round((x - origin.x) / g) * g, y: origin.y + Math.round((y - origin.y) / g) * g, guides: [] as Guide[] };
+    }
+    if (!free && targets.length) {
+      const r = snapPoint(x, y, targets, 6 / view.zoom);
+      return { x: r.x, y: r.y, guides: r.guides };
+    }
+    if (prefs.snapToPixel) return { x: Math.round(x), y: Math.round(y), guides: [] as Guide[] };
+    return { x, y, guides: [] as Guide[] };
+  };
+
+  const startCreate = (tool: ShapeKind | 'artboard', ab: ArtboardDoc | null, sx: number, sy: number, e: React.PointerEvent) => {
+    const targets = createTargets(ab);
+    const origin = ab ? abPos(ab) : { x: 0, y: 0 };
+    const p = snapCreatePoint(sx, sy, origin, targets, e.ctrlKey || e.metaKey);
+    setGuides(p.guides);
+    setDrag({ kind: 'create', tool, abId: ab?.id ?? null, x0: p.x, y0: p.y, x1: p.x, y1: p.y, shift: e.shiftKey, alt: e.altKey, targets });
+  };
+
   // ---- pointer handling ---------------------------------------------------
   const onPointerDown = (e: React.PointerEvent) => {
     if (!doc) return;
     (e.target as Element).setPointerCapture?.(e.pointerId);
+    cancelViewTween();
     const [cx, cy] = clientPoint(e);
     const [sx, sy] = toStage(cx, cy);
     const s = useEditor.getState();
@@ -413,6 +556,28 @@ export function Stage() {
       return;
     }
     if (e.button !== 0) return;
+
+    // drag a guide out of a ruler, or grab one that is already there
+    if (tool === 'select' && !previewing && activeAb) {
+      const inCorner = showRuler && cx < RULER && cy < RULER;
+      if (showRuler && !inCorner && (cy < RULER || cx < RULER)) {
+        const axis = cy < RULER ? 'y' : 'x';
+        const p = abPos(activeAb);
+        setDrag({ kind: 'guide', axis, abId: activeAb.id, pos: Math.round(axis === 'x' ? sx - p.x : sy - p.y), orig: null });
+        return;
+      }
+      const g = showGuides ? guideLines[activeAb.id] : undefined;
+      if (g) {
+        const p = abPos(activeAb);
+        const near = (pos: number, axis: 'x' | 'y') => Math.abs(axis === 'x' ? toScreen(p.x + pos, 0)[0] - cx : toScreen(0, p.y + pos)[1] - cy) <= 4;
+        const gx = g.x.find((v) => near(v, 'x'));
+        const gy = gx === undefined ? g.y.find((v) => near(v, 'y')) : undefined;
+        if (gx !== undefined || gy !== undefined) {
+          setDrag({ kind: 'guide', axis: gx !== undefined ? 'x' : 'y', abId: activeAb.id, pos: (gx ?? gy)!, orig: (gx ?? gy)! });
+          return;
+        }
+      }
+    }
 
     if (previewing) {
       const ab = activeAb;
@@ -430,14 +595,14 @@ export function Stage() {
 
     // creation tools
     if (tool === 'artboard') {
-      setDrag({ kind: 'create', tool: 'artboard', abId: null, x0: sx, y0: sy, x1: sx, y1: sy });
+      startCreate('artboard', null, sx, sy, e);
       return;
     }
     if (tool === 'rectangle' || tool === 'ellipse' || tool === 'triangle' || tool === 'polygon' || tool === 'star') {
       const ab = artboardAt(sx, sy) ?? activeAb;
       if (!ab) return;
       s.setActiveArtboard(ab.id);
-      setDrag({ kind: 'create', tool, abId: ab.id, x0: sx, y0: sy, x1: sx, y1: sy });
+      startCreate(tool, ab, sx, sy, e);
       return;
     }
     if (tool === 'text') {
@@ -576,6 +741,10 @@ export function Stage() {
       const id = titleEl.dataset.artboardTitle!;
       s.setActiveArtboard(id);
       s.select([id]);
+      if (e.detail >= 2) {
+        zoomToFit();
+        return;
+      }
       beginArtboardMove([id], sx, sy);
       return;
     }
@@ -594,10 +763,12 @@ export function Stage() {
     if (rawHit) {
       let hit = rawHit;
       const doubleClick = e.detail >= 2;
+      // Ctrl/Cmd+click goes straight to the object under the cursor, even inside groups
+      const pickMode = e.ctrlKey || e.metaKey ? 'object' : selectMode;
       // clicking outside the entered group leaves it
       const context = s.selectionContext && ancestorChain(ab, rawHit).includes(s.selectionContext) ? s.selectionContext : null;
       if (context !== s.selectionContext) s.set('selectionContext', context);
-      if (doubleClick && selectMode === 'group') {
+      if (doubleClick && pickMode === 'group') {
         // double click steps one level into the group under the cursor; doing it
         // again on a nested group steps in further
         const chain = ancestorChain(ab, rawHit);
@@ -609,7 +780,7 @@ export function Stage() {
           return;
         }
       }
-      hit = resolveSelectable(ab, hit, { selection: s.selection, drill: doubleClick, mode: selectMode, context });
+      hit = resolveSelectable(ab, hit, { selection: s.selection, drill: doubleClick, mode: pickMode, context });
       if (doubleClick && findObj(ab, hit)?.type === 'Text') {
         s.select([hit]);
         s.set('editTextId', hit);
@@ -633,7 +804,7 @@ export function Stage() {
         s.select([hit]);
         sel = [hit];
       }
-      beginMove(ab, scene, sel, sx, sy);
+      beginMove(ab, scene, sel, sx, sy, e.altKey && !readOnly);
     } else {
       if (!e.shiftKey) {
         s.select([]);
@@ -654,7 +825,7 @@ export function Stage() {
     setDrag({ kind: 'moveArtboard', ids, sx, sy, start });
   };
 
-  const beginMove = (ab: ArtboardDoc, scene: Scene, ids: string[], sx: number, sy: number) => {
+  const beginMove = (ab: ArtboardDoc, scene: Scene, ids: string[], sx: number, sy: number, dup = false) => {
     // move only top-most selected nodes
     const nodes = ids.filter((id) => {
       const o = findObj(ab, id);
@@ -671,7 +842,39 @@ export function Stage() {
       start.set(id, { x: prop(n.obj, 'x', scene.overrides), y: prop(n.obj, 'y', scene.overrides), inv: invert(parentWorld) });
     }
     useEditor.getState().beginGesture();
-    setDrag({ kind: 'move', abId: ab.id, sx, sy, start, moved: false });
+    let box: Box | null = null;
+    let targets: Box[] = [];
+    if (nodes.length) {
+      const u = emptyBounds();
+      for (const id of nodes) {
+        const b = objectBounds(scene, id);
+        if (!isEmpty(b)) {
+          addPoint(u, b.minX, b.minY);
+          addPoint(u, b.maxX, b.maxY);
+        }
+      }
+      if (!isEmpty(u)) {
+        box = { minX: u.minX, minY: u.minY, maxX: u.maxX, maxY: u.maxY };
+        targets = snapTargets(scene, ab, nodes);
+      }
+    }
+    setDrag({ kind: 'move', abId: ab.id, sx, sy, start, moved: false, box, targets, dup });
+  };
+
+  const duplicateAndMove = (ab: ArtboardDoc, ids: string[], sx: number, sy: number) => {
+    const s = useEditor.getState();
+    const roots = ids.filter((id) => id !== ab.artboard.id);
+    if (!roots.length) return;
+    s.beginGesture(); // the copy and the drag are one undo step
+    let created: string[] = [];
+    s.commit((d) => {
+      const a = findArtboard(d, ab.id);
+      if (a) created = duplicateObjects(a, roots);
+    });
+    if (!created.length) return;
+    s.select(created);
+    const fresh = findArtboard(useEditor.getState().doc!, ab.id)!;
+    beginMove(fresh, buildScene(fresh), created, sx, sy);
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
@@ -683,6 +886,18 @@ export function Stage() {
       engine.current?.pointer('move', sx - p.x, sy - p.y);
     }
     if (!drag) {
+      if (tool === 'select' && showGuides && activeAb && !previewing) {
+        const g = guideLines[activeAb.id];
+        const p = abPos(activeAb);
+        const hit: 'x' | 'y' | null = !g
+          ? null
+          : g.x.some((v) => Math.abs(toScreen(p.x + v, 0)[0] - cx) <= 4)
+            ? 'x'
+            : g.y.some((v) => Math.abs(toScreen(0, p.y + v)[1] - cy) <= 4)
+              ? 'y'
+              : null;
+        if (hit !== guideHover) setGuideHover(hit);
+      }
       if (tool === 'pen' && pen) {
         const ab = findArtboard(doc!, pen.abId);
         if (ab) {
@@ -697,7 +912,8 @@ export function Stage() {
           const p = abPos(ab);
           hit = hitTestShape(scenes.get(ab.id)!, sx - p.x, sy - p.y, 4 / view.zoom);
           if (hit) {
-            hit = resolveSelectable(ab, hit, { selection: s.selection, drill: false, mode: selectMode, context: s.selectionContext });
+            const deep = e.ctrlKey || e.metaKey;
+            hit = resolveSelectable(ab, hit, { selection: s.selection, drill: false, mode: deep ? 'object' : selectMode, context: s.selectionContext });
           }
         }
         if (hit !== s.hoverId) s.set('hoverId', hit);
@@ -709,9 +925,28 @@ export function Stage() {
         s.set('view', { ...view, panX: drag.panX + cx - drag.sx, panY: drag.panY + cy - drag.sy });
         break;
       case 'marquee':
-      case 'create':
         setDrag({ ...drag, x1: sx, y1: sy });
         break;
+      case 'guide': {
+        const ab = findArtboard(doc!, drag.abId);
+        if (!ab) break;
+        const p = abPos(ab);
+        const pos = Math.round(drag.axis === 'x' ? sx - p.x : sy - p.y);
+        const overRuler = showRuler && (drag.axis === 'x' ? cx < RULER : cy < RULER);
+        setDrag({ ...drag, pos });
+        setBadge({ x: cx, y: cy, text: overRuler ? 'Release to remove' : `${drag.axis === 'x' ? 'X' : 'Y'} ${pos}` });
+        break;
+      }
+      case 'create': {
+        const ab = drag.abId ? findArtboard(doc!, drag.abId) : null;
+        const q = snapCreatePoint(sx, sy, ab ? abPos(ab) : { x: 0, y: 0 }, drag.targets, e.ctrlKey || e.metaKey);
+        setGuides(q.guides);
+        const next = { ...drag, x1: q.x, y1: q.y, shift: e.shiftKey, alt: e.altKey };
+        setDrag(next);
+        const r = dragRect(next.x0, next.y0, next.x1, next.y1, next);
+        setBadge({ x: cx, y: cy, text: `${Math.round(r.maxX - r.minX)} × ${Math.round(r.maxY - r.minY)}` });
+        break;
+      }
       case 'penHandle': {
         if (!pen) break;
         const ab = findArtboard(doc!, pen.abId)!;
@@ -726,8 +961,32 @@ export function Stage() {
         break;
       }
       case 'moveArtboard': {
-        const dx = sx - drag.sx;
-        const dy = sy - drag.sy;
+        let dx = sx - drag.sx;
+        let dy = sy - drag.sy;
+        let lines: Guide[] = [];
+        if (getPrefs().smartGuides && !(e.ctrlKey || e.metaKey)) {
+          const moving = emptyBounds();
+          const targets: Box[] = [];
+          for (const a of doc!.artboards) {
+            const w = prop(a.artboard, 'width');
+            const h = prop(a.artboard, 'height');
+            const st = drag.start.get(a.id);
+            if (st) {
+              addPoint(moving, st.x + dx, st.y + dy);
+              addPoint(moving, st.x + dx + w, st.y + dy + h);
+            } else {
+              const p = abPos(a);
+              targets.push({ minX: p.x, minY: p.y, maxX: p.x + w, maxY: p.y + h });
+            }
+          }
+          if (!isEmpty(moving) && targets.length) {
+            const r = snapBox(moving, targets, 6 / view.zoom);
+            dx += r.dx;
+            dy += r.dy;
+            lines = r.guides;
+          }
+        }
+        setGuides(lines);
         s.commit((d) => {
           for (const id of drag.ids) {
             const ab = findArtboard(d, id);
@@ -747,22 +1006,44 @@ export function Stage() {
           else dx = 0;
         }
         if (!drag.moved && Math.hypot(dx, dy) * view.zoom < 3) break;
+        if (drag.dup && !drag.moved) {
+          // Alt+drag: leave the originals behind and carry copies
+          duplicateAndMove(findArtboard(doc!, drag.abId)!, [...drag.start.keys()], drag.sx, drag.sy);
+          break;
+        }
         if (!drag.moved) setDrag({ ...drag, moved: true });
+        const prefs = getPrefs();
+        let lines: Guide[] = [];
+        if (drag.box && !(e.ctrlKey || e.metaKey)) {
+          // with Shift held the locked axis must stay locked
+          const lockY = e.shiftKey && dy === 0;
+          const lockX = e.shiftKey && dx === 0;
+          const moved = { minX: drag.box.minX + dx, maxX: drag.box.maxX + dx, minY: drag.box.minY + dy, maxY: drag.box.maxY + dy };
+          const r = snapBox(moved, drag.targets, 6 / view.zoom, { ...(lockY ? { y: [] } : {}), ...(lockX ? { x: [] } : {}) });
+          dx += r.dx;
+          dy += r.dy;
+          const p = abPos(findArtboard(doc!, drag.abId)!);
+          lines = r.guides.map((g) =>
+            g.axis === 'x' ? { axis: 'x', pos: g.pos + p.x, from: g.from + p.y, to: g.to + p.y } : { axis: 'y', pos: g.pos + p.y, from: g.from + p.x, to: g.to + p.x },
+          );
+        }
+        setGuides(lines);
+        const snap = prefs.snapToPixel ? Math.round : round2;
+        const changes: Record<string, Record<string, unknown>> = {};
         for (const [id, st] of drag.start) {
           const ldx = st.inv[0] * dx + st.inv[2] * dy;
           const ldy = st.inv[1] * dx + st.inv[3] * dy;
-          const prefs = getPrefs();
-          // the grid wins over pixel snapping when both are on
-          const grid = prefs.snapToGrid ? Math.max(1, prefs.gridSize) : 0;
-          const snap = grid ? (v: number) => Math.round(v / grid) * grid : prefs.snapToPixel ? Math.round : round2;
-          s.setProps(id, { x: snap(st.x + ldx), y: snap(st.y + ldy) });
+          changes[id] = { x: snap(st.x + ldx), y: snap(st.y + ldy) };
         }
+        s.setPropsMany(changes);
+        if (drag.box) setBadge({ x: cx, y: cy, text: `${Math.round(drag.box.minX + dx)}, ${Math.round(drag.box.minY + dy)}` });
         break;
       }
       case 'rotate': {
         let a = drag.rot0 + Math.atan2(sy - drag.cy, sx - drag.cx) - drag.a0;
         if (e.shiftKey) a = Math.round(a / (Math.PI / 12)) * (Math.PI / 12);
         s.setProps(drag.id, { rotation: a });
+        setBadge({ x: cx, y: cy, text: `${Math.round((((a * 180) / Math.PI) % 360 + 360) % 360)}°` });
         break;
       }
       case 'resize': {
@@ -790,6 +1071,7 @@ export function Stage() {
           if (h.includes('n')) minY = maxY - bh * ky;
           else if (!h.includes('s')) minY = (b.minY + b.maxY) / 2 - (bh * ky) / 2;
         }
+        setBadge({ x: cx, y: cy, text: `${Math.round(Math.abs(bw * kx * drag.sx))} × ${Math.round(Math.abs(bh * ky * drag.sy))}` });
         // a local point p maps to p*k + shift; keep the fixed edges in place
         const shiftX = minX - b.minX * kx;
         const shiftY = minY - b.minY * ky;
@@ -875,33 +1157,45 @@ export function Stage() {
       engine.current?.pointer('up', sx - p.x, sy - p.y);
     }
     if (!drag) return;
-    if (drag.kind === 'marquee' && doc) {
+    if (drag.kind === 'guide') {
+      const [ux, uy] = clientPoint(e);
+      const removed = showRuler && (drag.axis === 'x' ? ux < RULER : uy < RULER);
+      const cur = useEditor.getState().guides[drag.abId] ?? { x: [], y: [] };
+      const list = (drag.axis === 'x' ? cur.x : cur.y).filter((v) => v !== drag.orig);
+      if (!removed && !list.includes(drag.pos)) list.push(drag.pos);
+      list.sort((a, b) => a - b);
+      s.setGuides(drag.abId, drag.axis === 'x' ? { x: list, y: cur.y } : { x: cur.x, y: list });
+    } else if (drag.kind === 'marquee' && doc) {
       const ab = findArtboard(doc, drag.abId);
       const scene = ab && scenes.get(ab.id);
-      if (ab && scene && Math.abs(drag.x1 - drag.x0) * view.zoom > 3) {
+      if (ab && scene && Math.hypot(drag.x1 - drag.x0, drag.y1 - drag.y0) * view.zoom > 3) {
         const p = abPos(ab);
         const minX = Math.min(drag.x0, drag.x1) - p.x, maxX = Math.max(drag.x0, drag.x1) - p.x;
         const minY = Math.min(drag.y0, drag.y1) - p.y, maxY = Math.max(drag.y0, drag.y1) - p.y;
+        // the marquee picks at the level clicks pick at: the top of the artboard, the inside of the group the
+        // user entered, or (in object mode) the shapes themselves, however deeply they are grouped
+        const context = s.selectionContext && findObj(ab, s.selectionContext) ? s.selectionContext : null;
+        const within = context ?? ab.artboard.id;
         const ids: string[] = [];
         for (const o of ab.objects) {
-          if (parentIdOf(ab, o) !== ab.artboard.id || !isA(o.type, 'Node')) continue;
+          if (!isA(o.type, 'Node') || o.type === 'Artboard') continue;
+          if (selectMode === 'object') {
+            if ((o.type !== 'Shape' && o.type !== 'Text' && o.type !== 'Image') || !isAncestor(ab, within, o.id)) continue;
+          } else if (parentIdOf(ab, o) !== within) continue;
+          if (isHidden(scene, o.id) || isLocked(scene, o.id)) continue;
           const b = objectBounds(scene, o.id);
           if (!isEmpty(b) && b.minX < maxX && b.maxX > minX && b.minY < maxY && b.maxY > minY) ids.push(o.id);
         }
         s.select(drag.additive ? [...new Set([...s.selection, ...ids])] : ids);
       }
     } else if (drag.kind === 'create' && doc) {
-      let x0 = Math.min(drag.x0, drag.x1), x1 = Math.max(drag.x0, drag.x1);
-      let y0 = Math.min(drag.y0, drag.y1), y1 = Math.max(drag.y0, drag.y1);
-      if (e.shiftKey) {
-        const m = Math.max(x1 - x0, y1 - y0);
-        x1 = drag.x1 >= drag.x0 ? x0 + m : x1;
-        x0 = drag.x1 >= drag.x0 ? x0 : x1 - m;
-        y1 = drag.y1 >= drag.y0 ? y0 + m : y1;
-        y0 = drag.y1 >= drag.y0 ? y0 : y1 - m;
-      }
-      let w = x1 - x0;
-      let h = y1 - y0;
+      // the same rectangle the preview showed, with Shift (square) and Alt (from the center) applied
+      const rect = dragRect(drag.x0, drag.y0, drag.x1, drag.y1, drag);
+      // whole-pixel edges: 130 × 98 is easier to work with than 130.1 × 98.21
+      let x0 = Math.round(rect.minX);
+      let y0 = Math.round(rect.minY);
+      let w = Math.round(rect.maxX) - x0;
+      let h = Math.round(rect.maxY) - y0;
       if (w * view.zoom < 4 && h * view.zoom < 4) {
         // click without drag: default size
         w = drag.tool === 'artboard' ? 500 : 100;
@@ -951,6 +1245,8 @@ export function Stage() {
     }
     if (drag.kind !== 'pan' && drag.kind !== 'marquee' && drag.kind !== 'create' && drag.kind !== 'penHandle') s.endGesture();
     setDrag(null);
+    setGuides([]);
+    setBadge(null);
   };
 
   const onContextMenu = (e: React.MouseEvent) => {
@@ -1034,7 +1330,23 @@ export function Stage() {
     const w = Math.max(1, b.maxX - b.minX);
     const h = Math.max(1, b.maxY - b.minY);
     const zoom = Math.min(16, Math.max(0.05, Math.min((size.w - 160) / w, (size.h - 160) / h)));
-    s.set('view', { zoom, panX: size.w / 2 - (b.minX + w / 2) * zoom, panY: size.h / 2 - (b.minY + h / 2) * zoom });
+    tweenView({ zoom, panX: size.w / 2 - (b.minX + w / 2) * zoom, panY: size.h / 2 - (b.minY + h / 2) * zoom });
+  };
+
+  /** Fits every artboard in the view. */
+  const zoomToAll = () => {
+    const d = useEditor.getState().doc;
+    if (!d || !d.artboards.length) return;
+    const b = emptyBounds();
+    for (const a of d.artboards) {
+      const p = abPos(a);
+      addPoint(b, p.x, p.y);
+      addPoint(b, p.x + prop(a.artboard, 'width'), p.y + prop(a.artboard, 'height'));
+    }
+    const w = Math.max(1, b.maxX - b.minX);
+    const h = Math.max(1, b.maxY - b.minY);
+    const zoom = Math.min(4, Math.max(0.02, Math.min((size.w - 120) / w, (size.h - 120) / h)));
+    tweenView({ zoom, panX: size.w / 2 - (b.minX + w / 2) * zoom, panY: size.h / 2 - (b.minY + h / 2) * zoom });
   };
 
   useEffect(() => {
@@ -1046,6 +1358,7 @@ export function Stage() {
       else if (type === 'out') zoomBy(1 / 1.25);
       else if (type === '100') zoomBy(1 / useEditor.getState().view.zoom);
       else if (type === 'selection') zoomToSelection();
+      else if (type === 'all') zoomToAll();
     };
     window.addEventListener('editor:fit', onFit);
     window.addEventListener('editor:zoom', onZoom);
@@ -1061,8 +1374,12 @@ export function Stage() {
 
   // ---- rendering overlay ---------------------------------------------------
   if (!doc) return null;
-  const cursor =
-    tool === 'hand' || spaceDown
+  const guideAxis = drag?.kind === 'guide' ? drag.axis : guideHover;
+  const cursor = guideAxis
+    ? guideAxis === 'x'
+      ? 'ew-resize'
+      : 'ns-resize'
+    : tool === 'hand' || spaceDown
       ? drag?.kind === 'pan'
         ? 'grabbing'
         : 'grab'
@@ -1145,10 +1462,31 @@ export function Stage() {
     return out;
   };
 
+  /** Outline of a group, text or image: its bounding box (dashed when it is only a hover hint). */
+  const boxOutline = (scene: Scene, ab: ArtboardDoc, id: string, key: string, dashed: boolean) => {
+    const c = nodeCorners(scene, ab, id);
+    if (!c) return [];
+    const pts = c.map(([x, y]) => toScreen(x, y).join(',')).join(' ');
+    return [<polygon key={key} points={pts} fill="none" stroke={stroke} strokeWidth={1} strokeDasharray={dashed ? '4 3' : undefined} pointerEvents="none" />];
+  };
+  const isOutlinable = (scene: Scene, id: string) => {
+    const o = scene.nodes.get(id)?.obj;
+    return !!o && (o.type === 'Shape' || isA(o.type, 'Path'));
+  };
+
   if (!previewing && activeAb && activeScene) {
-    if (hoverId && !selection.includes(hoverId)) overlay.push(...pathOutline(activeScene, activeAb, hoverId, stroke, 'hover', 1));
+    // hovering a group, text or image previews its box, so it is clear what a click will pick
+    if (hoverId && !selection.includes(hoverId) && hoverId !== activeAb.artboard.id) {
+      overlay.push(
+        ...(isOutlinable(activeScene, hoverId)
+          ? pathOutline(activeScene, activeAb, hoverId, stroke, 'hover', 1)
+          : boxOutline(activeScene, activeAb, hoverId, 'hover', true)),
+      );
+    }
     for (const id of selection) {
-      if (id !== activeAb.artboard.id) overlay.push(...pathOutline(activeScene, activeAb, id, stroke, 'sel', 1));
+      if (id === activeAb.artboard.id) continue;
+      if (isOutlinable(activeScene, id)) overlay.push(...pathOutline(activeScene, activeAb, id, stroke, 'sel', 1));
+      else if (selection.length > 1) overlay.push(...boxOutline(activeScene, activeAb, id, `selbox-${id}`, false));
     }
     if (selectionBox && !editPathId) {
       const pts = selectionBox.corners.map(([x, y]) => toScreen(x, y));
@@ -1242,8 +1580,15 @@ export function Stage() {
     }
   }
 
+  // smart guides: the alignments a drag has snapped to
+  for (const [i, g] of guides.entries()) {
+    const a = g.axis === 'x' ? toScreen(g.pos, g.from) : toScreen(g.from, g.pos);
+    const b = g.axis === 'x' ? toScreen(g.pos, g.to) : toScreen(g.to, g.pos);
+    overlay.push(<line key={`guide-${i}`} x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} stroke="#ff4d8d" strokeWidth={1} pointerEvents="none" />);
+  }
+
   // drags
-  if (drag?.kind === 'marquee' || (drag?.kind === 'create' && drag.tool === 'artboard')) {
+  if (drag?.kind === 'marquee') {
     const [ax, ay] = toScreen(Math.min(drag.x0, drag.x1), Math.min(drag.y0, drag.y1));
     overlay.push(
       <rect
@@ -1254,19 +1599,25 @@ export function Stage() {
         height={Math.abs(drag.y1 - drag.y0) * view.zoom}
         fill="#57a5e022"
         stroke={stroke}
-        strokeDasharray={drag.kind === 'marquee' ? '4 3' : undefined}
+        strokeDasharray="4 3"
       />,
     );
   }
-  if (drag?.kind === 'create' && drag.tool !== 'artboard') {
-    const [ax, ay] = toScreen(Math.min(drag.x0, drag.x1), Math.min(drag.y0, drag.y1));
-    const w = Math.abs(drag.x1 - drag.x0) * view.zoom;
-    const h = Math.abs(drag.y1 - drag.y0) * view.zoom;
+  if (drag?.kind === 'create') {
+    // the same rectangle the shape will get: Shift makes it square, Alt grows it from the first click
+    const r = dragRect(drag.x0, drag.y0, drag.x1, drag.y1, drag);
+    const [ax, ay] = toScreen(r.minX, r.minY);
+    const w = (r.maxX - r.minX) * view.zoom;
+    const h = (r.maxY - r.minY) * view.zoom;
+    const fill = drag.tool === 'artboard' ? '#57a5e022' : '#c4c4c455';
+    const pts = shapePreviewPoints(drag.tool, ax, ay, w, h);
     overlay.push(
       drag.tool === 'ellipse' ? (
-        <ellipse key="cr" cx={ax + w / 2} cy={ay + h / 2} rx={w / 2} ry={h / 2} fill="#c4c4c455" stroke={stroke} />
+        <ellipse key="cr" cx={ax + w / 2} cy={ay + h / 2} rx={w / 2} ry={h / 2} fill={fill} stroke={stroke} />
+      ) : pts ? (
+        <polygon key="cr" points={pts} fill={fill} stroke={stroke} />
       ) : (
-        <rect key="cr" x={ax} y={ay} width={w} height={h} fill="#c4c4c455" stroke={stroke} />
+        <rect key="cr" x={ax} y={ay} width={w} height={h} fill={fill} stroke={stroke} />
       ),
     );
   }
@@ -1300,6 +1651,32 @@ export function Stage() {
         }
         overlay.push(<rect key={`pp${i}`} x={x - 3.5} y={y - 3.5} width={7} height={7} fill={i === 0 ? stroke : '#fff'} stroke={stroke} />);
       });
+    }
+  }
+
+  // guide lines dragged from the rulers, across the whole view
+  if (activeAb && (showGuides || drag?.kind === 'guide')) {
+    const p = abPos(activeAb);
+    const g = guideLines[activeAb.id];
+    const items: { axis: 'x' | 'y'; pos: number }[] = [];
+    for (const v of g?.x ?? []) if (!(drag?.kind === 'guide' && drag.axis === 'x' && drag.orig === v)) items.push({ axis: 'x', pos: v });
+    for (const v of g?.y ?? []) if (!(drag?.kind === 'guide' && drag.axis === 'y' && drag.orig === v)) items.push({ axis: 'y', pos: v });
+    if (drag?.kind === 'guide' && drag.abId === activeAb.id) items.push({ axis: drag.axis, pos: drag.pos });
+    for (const it of items) {
+      const horiz = it.axis === 'y';
+      const [gx, gy] = horiz ? toScreen(0, p.y + it.pos) : toScreen(p.x + it.pos, 0);
+      overlay.push(
+        <line
+          key={`ruler-guide-${it.axis}${it.pos}`}
+          x1={horiz ? 0 : gx}
+          y1={horiz ? gy : 0}
+          x2={horiz ? size.w : gx}
+          y2={horiz ? gy : size.h}
+          stroke="#2fd0e8"
+          strokeWidth={1}
+          pointerEvents="none"
+        />,
+      );
     }
   }
 
@@ -1396,6 +1773,14 @@ export function Stage() {
       <svg className="absolute inset-0" width={size.w} height={size.h}>
         {overlay}
       </svg>
+      {badge && (
+        <div
+          className="absolute px-1.5 py-0.5 rounded bg-bg3 text-t0 text-[11px] pointer-events-none tabular-nums shadow"
+          style={{ left: badge.x + 14, top: badge.y + 16 }}
+        >
+          {badge.text}
+        </div>
+      )}
       {engineError && (
         <div className="absolute left-3 bottom-3 right-3 px-3 py-2 rounded-md bg-[#3a1f1f] text-[#ffb4b4] text-[12px]">
           {engineError}
@@ -1446,7 +1831,7 @@ export function Stage() {
         <button
           className="px-1 min-w-[46px] text-center"
           onPointerDown={(e) => e.stopPropagation()}
-          onClick={zoomToFit}
+          onClick={() => zoomToFit()}
           title="Zoom to fit (Shift+1)"
         >
           {Math.round(view.zoom * 100)}%
@@ -1465,8 +1850,28 @@ export function Stage() {
     const cy = size.h / 2;
     const zoom = Math.min(32, Math.max(0.02, v.zoom * k));
     const f = zoom / v.zoom;
-    s.set('view', { zoom, panX: cx - (cx - v.panX) * f, panY: cy - (cy - v.panY) * f });
+    tweenView({ zoom, panX: cx - (cx - v.panX) * f, panY: cy - (cy - v.panY) * f }, 160);
   }
+}
+
+/** Screen-space outline of a shape being drawn, for the tools whose silhouette is not a plain rectangle. */
+function shapePreviewPoints(tool: ShapeKind | 'artboard', x: number, y: number, w: number, h: number): string | null {
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  const ring = (n: number, innerRatio: number) => {
+    const pts: string[] = [];
+    const count = innerRatio ? n * 2 : n;
+    for (let i = 0; i < count; i++) {
+      const a = -Math.PI / 2 + (i * 2 * Math.PI) / count;
+      const k = innerRatio && i % 2 ? innerRatio : 1;
+      pts.push(`${cx + (w / 2) * k * Math.cos(a)},${cy + (h / 2) * k * Math.sin(a)}`);
+    }
+    return pts.join(' ');
+  };
+  if (tool === 'triangle') return `${cx},${y} ${x + w},${y + h} ${x},${y + h}`;
+  if (tool === 'polygon') return ring(5, 0);
+  if (tool === 'star') return ring(5, 0.5);
+  return null;
 }
 
 /**

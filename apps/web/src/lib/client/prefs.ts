@@ -29,6 +29,10 @@ export interface Prefs {
   gridSize: number;
   /** snap dragged objects to the grid */
   snapToGrid: boolean;
+  /** show the guide lines dragged out of the rulers (they keep snapping while hidden off) */
+  showGuides: boolean;
+  /** snap to the edges and centers of other objects and the artboard, with guide lines */
+  smartGuides: boolean;
   /** action id -> key combos, overriding the defaults */
   shortcuts: Record<string, string[]>;
 }
@@ -51,6 +55,8 @@ export const DEFAULT_PREFS: Prefs = {
   showGrid: false,
   gridSize: 20,
   snapToGrid: false,
+  showGuides: true,
+  smartGuides: true,
   shortcuts: {},
 };
 

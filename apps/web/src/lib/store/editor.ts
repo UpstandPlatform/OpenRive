@@ -37,6 +37,18 @@ export type SmSelection =
   | { kind: 'listener'; id: string }
   | null;
 
+/** Ruler guides per artboard, in artboard pixels: `x` are vertical lines, `y` horizontal ones. */
+export type Guides = Record<string, { x: number[]; y: number[] }>;
+
+const guidesKey = (projectId: string) => `openrive:guides:${projectId}`;
+function loadGuides(projectId: string): Guides {
+  try {
+    return JSON.parse(localStorage.getItem(guidesKey(projectId)) ?? '{}') as Guides;
+  } catch {
+    return {};
+  }
+}
+
 interface EditorState {
   projectId: string | null;
   projectName: string;
@@ -71,9 +83,13 @@ interface EditorState {
   editTextId: string | null;
   /** group the user entered by double-clicking: clicks select inside it */
   selectionContext: string | null;
+  /** guide lines dragged from the rulers; editor-only, saved per file in this browser */
+  guides: Guides;
   leftTab: 'layers' | 'theme' | 'assets';
   /** the Code panel (scripts + embed snippets) is open */
   codeOpen: boolean;
+  /** Replaces one artboard's guides (null removes them all); pass nothing for abId to clear every artboard. */
+  setGuides(abId: string | null, g: { x: number[]; y: number[] } | null): void;
 
   load(projectId: string, name: string, doc: RiveDoc, readOnly: boolean): void;
   /** Applies a mutation. Transient updates (during drags) don't create history entries. */
@@ -97,6 +113,8 @@ interface EditorState {
 
   /** Sets a property; in animate mode animatable properties are keyed at the playhead. */
   setProps(objId: string, values: Record<string, unknown>, transient?: boolean): void;
+  /** Like setProps for several objects at once: one document update (and one render) instead of one per object. */
+  setPropsMany(changes: Record<string, Record<string, unknown>>, transient?: boolean): void;
   /** Sets a color and binds it to a theme swatch (or unbinds with null). */
   setColor(objId: string, prop: string, value: number, swatchId: string | null, transient?: boolean): void;
 }
@@ -132,6 +150,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   playDir: 1,
   editTextId: null,
   selectionContext: null,
+  guides: {},
   leftTab: 'layers',
   codeOpen: false,
 
@@ -159,7 +178,25 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedKeyframes: [],
       smSelection: null,
       editPathId: null,
+      guides: loadGuides(projectId),
     });
+  },
+
+  setGuides(abId, g) {
+    const { projectId, guides } = get();
+    const next: Guides = abId ? { ...guides } : {};
+    if (abId) {
+      if (g && (g.x.length || g.y.length)) next[abId] = g;
+      else delete next[abId];
+    }
+    set({ guides: next });
+    if (projectId) {
+      try {
+        localStorage.setItem(guidesKey(projectId), JSON.stringify(next));
+      } catch {
+        /* storage unavailable: guides last for this session */
+      }
+    }
   },
 
   commit(recipe, transient = false) {
@@ -298,24 +335,30 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
 
   setProps(objId, values, transient = false) {
+    get().setPropsMany({ [objId]: values }, transient);
+  },
+
+  setPropsMany(changes, transient = false) {
     const { mode, animationId, frame, activeArtboardId } = get();
     get().commit((doc) => {
       const ab = findArtboard(doc, activeArtboardId);
       if (!ab) return;
-      const o = findObj(ab, objId);
-      if (!o) return;
       const anim = mode === 'animate' && animationId ? ab.animations.find((a) => a.id === animationId) : undefined;
       const prefs = getPrefs();
-      for (const [k, v] of Object.entries(values)) {
-        if (anim && isAnimatable(o.type, k)) {
-          const isNew = !keyframeAt(anim, o.id, o.type, k, frame);
-          const hadKeys = !!anim.children?.some((ko) => ko.props.objectId === o.id && ko.children?.length);
-          const kf = upsertKeyframe(anim, o, k, v, frame);
-          // brand new tracks use the preferred interpolation; later keys inherit from their neighbour
-          if (kf && isNew && !hadKeys && prefs.keyInterpolation !== 'linear') {
-            setInterpolation(ab, [kf], prefs.keyInterpolation, EASE_PRESETS[prefs.keyEase] ?? EASE_PRESETS['Ease In Out']);
-          }
-        } else o.props[k] = v;
+      for (const [objId, values] of Object.entries(changes)) {
+        const o = findObj(ab, objId);
+        if (!o) continue;
+        for (const [k, v] of Object.entries(values)) {
+          if (anim && isAnimatable(o.type, k)) {
+            const isNew = !keyframeAt(anim, o.id, o.type, k, frame);
+            const hadKeys = !!anim.children?.some((ko) => ko.props.objectId === o.id && ko.children?.length);
+            const kf = upsertKeyframe(anim, o, k, v, frame);
+            // brand new tracks use the preferred interpolation; later keys inherit from their neighbour
+            if (kf && isNew && !hadKeys && prefs.keyInterpolation !== 'linear') {
+              setInterpolation(ab, [kf], prefs.keyInterpolation, EASE_PRESETS[prefs.keyEase] ?? EASE_PRESETS['Ease In Out']);
+            }
+          } else o.props[k] = v;
+        }
       }
     }, transient);
   },

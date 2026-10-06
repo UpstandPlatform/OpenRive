@@ -30,12 +30,23 @@ or another tab) changes the file while it's open, a banner lets you reload or ke
 | --- | --- | --- |
 | Select | `V` | Click to select, `Shift` to add, drag to marquee. Drag handles to resize and rotate. |
 | Artboard | `A` | Drag to create an artboard |
-| Rectangle, Ellipse, Triangle, Polygon, Star | `R` `O` `Y` `Shift R` `Shift O` | Drag to draw. Hold `Shift` for equal sides. |
+| Rectangle, Ellipse, Triangle, Polygon, Star | `R` `O` `Y` `Shift R` `Shift O` | Drag to draw: the preview shows the real shape and its size. Hold `Shift` for equal sides, `Alt` to draw from the center, `Esc` to cancel. |
 | Pen | `P` | Click to add points, drag for curves, click the first point to close |
 | Text | `T` | Click to add text, then type. Double-click text to edit it later. |
 | Hand | `H` / hold `Space` | Pan. Scroll with `Ctrl` to zoom. |
 
-- **Groups**: `Ctrl G` / `Ctrl Shift G`.
+- **Groups**: `Ctrl G` / `Ctrl Shift G`. A new group takes the place of its front-most member, so draw order does not change.
+- **Picking**: `Ctrl`+click selects the object under the cursor even inside a group. Hovering previews what a click will
+  pick (a dashed box for groups, text and images). Dragging a marquee picks at the current level, and skips hidden and
+  locked objects. `Ctrl A` selects everything at the level you are in, and `Alt ]` / `Alt [` move the selection to the
+  layer above or below. Selecting on the canvas opens the group in the Layers list and scrolls to it; hovering a layer
+  outlines it on the canvas.
+- **Moving**: drag to move. **Smart guides** (on by default) snap to the edges and centers of other objects and the
+  artboard and draw pink guide lines; hold `Ctrl` to move freely. `Alt`+drag drags a copy, `Shift` locks the axis, and
+  `Esc` cancels the drag. A badge next to the pointer shows the position, size or angle while you drag. Smart guides
+  also apply when drawing and when moving artboards, and can be turned off in Preferences or the View menu.
+- **Focus**: `F` (or `Shift 2`) zooms to the selection, `Shift 1` fits the artboard, `Shift 3` fits every artboard, and
+  double-clicking an artboard's name fits it. Zooming eases in instead of jumping.
 - **What a click selects** is set by the **Groups** checkbox in the toolbar (`Alt G`):
   - **on** (default): a click selects the whole group. **Double-click** enters the group and selects the item under the
     cursor; double-clicking a nested group goes one level deeper. A chip at the top of the canvas shows which group you
@@ -53,7 +64,11 @@ or another tab) changes the file while it's open, a banner lets you reload or ke
 - **Context menus**: right-click objects, layers, the canvas, keyframes, timelines, states and transitions.
 - **Rulers and grid** (View menu, or `Alt R` / `Ctrl '`): rulers along the top and left show artboard pixels, highlight
   the artboard's extent and track the selection. The grid draws over the active artboard at the spacing set in
-  Preferences (20 px by default), and **Snap to grid** (`Ctrl Shift '`) makes dragged objects land on it.
+  Preferences (20 px by default), and **Snap to grid** (`Ctrl Shift '`) makes dragged objects stick to its lines.
+- **Guides**: drag from the top or left ruler to pull out a guide line (blue). Objects stick to guides when you move or
+  draw near them, like in Photoshop; hold `Ctrl` to move freely. Drag a guide to reposition it, or drag it back onto the
+  ruler to delete it. `Ctrl ;` shows or hides guides and **Clear guides** is in the View menu. Guides are saved per file in
+  this browser and are not written to the `.riv`.
 
 ### Animate mode (`Tab`)
 

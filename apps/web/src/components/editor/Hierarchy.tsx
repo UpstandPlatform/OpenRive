@@ -76,6 +76,27 @@ export function Hierarchy() {
     return () => window.removeEventListener('editor:rename-selected', onRename);
   }, []);
 
+  // a selection made on the stage should be visible in the list: open the groups around it and scroll to it
+  const lastSelected = selection[selection.length - 1];
+  const [revealed, setRevealed] = useState<string | undefined>(undefined);
+  if (lastSelected !== revealed) {
+    setRevealed(lastSelected);
+    const ab = doc ? findArtboard(doc, activeArtboardId) : undefined;
+    const o = ab && lastSelected ? findObj(ab, lastSelected) : undefined;
+    if (ab && o) {
+      const parents: string[] = [];
+      for (let p = parentIdOf(ab, o); p; ) {
+        parents.push(p);
+        const po = findObj(ab, p);
+        p = po ? parentIdOf(ab, po) : null;
+      }
+      if (parents.some((p) => collapsed.has(p))) setCollapsed(new Set([...collapsed].filter((id) => !parents.includes(id))));
+    }
+  }
+  useEffect(() => {
+    if (lastSelected) document.querySelector(`[data-layer-row="${lastSelected}"]`)?.scrollIntoView({ block: 'nearest' });
+  }, [lastSelected, collapsed]);
+
   const rows = useMemo(() => {
     const out: { o: CoreObj; depth: number; ab: ArtboardDoc; hasKids: boolean }[] = [];
     if (!doc) return out;
@@ -165,6 +186,9 @@ export function Hierarchy() {
         return (
           <div
             key={o.id}
+            data-layer-row={o.id}
+            onMouseEnter={() => !isArtboard && ab.id === activeArtboardId && s.set('hoverId', o.id)}
+            onMouseLeave={() => !isArtboard && useEditor.getState().set('hoverId', null)}
             draggable={!isArtboard && !readOnly && renaming !== o.id}
             onDragStart={(e) => {
               setDragId(o.id);
