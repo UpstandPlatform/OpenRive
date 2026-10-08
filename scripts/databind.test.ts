@@ -13,11 +13,12 @@ import {
   propertyListenerAction,
   propertyValue,
   removeProperty,
+  renameViewModel,
   setPropertyValue,
   usesInputs,
   viewModels,
 } from '@openrive/rive/databind';
-import { addAnimation, addListener, addState, addStateMachine, addTransition } from '@openrive/rive/api';
+import { addAnimation, addBlendState, addDistanceConstraint, addEvent, addListener, addState, addStateMachine, addTransition, removeEvent, renameEvent } from '@openrive/rive/api';
 import { exportRiv, importRiv } from '@openrive/rive/document';
 import { newDoc, newParametricShape } from '@openrive/rive/factory';
 import { getTemplate } from '@openrive/rive/templates';
@@ -39,6 +40,8 @@ const doc = newDoc('Button');
 const ab = doc.artboards[0]!;
 ab.objects.push(...newParametricShape('rectangle', ab.id, 250, 250, 200, 80, 0xff3d8bd0));
 const shape = ab.objects.find((o) => o.type === 'Shape')!;
+ab.objects.push(...newParametricShape('ellipse', ab.id, 330, 250, 30, 30, 0xffffcc00));
+const targetShape = ab.objects.find((o) => o.type === 'Shape' && o.id !== shape.id)!;
 addAnimation(doc, { artboard: ab.id, name: 'Idle' });
 addAnimation(doc, { artboard: ab.id, name: 'Hover' });
 const sm = addStateMachine(doc, { artboard: ab.id, name: 'Button' });
@@ -73,6 +76,13 @@ const leave = addListener(doc, { artboard: ab.id, stateMachine: sm.id, target: s
 leave.children = propertyListenerAction(isHover, false);
 const click = addListener(doc, { artboard: ab.id, stateMachine: sm.id, target: shape.id, event: 'click', name: 'onClick', actions: [] });
 click.children = propertyListenerAction(press);
+const event = addEvent(doc, { artboard: ab.id, name: 'activated', properties: [{ name: 'source', type: 'string', value: 'button' }] });
+addListener(doc, { artboard: ab.id, stateMachine: sm.id, target: shape.id, event: 'click', name: 'reportActivation', actions: [{ fireEvent: event.id }] });
+addListener(doc, { artboard: ab.id, stateMachine: sm.id, target: shape.id, event: 'rive', eventName: event.props.name as string, name: 'onActivation', actions: [{ property: 'isHover', value: true }] });
+addDistanceConstraint(doc, { artboard: ab.id, object: shape.id, target: targetShape.id, distance: 42, mode: 'exact', strength: 0.75 });
+addBlendState(doc, { artboard: ab.id, stateMachine: sm.id, parameter: 'Blend amount', animations: [{ animation: 'Idle', value: 0 }, { animation: 'Hover', value: 1 }] });
+renameViewModel(doc, ab, 'Button data');
+renameEvent(doc, event.id, 'button activated', ab.id);
 
 const authored = exportRiv(doc);
 roundTrip('authored', authored);
@@ -80,6 +90,17 @@ writeFileSync('scripts/databind-test-out.riv', authored);
 
 const reread = importRiv(authored);
 const rab = reread.artboards[0]!;
+const rereadEvent = rab.objects.find((o) => o.type === 'Event' && o.props.name === 'button activated');
+const rereadShape = rab.objects.find((o) => o.type === 'Shape' && o.props.name === 'Rectangle')!;
+const rereadTargetShape = rab.objects.find((o) => o.type === 'Shape' && o.props.name === 'Ellipse')!;
+const rereadDistance = rab.objects.find((o) => o.type === 'DistanceConstraint' && o.props.parentId === rereadShape.id);
+const testSm = rab.stateMachines.find((candidate) => candidate.props.name === 'Button')!;
+const rereadBlend = testSm.children?.flatMap((child) => child.children ?? []).find((child) => child.type === 'BlendState1DInput');
+const rereadEventListener = testSm.children?.find((child) => child.type === 'StateMachineListenerSingle' && child.props.eventId === rereadEvent?.id);
+const eventPayload = rab.objects.find((o) => o.props.parentId === rereadEvent?.id);
+if (!rereadEvent || !rereadDistance || rereadDistance.props.targetId !== rereadTargetShape.id || !rereadBlend || !rereadEventListener || eventPayload?.props.propertyValue !== 'button') {
+  throw new Error('Event, blend state, payload, or distance constraint did not round-trip');
+}
 console.log(
   'reread:',
   viewModels(reread).map((v) => `${v.name}[${v.properties.map((p) => `${p.name}:${p.type}`).join(',')}]`).join(' '),
@@ -99,6 +120,12 @@ const reindexed = after.every((p, i) => p.index === i && Number(p.value?.props.v
 const firedDropped = (fired.children ?? []).length === 0;
 console.log(`removed "press": gone=${pressGone} reindexed=${reindexed} its condition dropped=${firedDropped}`);
 console.log('remaining:', after.map((p) => `${p.name}@${p.index}`).join(' '));
+removeEvent(doc, event.id, ab.id);
+const noEvent = importRiv(exportRiv(doc)).artboards[0]!;
+if (noEvent.objects.some((o) => o.type === 'Event' || o.props.name === 'source') || noEvent.stateMachines.some((machine) => machine.children?.some((item) => item.type === 'StateMachineListenerSingle' && item.props.eventId !== undefined))) {
+  throw new Error('Removing an event left an event, payload, or listener reference behind');
+}
+console.log('removed event and all listener/payload references: ok');
 roundTrip('after edits', exportRiv(doc));
 
 // --- converting a template's inputs ---------------------------------------

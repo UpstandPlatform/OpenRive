@@ -6,6 +6,7 @@ import { newAnimation, newArtboard, newLayer, newParametricShape, newPenShape, o
 import { childrenOf, EASE_PRESETS, findObj, insertObjects, isAnimatable, parentIdOf, setInterpolation, upsertKeyframe } from './ops';
 import { artboardPos, prop } from './scene';
 import {
+  artboardViewModel,
   addProperty,
   ConditionOp,
   convertInputsToProperties,
@@ -453,6 +454,33 @@ export function addState(doc: RiveDoc, s: { artboard?: string; stateMachine?: st
   return st;
 }
 
+/** Adds a 1D blend state driven by a numeric state-machine parameter. */
+export function addBlendState(
+  doc: RiveDoc,
+  s: { artboard?: string; stateMachine?: string; layer?: string; parameter?: string; animations: { animation: string; value: number }[]; x?: number; y?: number },
+) {
+  const ab = getArtboard(doc, s.artboard);
+  const sm = getStateMachine(ab, s.stateMachine);
+  const layer = layerOf(sm, s.layer);
+  if (!s.animations.length) throw new ApiError('A 1D blend state needs at least one timeline');
+  let input = (sm.children ?? []).find((child) => isA(child.type, 'StateMachineNumber') && (child.id === s.parameter || child.props.name === s.parameter));
+  if (!input) {
+    const name = s.parameter?.trim() || 'Blend 1D';
+    input = obj('StateMachineNumber', { name });
+    sm.children ??= [];
+    const firstLayer = sm.children.findIndex((child) => isA(child.type, 'StateMachineLayer'));
+    sm.children.splice(firstLayer < 0 ? sm.children.length : firstLayer, 0, input);
+  }
+  const children = s.animations.map(({ animation, value }) => {
+    const timeline = getAnimation(ab, animation);
+    return obj('BlendAnimation1D', { animationId: timeline.id, value });
+  });
+  const state = obj('BlendState1DInput', { inputId: input.id }, children);
+  if (s.x !== undefined) state.ui = { x: s.x, y: s.y ?? 0 };
+  (layer.children ??= []).push(state);
+  return state;
+}
+
 export interface ConditionInput {
   /** a data binding property (preferred — state machine inputs are deprecated) */
   property?: string;
@@ -513,7 +541,8 @@ export function addListener(
     artboard?: string;
     stateMachine?: string;
     target?: string;
-    event: 'down' | 'up' | 'click' | 'enter' | 'exit' | 'move';
+    event: 'down' | 'up' | 'click' | 'enter' | 'exit' | 'move' | 'rive';
+    eventName?: string;
     name?: string;
     /**
      * property changes (preferred), input changes, or { alignTarget } to move an
@@ -523,15 +552,23 @@ export function addListener(
       | { property: string; value?: number | boolean | string }
       | { input: string; value?: number | boolean | 'toggle' }
       | { alignTarget: string; preserveOffset?: boolean }
+      | { fireEvent: string }
     )[];
   },
 ) {
   const ab = getArtboard(doc, l.artboard);
   const sm = getStateMachine(ab, l.stateMachine);
   const inputs = (sm.children ?? []).filter((c) => isA(c.type, 'StateMachineInput'));
-  const events = { enter: 0, exit: 1, down: 2, up: 3, move: 4, click: 6 };
+  const events = { enter: 0, exit: 1, down: 2, up: 3, move: 4, rive: 5, click: 6 };
   const target = l.target ? getObject(doc, l.target, ab.id).o : undefined;
+  const reportedEvent = l.event === 'rive' ? ab.objects.find((o) => o.type === 'Event' && (o.id === l.eventName || o.props.name === l.eventName)) : undefined;
+  if (l.event === 'rive' && !reportedEvent) throw new ApiError(`No event named "${l.eventName ?? ''}"`);
   const actions = l.actions.flatMap((a) => {
+    if ('fireEvent' in a) {
+      const event = ab.objects.find((o) => o.id === a.fireEvent || (o.type === 'Event' && o.props.name === a.fireEvent));
+      if (!event || event.type !== 'Event') throw new ApiError(`No event named "${a.fireEvent}"`);
+      return [obj('ListenerFireEvent', { eventId: event.id })];
+    }
     if ('alignTarget' in a) {
       const t = getObject(doc, a.alignTarget, ab.id).o;
       return [obj('ListenerAlignTarget', { targetId: t.id, ...(a.preserveOffset ? { preserveOffset: true } : {}) })];
@@ -552,11 +589,85 @@ export function addListener(
   });
   const listener = obj(
     'StateMachineListenerSingle',
-    { name: l.name ?? 'Listener', listenerTypeValue: events[l.event], ...(target ? { targetId: target.id } : {}) },
+    { name: l.name ?? 'Listener', listenerTypeValue: events[l.event], ...(target ? { targetId: target.id } : {}), ...(reportedEvent ? { eventId: reportedEvent.id } : {}) },
     actions,
   );
   (sm.children ??= []).push(listener);
   return listener;
+}
+
+/** Adds a named custom event to an artboard for state machines and listeners to report. */
+export function addEvent(
+  doc: RiveDoc,
+  e: { artboard?: string; name: string; properties?: { name: string; type: 'number' | 'boolean' | 'string' | 'color'; value?: number | boolean | string }[] },
+) {
+  const ab = getArtboard(doc, e.artboard);
+  const name = e.name.trim();
+  if (!name) throw new ApiError('Event name cannot be empty');
+  if (ab.objects.some((o) => o.type === 'Event' && String(o.props.name).toLocaleLowerCase() === name.toLocaleLowerCase())) {
+    throw new ApiError(`An event named "${name}" already exists`);
+  }
+  const fieldNames = new Set<string>();
+  for (const field of e.properties ?? []) {
+    const fieldName = field.name.trim();
+    if (!fieldName) throw new ApiError('Event property names cannot be empty');
+    const key = fieldName.toLocaleLowerCase();
+    if (fieldNames.has(key)) throw new ApiError(`An event property named "${fieldName}" already exists`);
+    fieldNames.add(key);
+  }
+  const event = obj('Event', { name, parentId: ab.artboard.id });
+  ab.objects.push(event);
+  for (const field of e.properties ?? []) {
+    const fieldName = field.name.trim();
+    const type = field.type === 'number' ? 'CustomPropertyNumber' : field.type === 'boolean' ? 'CustomPropertyBoolean' : field.type === 'color' ? 'CustomPropertyColor' : 'CustomPropertyString';
+    const value = field.type === 'number' ? Number(field.value ?? 0) : field.type === 'boolean' ? !!field.value : field.type === 'color' ? Number(field.value ?? 0xffffffff) >>> 0 : String(field.value ?? '');
+    const property = obj(type, { name: fieldName, parentId: event.id, propertyValue: value });
+    ab.objects.push(property);
+  }
+  return event;
+}
+
+/** Renames an event, keeping its artboard's event names unique. */
+export function renameEvent(doc: RiveDoc, eventRef: string, name: string, artboardRef?: string) {
+  const { ab, o } = getObject(doc, eventRef, artboardRef);
+  if (o.type !== 'Event') throw new ApiError(`"${eventRef}" is not an event`);
+  const trimmed = name.trim();
+  if (!trimmed) throw new ApiError('Event name cannot be empty');
+  if (ab.objects.some((item) => item.id !== o.id && item.type === 'Event' && String(item.props.name).toLocaleLowerCase() === trimmed.toLocaleLowerCase())) {
+    throw new ApiError(`An event named "${trimmed}" already exists`);
+  }
+  o.props.name = trimmed;
+  return o;
+}
+
+/** Removes an artboard event and any state-machine references to it. */
+export function removeEvent(doc: RiveDoc, eventRef: string, artboardRef?: string) {
+  const { ab, o } = getObject(doc, eventRef, artboardRef);
+  if (o.type !== 'Event') throw new ApiError(`"${eventRef}" is not an event`);
+  const doomed = new Set([o.id]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const item of ab.objects) {
+      if (typeof item.props.parentId === 'string' && doomed.has(item.props.parentId) && !doomed.has(item.id)) {
+        doomed.add(item.id);
+        changed = true;
+      }
+    }
+  }
+  ab.objects = ab.objects.filter((item) => !doomed.has(item.id));
+  for (const sm of ab.stateMachines) {
+    const clean = (item: CoreObj) => {
+      item.children = item.children?.filter((child) => {
+        if (child.type === 'StateMachineListenerSingle' && child.props.eventId === o.id) return false;
+        if ((child.type === 'ListenerFireEvent' || child.type === 'StateMachineFireEvent') && child.props.eventId === o.id) return false;
+        return true;
+      });
+      item.children?.forEach(clean);
+    };
+    clean(sm);
+  }
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -664,6 +775,15 @@ export function outline(doc: RiveDoc) {
       if (s) d.stroke = formatColor(prop(s, 'colorValue'));
     }
     if (o.type === 'Text') d.text = textRuns(ab, o.id).map((r) => r.props.text).join('');
+    const constraints = ab.objects.filter((item) => isA(item.type, 'Constraint') && item.props.parentId === o.id);
+    if (constraints.length) d.constraints = constraints.map((constraint) => ({
+      id: constraint.id,
+      type: constraint.type,
+      target: ab.objects.find((item) => item.id === constraint.props.targetId)?.props.name,
+      distance: constraint.type === 'DistanceConstraint' ? constraint.props.distance : undefined,
+      mode: constraint.type === 'DistanceConstraint' ? ['closer', 'further', 'exact'][Number(constraint.props.modeValue ?? 0)] : undefined,
+      strength: constraint.props.strength,
+    }));
     const kids = childrenOf(ab, o.id).filter((c) => isA(c.type, 'Node') || c.type === 'Text');
     if (kids.length) d.children = kids.map((c) => describe(ab, c));
     return d;
@@ -674,6 +794,12 @@ export function outline(doc: RiveDoc) {
       name: ab.artboard.props.name,
       width: prop(ab.artboard, 'width'),
       height: prop(ab.artboard, 'height'),
+      viewModel: artboardViewModel(doc, ab)?.name,
+      events: ab.objects.filter((o) => o.type === 'Event').map((event) => ({
+        id: event.id,
+        name: event.props.name,
+        properties: ab.objects.filter((field) => field.props.parentId === event.id && isA(field.type, 'CustomProperty')).map((field) => ({ name: field.props.name, type: field.type.replace('CustomProperty', '').toLowerCase(), value: field.props.propertyValue })),
+      })),
       children: childrenOf(ab, ab.artboard.id)
         .filter((c) => isA(c.type, 'Node') || c.type === 'Text')
         .map((c) => describe(ab, c)),
@@ -717,6 +843,7 @@ export function outline(doc: RiveDoc) {
               id: st.id,
               type: st.type,
               timeline: st.type === 'AnimationState' ? ab.animations.find((a) => a.id === st.props.animationId)?.props.name : undefined,
+              blend: st.type === 'BlendState1DInput' ? (st.children ?? []).map((entry) => ({ timeline: ab.animations.find((a) => a.id === entry.props.animationId)?.props.name, value: entry.props.value })) : undefined,
               transitionsTo: (st.children ?? []).filter((c) => isA(c.type, 'StateTransition')).map((tr) => tr.props.stateToId),
             })),
           })),

@@ -125,11 +125,13 @@ export function TextField({
   onChange,
   placeholder,
   className = '',
+  disabled = false,
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   className?: string;
+  disabled?: boolean;
 }) {
   const [text, setText] = useState(value);
   const [prevValue, setPrevValue] = useState(value);
@@ -142,6 +144,7 @@ export function TextField({
       className={`field ${className}`}
       value={text}
       placeholder={placeholder}
+      disabled={disabled}
       onChange={(e) => setText(e.target.value)}
       onBlur={() => text !== value && onChange(text)}
       onKeyDown={(e) => {

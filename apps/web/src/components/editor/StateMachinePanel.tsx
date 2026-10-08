@@ -1,20 +1,26 @@
 'use client';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { Braces, Hash, MousePointerClick, Palette, Play, Plus, Square, ToggleLeft, Trash2, Type, Zap } from 'lucide-react';
+import { Braces, Hash, MousePointerClick, Palette, Play, Plus, Square, ToggleLeft, Trash2, Type, Zap, Radio } from 'lucide-react';
 import { ArtboardDoc, CoreObj, RiveDoc } from '@openrive/rive/document';
 import { newLayer, obj } from '@openrive/rive/factory';
 import { findArtboard, findObj } from '@openrive/rive/ops';
 import { prop } from '@openrive/rive/scene';
+import { addBlendState as createBlendState, addEvent as addArtboardEvent, removeEvent, renameEvent } from '@openrive/rive/api';
 import { isA } from '@openrive/rive/schema';
 import {
   addProperty,
   convertInputsToProperties,
+  artboardViewModel,
+  decodePath,
   properties as dataProperties,
   PropertyDoc,
   PropertyType,
   propertyValue,
+  propertyListenerAction,
+  propertyCondition,
   removeProperty,
   renameProperty,
+  renameViewModel,
   setPropertyValue,
   usesInputs,
 } from '@openrive/rive/databind';
@@ -40,11 +46,11 @@ function useSM() {
 }
 
 /** Mutates the current state machine inside a commit. */
-function editSM(abId: string, smId: string, fn: (sm: CoreObj, ab: ArtboardDoc) => void) {
+function editSM(abId: string, smId: string, fn: (sm: CoreObj, ab: ArtboardDoc, doc: RiveDoc) => void) {
   useEditor.getState().commit((d) => {
     const ab = findArtboard(d, abId);
     const sm = ab?.stateMachines.find((m) => m.id === smId);
-    if (ab && sm) fn(sm, ab);
+    if (ab && sm) fn(sm, ab, d);
   });
 }
 
@@ -64,6 +70,7 @@ function stateLabel(ab: ArtboardDoc, st: CoreObj) {
     const a = ab.animations.find((x) => x.id === st.props.animationId);
     return a ? String(a.props.name ?? 'Timeline') : 'No timeline';
   }
+  if (st.type === 'BlendState1DInput') return '1D Blend';
   return st.type.replace(/([a-z])([A-Z])/g, '$1 $2');
 }
 
@@ -97,7 +104,7 @@ export function StateMachineGraph() {
   const previewing = useEditor((s) => s.previewing);
   const readOnly = useEditor((s) => s.readOnly);
   const smSelection = useEditor((s) => s.smSelection);
-  const [tab, setTab] = useState<'data' | 'listeners'>('data');
+  const [tab, setTab] = useState<'data' | 'listeners' | 'events'>('data');
   const [addMenu, setAddMenu] = useState<string | null>(null);
   const [linking, setLinking] = useState<{ from: string; x: number; y: number } | null>(null);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -135,6 +142,8 @@ export function StateMachineGraph() {
   };
 
   const props = ab && doc ? dataProperties(doc, ab) : [];
+  const viewModel = ab && doc ? artboardViewModel(doc, ab) : undefined;
+  const events = ab?.objects.filter((o) => o.type === 'Event') ?? [];
   const legacyInputs = ab ? usesInputs(ab) : false;
 
   /** Runs an edit against the live document and this artboard, as one undo step. */
@@ -152,6 +161,36 @@ export function StateMachineGraph() {
     while (props.some((x) => x.name === `${base} ${n}`)) n++;
     editData((d, artboard) => {
       addProperty(d, artboard, { name: `${base} ${n}`, type, value: type === 'trigger' ? undefined : type === 'string' ? '' : 0 });
+    });
+  };
+
+  const createEvent = () => {
+    if (!ab || !doc) return;
+    let n = 1;
+    while (events.some((e) => e.props.name === `Event ${n}`)) n++;
+    try {
+      s.commit((d) => { addArtboardEvent(d, { artboard: ab.id, name: `Event ${n}` }); });
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'Could not add event');
+    }
+  };
+
+  const addEventProperty = (eventId: string, type: 'CustomPropertyNumber' | 'CustomPropertyBoolean' | 'CustomPropertyString' | 'CustomPropertyColor') => {
+    if (!ab) return;
+    const base = type === 'CustomPropertyBoolean' ? 'Boolean' : type === 'CustomPropertyNumber' ? 'Number' : type === 'CustomPropertyColor' ? 'Color' : 'String';
+    const current = ab.objects.filter((item) => item.props.parentId === eventId && isA(item.type, 'CustomProperty'));
+    let n = 1;
+    while (current.some((item) => item.props.name === `${base} ${n}`)) n++;
+    s.commit((d) => {
+      const artboard = findArtboard(d, ab.id);
+      if (artboard) artboard.objects.push(obj(type, {
+        name: `${base} ${n}`,
+        parentId: eventId,
+        ...(type === 'CustomPropertyNumber' ? { propertyValue: 0 } : {}),
+        ...(type === 'CustomPropertyBoolean' ? { propertyValue: false } : {}),
+        ...(type === 'CustomPropertyString' ? { propertyValue: '' } : {}),
+        ...(type === 'CustomPropertyColor' ? { propertyValue: 0xffffffff } : {}),
+      }));
     });
   };
 
@@ -185,6 +224,23 @@ export function StateMachineGraph() {
       l?.children?.push(st);
     });
     s.set('smSelection', { kind: 'state', id: st.id });
+  };
+
+  const addBlendState = () => {
+    if (!layer) return;
+    let stateId = '';
+    editSM(ab.id, sm.id, (_m, _artboard, doc) => {
+      const state = createBlendState(doc, {
+        artboard: ab.id,
+        stateMachine: sm.id,
+        layer: layer.id,
+        animations: ab.animations.map((animation, index) => ({ animation: animation.id, value: index })),
+        x: 240 + (states.length % 3) * 170,
+        y: 40 + Math.floor(states.length / 3) * 70,
+      });
+      stateId = state.id;
+    });
+    if (stateId) s.set('smSelection', { kind: 'state', id: stateId });
   };
 
   const addLayer = () => {
@@ -298,6 +354,7 @@ export function StateMachineGraph() {
           items={[
             { id: 'data', label: 'Data' },
             { id: 'listeners', label: 'Listeners' },
+            { id: 'events', label: 'Events' },
           ]}
           value={tab}
           onChange={setTab}
@@ -305,6 +362,19 @@ export function StateMachineGraph() {
         <div className="flex-1 overflow-auto p-1.5">
           {tab === 'data' && (
             <>
+              {viewModel && (
+                <div className="px-2 py-2 mb-1 rounded bg-bg2">
+                  <div className="text-t3 text-[10px] uppercase tracking-wide mb-1">Artboard view model</div>
+                  <TextField
+                    value={viewModel.name}
+                    className="h-7"
+                    disabled={readOnly}
+                    onChange={(name) => editData((d, artboard) => {
+                      try { renameViewModel(d, artboard, name); } catch (error) { toast(error instanceof Error ? error.message : 'Could not rename view model'); }
+                    })}
+                  />
+                </div>
+              )}
               {props.map((property) => (
                 <PropertyRow key={property.obj.id} property={property} readOnly={readOnly} onEdit={editData} />
               ))}
@@ -446,6 +516,42 @@ export function StateMachineGraph() {
               <p className="text-t3 text-[11px] mt-2 px-1">Listeners react to pointer events on a target shape and set properties (or inputs). Try them in Preview.</p>
             </>
           )}
+          {tab === 'events' && (
+            <div className="flex flex-col gap-2">
+              <p className="text-t3 text-[11px] px-1">Named events can be fired by listeners and reported by the Rive runtime.</p>
+              {events.map((event) => (
+                <div key={event.id} className="rounded bg-bg2 p-2">
+                  <div className="flex items-center gap-1.5 group">
+                    <Radio size={13} className="text-t2 shrink-0" />
+                    <TextField
+                      value={String(event.props.name ?? 'Event')}
+                      className="h-6"
+                      disabled={readOnly}
+                      onChange={(name) => s.commit((d) => {
+                        try { renameEvent(d, event.id, name, ab.id); } catch (error) { toast(error instanceof Error ? error.message : 'Could not rename event'); }
+                      })}
+                    />
+                    {!readOnly && <button className="icon-btn w-5 h-5" title="Delete event" onClick={() => s.commit((d) => { removeEvent(d, event.id, ab.id); })}><Trash2 size={11} /></button>}
+                  </div>
+                  <div className="mt-1 flex flex-col gap-1">
+                    {ab.objects.filter((item) => item.props.parentId === event.id && isA(item.type, 'CustomProperty')).map((field) => (
+                      <div key={field.id} className="flex items-center gap-1.5 px-1">
+                        <span className="truncate flex-1 text-[11px] text-t2">{String(field.props.name ?? 'Property')}</span>
+                        {field.type === 'CustomPropertyNumber' && <div className="w-16"><NumberField value={Number(field.props.propertyValue ?? 0)} disabled={readOnly} onChange={(propertyValue) => s.commit((d) => { const a = findArtboard(d, ab.id); const item = a?.objects.find((o) => o.id === field.id); if (item) item.props.propertyValue = propertyValue; })} /></div>}
+                        {field.type === 'CustomPropertyBoolean' && <input type="checkbox" checked={!!field.props.propertyValue} disabled={readOnly} onChange={(e) => s.commit((d) => { const a = findArtboard(d, ab.id); const item = a?.objects.find((o) => o.id === field.id); if (item) item.props.propertyValue = e.target.checked; })} />}
+                        {field.type === 'CustomPropertyString' && <div className="w-20"><TextField value={String(field.props.propertyValue ?? '')} disabled={readOnly} onChange={(propertyValue) => s.commit((d) => { const a = findArtboard(d, ab.id); const item = a?.objects.find((o) => o.id === field.id); if (item) item.props.propertyValue = propertyValue; })} /></div>}
+                        {field.type === 'CustomPropertyColor' && <input type="color" className="w-8 h-6" value={`#${((Number(field.props.propertyValue ?? 0xffffffff) >>> 0) & 0xffffff).toString(16).padStart(6, '0')}`} disabled={readOnly} onChange={(e) => s.commit((d) => { const a = findArtboard(d, ab.id); const item = a?.objects.find((o) => o.id === field.id); if (item) item.props.propertyValue = (0xff000000 | parseInt(e.target.value.slice(1), 16)) >>> 0; })} />}
+                        {!readOnly && <button className="icon-btn w-5 h-5" title="Remove property" onClick={() => s.commit((d) => { const a = findArtboard(d, ab.id); if (a) a.objects = a.objects.filter((o) => o.id !== field.id); })}><Trash2 size={10} /></button>}
+                      </div>
+                    ))}
+                    {!readOnly && <Select value="" className="mt-1" options={[{ value: '', label: '+ Add event property…' }, { value: 'CustomPropertyNumber', label: 'Number' }, { value: 'CustomPropertyBoolean', label: 'Boolean' }, { value: 'CustomPropertyString', label: 'String' }, { value: 'CustomPropertyColor', label: 'Color' }]} onChange={(type) => addEventProperty(event.id, type as 'CustomPropertyNumber' | 'CustomPropertyBoolean' | 'CustomPropertyString' | 'CustomPropertyColor')} />}
+                  </div>
+                </div>
+              ))}
+              {!readOnly && <button className="btn h-7 w-full" onClick={createEvent}><Plus size={13} /> Add event</button>}
+              {!events.length && <div className="text-t3 text-[11px] text-center py-3">No events yet</div>}
+            </div>
+          )}
         </div>
       </div>
 
@@ -505,6 +611,9 @@ export function StateMachineGraph() {
                   <div className="menu-sep" />
                   <button className="menu-item" onClick={() => addState(null)}>
                     Empty state
+                  </button>
+                  <button className="menu-item" onClick={addBlendState} disabled={!ab.animations.length}>
+                    1D blend state
                   </button>
                 </div>
               )}
@@ -743,6 +852,7 @@ const LISTENER_TYPES = [
   { value: 0, label: 'Pointer Enter' },
   { value: 1, label: 'Pointer Exit' },
   { value: 4, label: 'Pointer Move' },
+  { value: 5, label: 'Rive Event' },
 ];
 
 export function StateMachineInspector() {
@@ -750,8 +860,10 @@ export function StateMachineInspector() {
   const smSelection = useEditor((s) => s.smSelection);
   const readOnly = useEditor((s) => s.readOnly);
   if (!ab || !sm || !smSelection) return null;
-  const inputs = (sm.children ?? []).filter((c) => isA(c.type, 'StateMachineInput'));
   const s = useEditor.getState();
+  const inputs = (sm.children ?? []).filter((c) => isA(c.type, 'StateMachineInput'));
+  const events = ab.objects.filter((o) => o.type === 'Event');
+  const dataProps = s.doc ? dataProperties(s.doc, ab) : [];
 
   // locate selected object anywhere in the SM tree
   let target: CoreObj | undefined;
@@ -839,6 +951,50 @@ export function StateMachineInspector() {
             </Row>
           </>
         )}
+        {t.type === 'BlendState1DInput' && (
+          <>
+            <Row label="Parameter">
+              <Select
+                value={String(t.props.inputId ?? '')}
+                options={inputs.filter((input) => input.type === 'StateMachineNumber').map((input) => ({ value: input.id, label: String(input.props.name ?? 'Number') }))}
+                disabled={readOnly || !inputs.some((input) => input.type === 'StateMachineNumber')}
+                onChange={(inputId) => set({ inputId })}
+              />
+            </Row>
+            <div className="label mt-2">Timelines by parameter value</div>
+            {(t.children ?? []).filter((child) => child.type === 'BlendAnimation1D').map((blend) => (
+              <div key={blend.id} className="flex items-center gap-1.5 rounded bg-bg2 p-1.5">
+                <Select
+                  className="min-w-0 flex-1"
+                  value={String(blend.props.animationId ?? '')}
+                  options={ab.animations.map((animation) => ({ value: animation.id, label: String(animation.props.name ?? 'Timeline') }))}
+                  disabled={readOnly}
+                  onChange={(animationId) => mutate((state) => {
+                    const item = state.children?.find((child) => child.id === blend.id);
+                    if (item) item.props.animationId = animationId;
+                  })}
+                />
+                <div className="w-16 shrink-0">
+                  <NumberField value={Number(blend.props.value ?? 0)} disabled={readOnly} onChange={(value) => mutate((state) => {
+                    const item = state.children?.find((child) => child.id === blend.id);
+                    if (item) item.props.value = value;
+                  })} />
+                </div>
+                {!readOnly && <button className="icon-btn w-5 h-5" title="Remove timeline" onClick={() => mutate((state) => { state.children = state.children?.filter((child) => child.id !== blend.id); })}><Trash2 size={11} /></button>}
+              </div>
+            ))}
+            {!readOnly && ab.animations.some((animation) => !(t.children ?? []).some((blend) => blend.props.animationId === animation.id)) && (
+              <Select
+                value=""
+                options={[{ value: '', label: '+ Add timeline…' }, ...ab.animations.filter((animation) => !(t.children ?? []).some((blend) => blend.props.animationId === animation.id)).map((animation) => ({ value: animation.id, label: String(animation.props.name ?? 'Timeline') }))]}
+                onChange={(animationId) => animationId && mutate((state) => {
+                  const blend = obj('BlendAnimation1D', { animationId, value: (state.children ?? []).length });
+                  (state.children ??= []).push(blend);
+                })}
+              />
+            )}
+          </>
+        )}
         <div className="label mt-1">Transitions out</div>
         {transitions.length === 0 && <div className="text-t3">None. Drag from the blue dot on the state.</div>}
         {transitions.map((tr) => {
@@ -868,6 +1024,10 @@ export function StateMachineInspector() {
             ? 'TransitionBoolCondition'
             : 'TransitionTriggerCondition';
       mutate((o) => (o.children ??= []).push(obj(type, { inputId, ...(type === 'TransitionNumberCondition' ? { opValue: 0, value: 0 } : {}) })));
+    };
+    const addPropertyCondition = (propertyId: string) => {
+      const property = dataProps.find((item) => item.obj.id === propertyId);
+      if (property) mutate((o) => (o.children ??= []).push(propertyCondition(property)));
     };
     const setCond = (id: string, values: Record<string, unknown>) =>
       mutate((o) => {
@@ -915,9 +1075,20 @@ export function StateMachineInspector() {
         <div className="label mt-2">Conditions (all must be true)</div>
         {conditions.map((c) => {
           const input = inputs.find((i) => i.id === c.props.inputId);
+          const bind = (c.children ?? []).find((child) => child.type === 'DataBindContext');
+          const path = bind ? decodePath(bind.props.sourcePathIds) : [];
+          const property = c.type === 'TransitionViewModelCondition'
+            ? dataProps.find((p) => p.viewModelIndex === path[0] && p.index === path[1])
+            : undefined;
+          const comparator = (c.children ?? []).find((child) => isA(child.type, 'TransitionValueComparator'));
+          const updateComparator = (values: Record<string, unknown>) => mutate((transition) => {
+            const condition = transition.children?.find((child) => child.id === c.id);
+            const value = condition?.children?.find((child) => isA(child.type, 'TransitionValueComparator'));
+            if (value) Object.assign(value.props, values);
+          });
           return (
             <div key={c.id} className="flex items-center gap-1.5 bg-bg2 rounded p-1.5">
-              <span className="truncate flex-1">{input ? String(input.props.name) : 'missing input'}</span>
+              <span className="truncate flex-1">{property?.name ?? (input ? String(input.props.name) : c.type === 'TransitionViewModelCondition' ? 'missing property' : 'missing input')}</span>
               {c.type === 'TransitionNumberCondition' && (
                 <>
                   <Select className="w-14 shrink-0" value={prop(c, 'opValue')} options={OPS} onChange={(v) => setCond(c.id, { opValue: v })} />
@@ -938,6 +1109,19 @@ export function StateMachineInspector() {
                 />
               )}
               {c.type === 'TransitionTriggerCondition' && <span className="text-t2">fired</span>}
+              {c.type === 'TransitionViewModelCondition' && property?.type === 'number' && comparator && (
+                <>
+                  <Select className="w-14 shrink-0" value={prop(c, 'opValue')} options={OPS} onChange={(opValue) => setCond(c.id, { opValue })} />
+                  <div className="w-16 shrink-0"><NumberField value={Number(comparator.props.value ?? 0)} disabled={readOnly} onChange={(value) => updateComparator({ value })} /></div>
+                </>
+              )}
+              {c.type === 'TransitionViewModelCondition' && property?.type === 'boolean' && (
+                <Select className="w-20 shrink-0" value={prop(c, 'opValue')} options={[{ value: 0, label: 'is true' }, { value: 1, label: 'is false' }]} onChange={(opValue) => setCond(c.id, { opValue })} />
+              )}
+              {c.type === 'TransitionViewModelCondition' && property?.type === 'string' && comparator && (
+                <div className="w-20 shrink-0"><TextField value={String(comparator.props.value ?? '')} disabled={readOnly} onChange={(value) => updateComparator({ value })} /></div>
+              )}
+              {c.type === 'TransitionViewModelCondition' && property?.type === 'trigger' && <span className="text-t2">fired</span>}
               {!readOnly && (
                 <button className="icon-btn w-5 h-5" onClick={() => removeCond(c.id)}>
                   <Trash2 size={11} />
@@ -949,8 +1133,12 @@ export function StateMachineInspector() {
         {!readOnly && (
           <Select
             value=""
-            options={[{ value: '', label: inputs.length ? '+ Add condition…' : 'Add inputs first' }, ...inputs.map((i) => ({ value: i.id, label: String(i.props.name) }))]}
-            onChange={(v) => v && addCondition(v)}
+            options={[{ value: '', label: '+ Add condition…' }, ...dataProps.map((p) => ({ value: `property:${p.obj.id}`, label: p.name })), ...inputs.map((i) => ({ value: `input:${i.id}`, label: String(i.props.name) }))]}
+            onChange={(v) => {
+              const [kind, id] = v.split(':', 2);
+              if (kind === 'property') addPropertyCondition(id!);
+              if (kind === 'input') addCondition(id!);
+            }}
           />
         )}
       </div>
@@ -959,7 +1147,7 @@ export function StateMachineInspector() {
 
   if (isA(t.type, 'StateMachineListener')) {
     const actions = (t.children ?? []).filter((c) => isA(c.type, 'ListenerAction'));
-    const shapes = ab.objects.filter((o) => isA(o.type, 'Node') && o.type !== 'Artboard');
+    const shapes = ab.objects.filter((o) => isA(o.type, 'TransformComponent') && o.type !== 'Artboard');
     const addAction = (inputId: string) => {
       const input = inputs.find((i) => i.id === inputId);
       if (!input) return;
@@ -967,6 +1155,12 @@ export function StateMachineInspector() {
         input.type === 'StateMachineNumber' ? 'ListenerNumberChange' : input.type === 'StateMachineBool' ? 'ListenerBoolChange' : 'ListenerTriggerChange';
       mutate((o) => (o.children ??= []).push(obj(type, { inputId, ...(type === 'ListenerBoolChange' ? { value: 1 } : {}) })));
     };
+    const addDataAction = (propertyId: string) => {
+      const property = dataProps.find((item) => item.obj.id === propertyId);
+      if (property) mutate((o) => (o.children ??= []).push(...propertyListenerAction(property)));
+    };
+    const addAlignAction = (targetId: string) => mutate((o) => (o.children ??= []).push(obj('ListenerAlignTarget', { targetId, preserveOffset: true })));
+    const addEventAction = (eventId: string) => mutate((o) => (o.children ??= []).push(obj('ListenerFireEvent', { eventId })));
     const setAction = (id: string, values: Record<string, unknown>) =>
       mutate((o) => {
         const c = o.children?.find((x) => x.id === id);
@@ -986,14 +1180,37 @@ export function StateMachineInspector() {
           />
         </Row>
         <Row label="Event">
-          <Select value={prop(t, 'listenerTypeValue')} options={LISTENER_TYPES} onChange={(v) => set({ listenerTypeValue: v })} />
+          <Select value={prop(t, 'listenerTypeValue')} options={LISTENER_TYPES} onChange={(v) => set({ listenerTypeValue: v, ...(v === 5 && events[0] ? { eventId: events[0].id } : v !== 5 ? { eventId: undefined } : {}) })} />
         </Row>
+        {prop(t, 'listenerTypeValue') === 5 && (
+          <Row label="Rive event">
+            <Select value={String(t.props.eventId ?? '')} options={events.map((event) => ({ value: event.id, label: String(event.props.name ?? 'Event') }))} disabled={readOnly || !events.length} onChange={(eventId) => set({ eventId })} />
+          </Row>
+        )}
         <div className="label mt-2">Actions</div>
         {actions.map((a) => {
           const input = inputs.find((i) => i.id === a.props.inputId);
           return (
             <div key={a.id} className="flex items-center gap-1.5 bg-bg2 rounded p-1.5">
-              <span className="truncate flex-1">{input ? String(input.props.name) : 'missing input'}</span>
+              {a.type === 'ListenerAlignTarget' ? (
+                <>
+                  <Select className="min-w-0 flex-1" value={String(a.props.targetId ?? '')} options={shapes.map((shape) => ({ value: shape.id, label: displayName(shape) }))} disabled={readOnly} onChange={(targetId) => setAction(a.id, { targetId })} />
+                  <label className="flex items-center gap-1 text-[10px] text-t2 shrink-0" title="Keep the target's offset from the pointer">
+                    <input type="checkbox" checked={!!a.props.preserveOffset} disabled={readOnly} onChange={(e) => setAction(a.id, { preserveOffset: e.target.checked })} /> Offset
+                  </label>
+                </>
+              ) : a.type === 'ListenerFireEvent' ? (
+                <span className="truncate flex-1">{String(events.find((event) => event.id === a.props.eventId)?.props.name ?? 'missing event')}</span>
+              ) : a.type === 'ListenerViewModelChange' ? (
+                <span className="truncate flex-1">{dataProps.find((p) => {
+                  const at = (t.children ?? []).indexOf(a);
+                  const bind = (t.children ?? []).slice(0, at).reverse().find((child) => child.type === 'DataBindContext');
+                  const path = bind ? decodePath(bind.props.sourcePathIds) : [];
+                  return p.viewModelIndex === path[0] && p.index === path[1];
+                })?.name ?? 'missing property'}</span>
+              ) : (
+                <span className="truncate flex-1">{input ? String(input.props.name) : 'missing input'}</span>
+              )}
               {a.type === 'ListenerBoolChange' && (
                 <Select
                   className="w-20 shrink-0"
@@ -1013,7 +1230,16 @@ export function StateMachineInspector() {
               )}
               {a.type === 'ListenerTriggerChange' && <span className="text-t2">fire</span>}
               {!readOnly && (
-                <button className="icon-btn w-5 h-5" onClick={() => mutate((o) => (o.children = o.children?.filter((x) => x.id !== a.id)))}>
+                <button className="icon-btn w-5 h-5" onClick={() => mutate((o) => {
+                  const kids = o.children ?? [];
+                  const index = kids.findIndex((x) => x.id === a.id);
+                  if (a.type === 'ListenerViewModelChange') {
+                    let from = index - 1;
+                    while (from > 0 && !isA(kids[from - 1]!.type, 'BindableProperty')) from--;
+                    from = Math.max(0, from - 1);
+                    o.children = kids.filter((_, i) => i < from || i > index);
+                  } else o.children = kids.filter((x) => x.id !== a.id);
+                })}>
                   <Trash2 size={11} />
                 </button>
               )}
@@ -1021,11 +1247,19 @@ export function StateMachineInspector() {
           );
         })}
         {!readOnly && (
-          <Select
-            value=""
-            options={[{ value: '', label: inputs.length ? '+ Add action…' : 'Add inputs first' }, ...inputs.map((i) => ({ value: i.id, label: String(i.props.name) }))]}
-            onChange={(v) => v && addAction(v)}
-          />
+          <Select value="" options={[
+            { value: '', label: '+ Add listener action…' },
+            ...dataProps.map((p) => ({ value: `property:${p.obj.id}`, label: `Set ${p.name}` })),
+            ...inputs.map((i) => ({ value: `input:${i.id}`, label: String(i.props.name) })),
+            ...events.map((event) => ({ value: `event:${event.id}`, label: `Fire ${String(event.props.name ?? 'Event')}` })),
+            ...shapes.map((shape) => ({ value: `align:${shape.id}`, label: `Align ${displayName(shape)} to pointer` })),
+          ]} onChange={(value) => {
+            const [kind, id] = value.split(':', 2);
+            if (kind === 'property') addDataAction(id!);
+            if (kind === 'input') addAction(id!);
+            if (kind === 'event') addEventAction(id!);
+            if (kind === 'align') addAlignAction(id!);
+          }} />
         )}
       </div>
     );

@@ -11,6 +11,10 @@ The web app's **AI & API** page is the central connection surface. It shows the 
 edition, lets signed-in cloud and self-hosted users create or revoke scoped API keys, and explains the key-free local
 CLI or desktop connection.
 
+The editor and MCP server share the same Rive editing core. Current tools include data properties, transitions,
+listeners and events, 1D blend states, and distance constraints; `get_project` reports those authored elements so an
+assistant can inspect the resulting file before making another edit.
+
 ## Connect a client
 
 ### Claude Code

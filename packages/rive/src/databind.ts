@@ -272,8 +272,25 @@ export function setPropertyValue(doc: RiveDoc, ab: ArtboardDoc, ref: string, val
 
 export function renameProperty(doc: RiveDoc, ab: ArtboardDoc, ref: string, name: string) {
   const p = findProperty(doc, ab, ref);
-  if (p) p.obj.props.name = name;
+  const trimmed = name.trim();
+  if (!p || !trimmed) return undefined;
+  if (properties(doc, ab).some((other) => other.obj.id !== p.obj.id && other.name.toLocaleLowerCase() === trimmed.toLocaleLowerCase())) {
+    throw new Error(`A property named "${trimmed}" already exists`);
+  }
+  p.obj.props.name = trimmed;
   return p;
+}
+
+/** Renames the view model exposed by an artboard. */
+export function renameViewModel(doc: RiveDoc, ab: ArtboardDoc, name: string) {
+  const model = artboardViewModel(doc, ab);
+  const trimmed = name.trim();
+  if (!model || !trimmed) return undefined;
+  if (viewModels(doc).some((other) => other.obj.id !== model.obj.id && other.name.toLocaleLowerCase() === trimmed.toLocaleLowerCase())) {
+    throw new Error(`A view model named "${trimmed}" already exists`);
+  }
+  model.obj.props.name = trimmed;
+  return model;
 }
 
 // ---------------------------------------------------------------------------

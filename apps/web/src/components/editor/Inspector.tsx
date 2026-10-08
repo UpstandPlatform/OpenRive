@@ -28,7 +28,7 @@ import {
   upsertKeyframe,
 } from '@openrive/rive/ops';
 import { artboardPos, buildScene, isEmpty, objectBounds, prop, sampleAnimation, Overrides, invert, apply, setArtboardPos } from '@openrive/rive/scene';
-import { addClip, clipsOf, removeClip } from '@openrive/rive/api';
+import { addClip, addDistanceConstraint, clipsOf, removeClip } from '@openrive/rive/api';
 import { isA, propDef } from '@openrive/rive/schema';
 import { useEditor } from '@/lib/store/editor';
 import { ColorSwatch, KeyButton, NumberField, Row, Select, TextField } from './controls';
@@ -228,6 +228,7 @@ export function Inspector() {
       ) : (
         <>
           {isA(o.type, 'Node') && <TransformSection o={o} b={b} />}
+          {isA(o.type, 'Node') && o.type !== 'Artboard' && <ConstraintsSection ab={ab} o={o} readOnly={b.readOnly} />}
           {isA(o.type, 'ParametricPath') && <ParametricSection o={o} b={b} />}
           {o.type === 'Shape' &&
             kids
@@ -319,6 +320,78 @@ function TransformSection({ o, b }: { o: CoreObj; b: Binding }) {
         <Num b={b} o={o} name="scaleY" label="Y" step={0.01} precision={3} />
         <Key b={b} o={o} names={['scaleX', 'scaleY']} />
       </Row>
+    </div>
+  );
+}
+
+function ConstraintsSection({ ab, o, readOnly }: { ab: ArtboardDoc; o: CoreObj; readOnly: boolean }) {
+  const constraints = ab.objects.filter((item) => isA(item.type, 'Constraint') && item.props.parentId === o.id);
+  const targets = ab.objects.filter((item) => isA(item.type, 'TransformComponent') && item.id !== o.id);
+  const mutate = (id: string, values: Record<string, unknown>) =>
+    useEditor.getState().commit((doc) => {
+      const artboard = findArtboard(doc, ab.id);
+      const constraint = artboard?.objects.find((item) => item.id === id);
+      if (constraint) Object.assign(constraint.props, values);
+    });
+  const remove = (id: string) =>
+    useEditor.getState().commit((doc) => {
+      const artboard = findArtboard(doc, ab.id);
+      if (artboard) artboard.objects = artboard.objects.filter((item) => item.id !== id);
+    });
+
+  return (
+    <div className="section flex flex-col gap-1.5">
+      <div className="flex items-center mb-1">
+        <span className="panel-title flex-1">Constraints</span>
+        <Select
+          value=""
+          disabled={readOnly || !targets.length}
+          options={[
+            { value: '', label: targets.length ? '+ Add distance…' : 'Add a second object first' },
+            ...targets.map((target) => ({ value: target.id, label: `Distance to ${displayName(target)}` })),
+          ]}
+          onChange={(target) => {
+            if (!target) return;
+            useEditor.getState().commit((doc) => { addDistanceConstraint(doc, { artboard: ab.id, object: o.id, target, distance: 100 }); });
+          }}
+        />
+      </div>
+      {!constraints.length && <div className="text-t3 text-[11px]">Keep this object closer to, farther from, or at a fixed distance from another node.</div>}
+      {constraints.map((constraint) => {
+        if (constraint.type !== 'DistanceConstraint') {
+          return <div key={constraint.id} className="text-t3 text-[11px]">{constraint.type} is preserved and cannot be edited here yet.</div>;
+        }
+        const target = targets.find((item) => item.id === constraint.props.targetId);
+        return (
+          <div key={constraint.id} className="rounded bg-bg2 p-2 flex flex-col gap-1.5">
+            <div className="flex items-center gap-1">
+              <Select
+                className="min-w-0 flex-1"
+                value={String(constraint.props.targetId ?? '')}
+                options={[{ value: '', label: 'Missing target' }, ...targets.map((item) => ({ value: item.id, label: displayName(item) }))]}
+                disabled={readOnly}
+                onChange={(targetId) => mutate(constraint.id, { targetId })}
+              />
+              {!readOnly && <button className="icon-btn w-6 h-6" title="Remove constraint" onClick={() => remove(constraint.id)}><Trash2 size={12} /></button>}
+            </div>
+            <Row label="Rule">
+              <Select
+                value={Number(constraint.props.modeValue ?? 0)}
+                disabled={readOnly}
+                options={[{ value: 0, label: 'Closer than' }, { value: 1, label: 'Farther than' }, { value: 2, label: 'Exact distance' }]}
+                onChange={(modeValue) => mutate(constraint.id, { modeValue })}
+              />
+            </Row>
+            <Row label="Distance">
+              <NumberField value={Number(constraint.props.distance ?? 100)} min={0} disabled={readOnly} onChange={(distance) => mutate(constraint.id, { distance })} />
+            </Row>
+            <Row label="Strength">
+              <NumberField value={Number(constraint.props.strength ?? 1)} min={0} max={1} step={0.05} disabled={readOnly} onChange={(strength) => mutate(constraint.id, { strength })} />
+            </Row>
+            {!target && <div className="text-t3 text-[10px]">Choose a valid node as the target.</div>}
+          </div>
+        );
+      })}
     </div>
   );
 }

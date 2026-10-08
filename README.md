@@ -48,18 +48,18 @@
 
 | | |
 | --- | --- |
-| **Design** | Artboards, shapes (rectangle, ellipse, triangle, polygon, star), pen paths with vertex editing, groups, text with embedded fonts, fills and strokes (solid, linear and radial gradients), trim paths, blend modes, clipping |
+| **Design** | Artboards, shapes (rectangle, ellipse, triangle, polygon, star), pen paths with vertex editing, groups, text with embedded fonts, fills and strokes (solid, linear and radial gradients), trim paths, blend modes, clipping, distance constraints |
 | **Assets** | Assets tab: import PNG/JPG/WebP images (embedded in the `.riv`), SVGs (converted to editable vector shapes) and fonts; drag onto the canvas |
-| **Animate** | Timelines with auto-keying, keyframe editing, hold, linear and cubic easing with a curve editor, ping-pong and loops |
-| **Interactivity** | State machines with layers, transitions, conditions, pointer listeners (including "follow the cursor"), live preview on the stage |
-| **Data binding** | Number, boolean, trigger, string and color properties that drive transitions and your app — and one-click conversion of Rive's deprecated state machine inputs ([docs](docs/data-binding.md)) |
+| **Animate** | Timelines with auto-keying, keyframe editing, hold, linear and cubic easing with a curve editor, ping-pong and loops, 1D blend states |
+| **Interactivity** | State machines with layers, transitions, property conditions, pointer and Rive event listeners, align-to-pointer actions, live preview on the stage |
+| **Data binding** | Artboard view models with editable number, boolean, trigger, string and color properties that drive transitions, listeners and your app — plus one-click conversion of Rive's deprecated state machine inputs ([docs](docs/data-binding.md)) |
 | **Theme colors** | Define colors once, link fills, strokes and keyframes to them, and switch themes (Light/Dark) to recolor the whole file |
 | **Code** | Automation scripts (JavaScript on the OpenRive API) and ready-to-paste embed code for Web, React, Flutter, iOS and Android |
 | **Templates** | Interactive OpenRive logo, Upstand logo, bouncing ball, button, toggle, spinner, star, text and themes, plus two example files (off-road car, death knight) |
-| **Productivity** | 60+ rebindable keyboard shortcuts, context menus everywhere, editing presets, undo/redo, copy/paste between files |
+| **Productivity** | Smart guides, ruler guides, 60+ rebindable keyboard shortcuts, context menus everywhere, editing presets, undo/redo, copy/paste between files |
 | **Preview** | Full-screen preview with state machine inputs, view model (data binding) controls and an event log; export it as a standalone bundle (`index.html` + `index.js` + runtime) that plays anywhere ([docs](docs/preview-bundles.md)) |
 | **Team** | Local users when running solo; sign-in with passwords, an admin dashboard and enforced Admin / Editor / Viewer roles when self-hosted |
-| **Tools** | `openrive` terminal UI and CLI, MCP server (30 tools), REST API, Docker, desktop builds |
+| **Tools** | `openrive` terminal UI and CLI, MCP server (33 tools), REST API, Docker, desktop builds |
 | **Stack** | Bun · Next.js 16 · React 19 · Zustand · Drizzle ORM + PostgreSQL · zod · Turborepo ([Better-T-Stack](https://better-t-stack.dev)) |
 
 ## Quick start

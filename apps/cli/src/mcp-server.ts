@@ -45,7 +45,7 @@ const server = new McpServer(
       'Coordinates are in artboard pixels with (0,0) at the top-left; shapes are positioned by their center.',
       'Colors are CSS strings (#rrggbb or #rrggbbaa). Rotation uses rotationDegrees.',
       'Animate by adding a timeline, then add_keyframes (frame numbers at the timeline fps, or time in seconds).',
-      'Interactivity: add_state_machine, add_property, add_state (one per timeline), add_transition (with conditions), add_listener (pointer events set properties).',
+      'Interactivity: add_state_machine, add_property, add_state, add_blend_state, add_transition, add_listener, add_event and add_distance_constraint. Listeners can set properties, align nodes to the pointer, and fire or react to named events.',
       'Use data binding properties (add_property), not state machine inputs: Rive deprecated inputs, and runtimes read and write properties without deprecation warnings.',
       'Files that still have inputs can be migrated in one step with convert_inputs_to_data_binding.',
       'Theme colors: define_theme_color once, use_theme_color on shapes/text; add_theme + switch_theme recolors everything.',
@@ -406,6 +406,25 @@ tool(
 );
 
 tool(
+  'add_blend_state',
+  'Add a 1D blend state driven by a numeric state-machine parameter and a set of timelines with parameter values.',
+  {
+    project,
+    artboard,
+    stateMachine: sm,
+    layer: z.string().optional(),
+    parameter: z.string().optional().describe('Existing numeric state-machine input name or id; otherwise a new one is created'),
+    animations: z.array(z.object({ animation: z.string(), value: z.number() })).min(1),
+    x: z.number().optional(),
+    y: z.number().optional(),
+  },
+  async ({ project: ref, ...state }) => {
+    const { result } = await editAuthorized(ref, (doc) => api.addBlendState(doc, state));
+    return { id: result.id };
+  },
+);
+
+tool(
   'add_transition',
   'Add a transition between states. from/to: "entry", "any", "exit", a state id, or a timeline name. Conditions compare data binding properties (booleans use value, numbers use op + value, triggers need only the name).',
   {
@@ -436,30 +455,69 @@ tool(
 
 tool(
   'add_listener',
-  'Make an object interactive: on a pointer event, set data binding properties (or, for older files, state machine inputs, whose boolean values can also be "toggle").',
+  'Make an object interactive: respond to a pointer or named Rive event, set data binding properties, align a node to the pointer, or fire a named event.',
   {
     project,
     artboard,
     stateMachine: sm,
     target: z.string().optional().describe('Object id or name (default: whole artboard)'),
-    event: z.enum(['down', 'up', 'click', 'enter', 'exit', 'move']),
+    event: z.enum(['down', 'up', 'click', 'enter', 'exit', 'move', 'rive']),
+    eventName: z.string().optional().describe('Required when event is "rive"'),
     name: z.string().optional(),
     actions: z.array(
       z.object({
         property: z.string().optional().describe('Data binding property to set (preferred)'),
         input: z.string().optional().describe('Deprecated state machine input; a property of the same name is used when there is no such input'),
         value: z.union([z.number(), z.boolean(), z.string()]).optional().describe('Triggers need no value; "toggle" only works with an input'),
+        alignTarget: z.string().optional().describe('Object id or name to align to the pointer'),
+        preserveOffset: z.boolean().optional(),
+        fireEvent: z.string().optional().describe('Named custom event to report'),
       }),
     ),
   },
   async ({ project: ref, ...l }) => {
     const actions = l.actions.map((a) => {
+      if (a.alignTarget) return { alignTarget: a.alignTarget, preserveOffset: a.preserveOffset };
+      if (a.fireEvent) return { fireEvent: a.fireEvent };
       if (a.property) return { property: a.property, value: a.value };
       if (!a.input) throw new Error('Each action needs a property (or an input) to set');
       return { input: a.input, value: a.value as number | boolean | 'toggle' | undefined };
     });
     await editAuthorized(ref, (doc) => api.addListener(doc, { ...l, actions }));
     return 'ok';
+  },
+);
+
+tool(
+  'add_event',
+  'Create a named custom Rive event with optional number, boolean, string or color payload properties.',
+  {
+    project,
+    artboard,
+    name: z.string(),
+    properties: z.array(z.object({ name: z.string(), type: z.enum(['number', 'boolean', 'string', 'color']), value: z.union([z.number(), z.boolean(), z.string()]).optional() })).optional(),
+  },
+  async ({ project: ref, ...event }) => {
+    const { result } = await editAuthorized(ref, (doc) => api.addEvent(doc, event));
+    return { id: result.id, name: result.props.name };
+  },
+);
+
+tool(
+  'add_distance_constraint',
+  'Add a distance constraint from one node to another, with an optional rule and strength.',
+  {
+    project,
+    artboard,
+    object: z.string(),
+    target: z.string(),
+    distance: z.number().min(0),
+    mode: z.enum(['closer', 'further', 'exact']).optional(),
+    strength: z.number().min(0).max(1).optional(),
+  },
+  async ({ project: ref, ...constraint }) => {
+    const { result } = await editAuthorized(ref, (doc) => api.addDistanceConstraint(doc, constraint));
+    return { id: result.id };
   },
 );
 

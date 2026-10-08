@@ -28,13 +28,15 @@ The **Data** tab sits beside Listeners under the state machine graph (Animate mo
 
 - **Add property** → number, boolean, trigger, string or color. The value you set there is the value the
   file starts with.
+- Edit the view model name above the property list to identify the data contract for this artboard.
 - Right-click a property to rename or delete it. Deleting also removes the conditions and listener actions
   that used it, so the file stays valid.
 - **Preview** (`Ctrl P`) lists the properties of the running file and lets you change them live, which is
   the quickest way to check a transition.
 
-Transitions and listeners pick up properties automatically: a condition compares a property, and a
-listener action sets one.
+When editing a transition, choose a data property to add a typed condition. Listener actions can set a
+property, align a node to the pointer, or fire a named event. The same property list appears in both places,
+so renaming or removing a property stays consistent with the conditions and actions that use it.
 
 ## Converting a file that still uses inputs
 

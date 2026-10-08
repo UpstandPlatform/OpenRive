@@ -111,7 +111,7 @@ writes it from the CLI.
 ### Tools: `apps/cli`
 
 `project-store.ts` wraps the database for Bun processes; `commands.ts` holds the scriptable commands; `tui/app.tsx` is
-the OpenTUI interface; `mcp-server.ts` exposes 30 MCP tools. All of them go through `packages/rive`'s API.
+the OpenTUI interface; `mcp-server.ts` exposes 33 MCP tools. All of them go through `packages/rive`'s API.
 
 ### Access control
 

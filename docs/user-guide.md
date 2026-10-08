@@ -56,7 +56,7 @@ or another tab) changes the file while it's open, a banner lets you reload or ke
 - **Paths**: double-click a shape, or press `Enter`, to edit its vertices.
 - **Arrange**: `Ctrl [` / `Ctrl ]` change draw order. In Rive, objects higher in the Layers list draw on top.
 - **Inspector**: position, size, rotation, scale, opacity, blend mode, fills and strokes (solid or gradient), corner
-  radius, trim path, text styling. Colors can link to [theme colors](theme-colors.md).
+  radius, trim path, text styling and [distance constraints](constraints.md). Colors can link to [theme colors](theme-colors.md).
 - **Masks (clipping)**: draw the mask shape on top, select it together with what it should mask, and choose
   **Use front shape as mask** (`Ctrl Alt M`, also in the right-click menu). The masked objects are drawn only inside
   that shape, and the mask itself is hidden. The **Mask** section of the inspector lists every mask on the selection,
@@ -90,12 +90,13 @@ State machines make files interactive:
 1. Add a state machine, and **properties** in the Data tab (number, boolean, trigger, string, color).
    Properties are what your app sets at runtime; they replace state machine inputs, which Rive deprecated
    (see [data binding](data-binding.md)).
-2. Add **states** with **Add state** (or right-click the graph) and pick a timeline for each. Drag from one state's
-   edge to another state to create a **transition**. Connect Entry (or Any State) to your first state.
+2. Add **states** with **Add state** (or right-click the graph) and pick a timeline for each. Add a **1D blend state**
+   to blend timelines by a numeric parameter. Drag from one state's edge to another state to create a **transition**.
+   Connect Entry (or Any State) to your first state.
 3. Select a transition to add **conditions** (for example `hover == true`, or `press` fired) and set its duration.
-4. Add **listeners** (Listeners tab): choose a target shape and a pointer event (down, up, enter, exit, move), then
-   actions that set a boolean, change a number or fire a trigger. Align-to-pointer ("follow the cursor") listeners
-   are available through the API and templates, and are preserved in the editor.
+4. Add **listeners** (Listeners tab): choose a target shape and a pointer event, then set data properties, fire a
+   custom event, or align a node to the pointer. The **Events** tab creates named events and their payload fields;
+   select an event listener to react to an event reported by the runtime.
 5. Press `Ctrl Enter` to preview the state machine on the stage and interact with it.
 
 ### Preview

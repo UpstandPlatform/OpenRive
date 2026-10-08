@@ -6,11 +6,12 @@ Where OpenRive is heading. Priorities follow community interest, so 👍 the mat
 
 - Design: artboards, parametric shapes, pen paths, groups, text, fills and strokes, gradients, trim paths, blend modes
 - Assets: embedded images, SVG import to vector shapes, fonts
-- Animation: timelines, auto-key, easing presets and curve editor
-- Interactivity: state machines, layers, inputs, conditions, pointer listeners, live preview
+- Animation: timelines, auto-key, easing presets, curve editor and 1D blend states
+- Interactivity: state machines, layers, property conditions, pointer listeners, custom Rive events, align-to-pointer actions and live preview
+- Constraints: distance constraint authoring (closer than, farther than, exact distance)
 - Theme colors with multiple themes
 - Code panel: automation scripts and embed snippets
-- CLI, MCP server (27 tools), REST API
+- CLI, MCP server (33 tools), REST API
 - Local users and roles, sharing
 - File storage or PostgreSQL, Docker Compose, migration tool
 
@@ -18,12 +19,12 @@ Where OpenRive is heading. Priorities follow community interest, so 👍 the mat
 
 | Area | Planned work |
 | --- | --- |
-| Rigging | Bones, skinning and weights editing |
-| Constraints | UI for distance, follow-path, IK, translation, rotation and scale constraints (preserved already) |
+| Rigging | Bone creation and editing, then skinning and weights |
+| Constraints | Follow-path, IK, translation, rotation and scale constraint editing (preserved already) |
 | Meshes | Image mesh deformation |
 | Composition | Nested artboards editing, components |
-| State machines | Blend states, events, align-to-pointer listeners in the UI |
-| Data binding | Create and bind view models in the editor (preview support exists) |
+| State machines | 2D blend states, animation-authored events and richer event workflows |
+| Data binding | Shape-property bindings, nested view models, enums, lists and data converters |
 | Layouts | Rive layout (flexbox) editing |
 | Text | Font subsetting to shrink files, text modifiers |
 | Collaboration | Live multi-user editing on a self-hosted server |
