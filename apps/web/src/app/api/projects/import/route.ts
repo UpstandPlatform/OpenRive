@@ -16,7 +16,12 @@ export const POST = handler(async (request: Request) => {
   if (guard.error) return guard.error;
   if (!canCreateProjects(guard.user)) return fail('Viewers cannot create files', 403);
 
-  const form = await request.formData();
+  let form: FormData;
+  try {
+    form = await request.formData();
+  } catch {
+    return fail('Invalid multipart form data');
+  }
   const uploaded = form.get('file');
   if (!uploaded || typeof uploaded !== 'object' || !('arrayBuffer' in uploaded) || typeof uploaded.arrayBuffer !== 'function') {
     return fail('Upload a .riv file in the "file" field');
