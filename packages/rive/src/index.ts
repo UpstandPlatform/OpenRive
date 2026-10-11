@@ -13,4 +13,6 @@ export * from './svg';
 export * from './templates';
 export * from './examples';
 export * from './presets';
+export * from './source';
+export * from './diagnostics';
 export * from './factory';

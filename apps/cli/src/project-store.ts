@@ -183,3 +183,9 @@ export async function importBytes(bytes: Uint8Array, name?: string, ownerId?: st
     ...stats(doc),
   }, riv);
 }
+
+/** Imports an already-decoded editable document using the same storage path for every edition. */
+export async function importDoc(doc: RiveDoc, name = 'Untitled', ownerId?: string) {
+  const riv = exportRiv(doc);
+  return createStoredProject({ name, ownerId: ownerId ?? (await defaultOwner()), doc: stringifyDoc(doc), ...stats(doc) }, riv);
+}

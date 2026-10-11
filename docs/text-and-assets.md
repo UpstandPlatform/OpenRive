@@ -53,3 +53,11 @@ api.importSvg('<svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#0068f
 ```
 
 The importer lives in `packages/rive/src/svg.ts` and is DOM-free, so it also works in Node (CLI/MCP).
+
+### Figma and Illustrator
+
+Copy a selection as SVG in Figma or Illustrator, then paste it onto the OpenRive canvas. You can also export the
+selection as `.svg` and import it from the Assets tab. SVG geometry remains editable as Rive shapes and pen paths.
+The import check calls out text, gradients, masks, filters, linked images, symbols and other features it cannot
+convert; outline text and expand symbols in the design tool, then import raster assets separately. External resources
+are never fetched during import.

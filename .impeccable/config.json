@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "createdAt": "2026-10-11T09:20:55.205Z",
+        "reason": "Inter remains only for Rive text editing and embedded text compatibility; editor UI now uses IBM Plex Sans."
+      }
+    ]
+  }
+}

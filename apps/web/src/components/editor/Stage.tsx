@@ -38,6 +38,10 @@ import { animationFrames, getActive, useEditor } from '@/lib/store/editor';
 import { engineRef } from './engineRef';
 import { Box, dragRect, Guide, snapBox, snapPoint } from '@/lib/snap';
 import { cancelViewTween, tweenView } from '@/lib/viewTween';
+import { importSvgMarkup } from '@/lib/client/svgImport';
+import { hasClipboard, runAction } from './actions';
+import { toast } from '@/lib/client/toast';
+import { addBone } from '@openrive/rive/api';
 
 type Handle = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 
@@ -79,8 +83,9 @@ type Drag =
   | { kind: 'rotate'; abId: string; id: string; cx: number; cy: number; a0: number; rot0: number }
   | {
       kind: 'create';
-      tool: ShapeKind | 'artboard';
+      tool: ShapeKind | 'artboard' | 'bone';
       abId: string | null;
+      parentId?: string;
       x0: number;
       y0: number;
       x1: number;
@@ -150,6 +155,33 @@ export function Stage() {
   const editTextId = useEditor((s) => s.editTextId);
 
   // ---- engine lifecycle -------------------------------------------------
+  useEffect(() => {
+    const onPaste = (event: ClipboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      const clipboard = event.clipboardData;
+      if (!clipboard) return;
+      const svg = clipboard.getData('image/svg+xml') || clipboard.getData('text/plain').match(/<svg\b[\s\S]*?<\/svg>/i)?.[0] || clipboard.getData('text/html').match(/<svg\b[\s\S]*?<\/svg>/i)?.[0];
+      if (svg) {
+        event.preventDefault();
+        try { importSvgMarkup(svg, 'Pasted SVG'); } catch (error) { toast(`Could not paste SVG: ${(error as Error).message}`); }
+        return;
+      }
+      const png = Array.from(clipboard.items).find((item) => item.type === 'image/png')?.getAsFile();
+      if (png) {
+        event.preventDefault();
+        void importAssetFiles([png]);
+        return;
+      }
+      if (hasClipboard()) {
+        event.preventDefault();
+        runAction('edit.paste');
+      }
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, []);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -534,12 +566,12 @@ export function Stage() {
     return { x, y, guides: [] as Guide[] };
   };
 
-  const startCreate = (tool: ShapeKind | 'artboard', ab: ArtboardDoc | null, sx: number, sy: number, e: React.PointerEvent) => {
+  const startCreate = (tool: ShapeKind | 'artboard' | 'bone', ab: ArtboardDoc | null, sx: number, sy: number, e: React.PointerEvent, parentId?: string) => {
     const targets = createTargets(ab);
     const origin = ab ? abPos(ab) : { x: 0, y: 0 };
     const p = snapCreatePoint(sx, sy, origin, targets, e.ctrlKey || e.metaKey);
     setGuides(p.guides);
-    setDrag({ kind: 'create', tool, abId: ab?.id ?? null, x0: p.x, y0: p.y, x1: p.x, y1: p.y, shift: e.shiftKey, alt: e.altKey, targets });
+    setDrag({ kind: 'create', tool, abId: ab?.id ?? null, ...(parentId ? { parentId } : {}), x0: p.x, y0: p.y, x1: p.x, y1: p.y, shift: e.shiftKey, alt: e.altKey, targets });
   };
 
   // ---- pointer handling ---------------------------------------------------
@@ -613,6 +645,23 @@ export function Stage() {
       s.set('tool', 'select');
       return;
     }
+    if (tool === 'bone') {
+      const ab = artboardAt(sx, sy) ?? activeAb;
+      if (!ab) return;
+      s.setActiveArtboard(ab.id);
+      const selectedBone = s.selection.length === 1 ? findObj(ab, s.selection[0]) : undefined;
+      if (selectedBone && isA(selectedBone.type, 'Bone')) {
+        const boneScene = buildScene(ab).nodes.get(selectedBone.id);
+        if (boneScene) {
+          const p = abPos(ab);
+          const [tipX, tipY] = apply(boneScene.world, prop(selectedBone, 'length'), 0);
+          startCreate('bone', ab, tipX + p.x, tipY + p.y, e, selectedBone.id);
+          return;
+        }
+      }
+      startCreate('bone', ab, sx, sy, e);
+      return;
+    }
     if (tool === 'pen') {
       const ab = pen ? findArtboard(doc, pen.abId) : artboardAt(sx, sy) ?? activeAb;
       if (!ab) return;
@@ -639,6 +688,7 @@ export function Stage() {
       if (hit) {
         const id = hit.dataset.vertex!;
         const which = hit.dataset.which as 'pt' | 'in' | 'out';
+        s.select([id]);
         const pathNode = activeScene.nodes.get(editPathId);
         if (pathNode) {
           s.beginGesture();
@@ -1212,7 +1262,32 @@ export function Stage() {
             useEditor.getState().select([ab.id]);
           });
         });
-      } else if (drag.abId) {
+      } else if (drag.abId && drag.tool === 'bone') {
+        const parentId = drag.parentId;
+        const ab = findArtboard(doc, drag.abId)!;
+        const parentWorld = parentId ? buildScene(ab).nodes.get(parentId)?.world : undefined;
+        const worldAngle = Math.atan2(drag.y1 - drag.y0, drag.x1 - drag.x0);
+        const parentAngle = parentWorld ? Math.atan2(parentWorld[1], parentWorld[0]) : 0;
+        const p = abPos(ab);
+        const length = Math.hypot(drag.x1 - drag.x0, drag.y1 - drag.y0);
+        if (length < 1) {
+          toast('Drag at least one pixel to create a bone.');
+        } else {
+          let createdId = '';
+          s.commit((d) => {
+            const bone = addBone(d, {
+              artboard: drag.abId!,
+              ...(parentId ? { parent: parentId } : {}),
+              x: Math.round(drag.x0 - p.x),
+              y: Math.round(drag.y0 - p.y),
+              length: Math.round(length * 100) / 100,
+              rotation: worldAngle - parentAngle,
+            });
+            createdId = bone.id;
+          });
+          setTimeout(() => useEditor.getState().select([createdId]));
+        }
+      } else if (drag.abId && drag.tool !== 'bone') {
         const kind = drag.tool;
         s.commit((d) => {
           const ab = findArtboard(d, drag.abId!)!;
@@ -1475,6 +1550,23 @@ export function Stage() {
   };
 
   if (!previewing && activeAb && activeScene) {
+    const artboardOffset = abPos(activeAb);
+    for (const bone of activeAb.objects.filter((object) => isA(object.type, 'Bone'))) {
+      const boneScene = activeScene.nodes.get(bone.id);
+      if (!boneScene) continue;
+      const [baseX, baseY] = apply(boneScene.world, 0, 0);
+      const [tipX, tipY] = apply(boneScene.world, prop(bone, 'length'), 0);
+      const [x1, y1] = toScreen(baseX + artboardOffset.x, baseY + artboardOffset.y);
+      const [x2, y2] = toScreen(tipX + artboardOffset.x, tipY + artboardOffset.y);
+      const selected = selection.includes(bone.id);
+      overlay.push(
+        <g key={`bone-${bone.id}`} fill="none" stroke={selected ? '#76c8ff' : '#e5b65c'} pointerEvents="none">
+          <line x1={x1} y1={y1} x2={x2} y2={y2} strokeWidth={selected ? 3 : 2} />
+          <circle cx={x1} cy={y1} r={3.5} fill={selected ? '#76c8ff' : '#e5b65c'} />
+          <circle cx={x2} cy={y2} r={3.5} fill="var(--bg1)" strokeWidth={2} />
+        </g>,
+      );
+    }
     // hovering a group, text or image previews its box, so it is clear what a click will pick
     if (hoverId && !selection.includes(hoverId) && hoverId !== activeAb.artboard.id) {
       overlay.push(
@@ -1604,22 +1696,28 @@ export function Stage() {
     );
   }
   if (drag?.kind === 'create') {
-    // the same rectangle the shape will get: Shift makes it square, Alt grows it from the first click
-    const r = dragRect(drag.x0, drag.y0, drag.x1, drag.y1, drag);
-    const [ax, ay] = toScreen(r.minX, r.minY);
-    const w = (r.maxX - r.minX) * view.zoom;
-    const h = (r.maxY - r.minY) * view.zoom;
-    const fill = drag.tool === 'artboard' ? '#57a5e022' : '#c4c4c455';
-    const pts = shapePreviewPoints(drag.tool, ax, ay, w, h);
-    overlay.push(
-      drag.tool === 'ellipse' ? (
-        <ellipse key="cr" cx={ax + w / 2} cy={ay + h / 2} rx={w / 2} ry={h / 2} fill={fill} stroke={stroke} />
-      ) : pts ? (
-        <polygon key="cr" points={pts} fill={fill} stroke={stroke} />
-      ) : (
-        <rect key="cr" x={ax} y={ay} width={w} height={h} fill={fill} stroke={stroke} />
-      ),
-    );
+    if (drag.tool === 'bone') {
+      const [x1, y1] = toScreen(drag.x0, drag.y0);
+      const [x2, y2] = toScreen(drag.x1, drag.y1);
+      overlay.push(<g key="bone-preview" stroke={stroke} fill="none"><line x1={x1} y1={y1} x2={x2} y2={y2} strokeWidth={3} /><circle cx={x1} cy={y1} r={4} fill={stroke} /><circle cx={x2} cy={y2} r={4} fill={stroke} /></g>);
+    } else {
+      // the same rectangle the shape will get: Shift makes it square, Alt grows it from the first click
+      const r = dragRect(drag.x0, drag.y0, drag.x1, drag.y1, drag);
+      const [ax, ay] = toScreen(r.minX, r.minY);
+      const w = (r.maxX - r.minX) * view.zoom;
+      const h = (r.maxY - r.minY) * view.zoom;
+      const fill = drag.tool === 'artboard' ? '#57a5e022' : '#c4c4c455';
+      const pts = shapePreviewPoints(drag.tool, ax, ay, w, h);
+      overlay.push(
+        drag.tool === 'ellipse' ? (
+          <ellipse key="cr" cx={ax + w / 2} cy={ay + h / 2} rx={w / 2} ry={h / 2} fill={fill} stroke={stroke} />
+        ) : pts ? (
+          <polygon key="cr" points={pts} fill={fill} stroke={stroke} />
+        ) : (
+          <rect key="cr" x={ax} y={ay} width={w} height={h} fill={fill} stroke={stroke} />
+        ),
+      );
+    }
   }
   if (pen && doc) {
     const ab = findArtboard(doc, pen.abId);

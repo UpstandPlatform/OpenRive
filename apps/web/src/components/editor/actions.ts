@@ -705,6 +705,7 @@ export const ACTIONS: Action[] = [
   { id: 'tool.star', label: 'Star tool', category: 'Tools', keys: ['Shift+O'], edits: true, run: tool('star') },
   { id: 'tool.text', label: 'Text tool', category: 'Tools', keys: ['T'], edits: true, run: tool('text') },
   { id: 'tool.pen', label: 'Pen tool', category: 'Tools', keys: ['P'], edits: true, run: tool('pen') },
+  { id: 'tool.bone', label: 'Bone tool', category: 'Tools', keys: ['B'], edits: true, run: tool('bone') },
   { id: 'tool.hand', label: 'Hand tool (or hold Space)', category: 'Tools', keys: ['H'], run: tool('hand') },
 
   // View

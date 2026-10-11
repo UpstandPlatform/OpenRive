@@ -233,8 +233,14 @@ tool(
     strokeWidth: z.number().optional(),
   },
   async ({ project: ref, ...p }) => {
-    const { result } = await editAuthorized(ref, (doc) => api.addPath(doc, p));
-    return { id: result.id, name: result.props.name };
+    const { result } = await editAuthorized(ref, (doc) => {
+      const shape = api.addPath(doc, p);
+      const { ab } = api.getObject(doc, shape.id, p.artboard);
+      const path = ab.objects.find((object) => object.type === 'PointsPath' && object.props.parentId === shape.id);
+      if (!path) throw new Error('The new path could not be located for skinning.');
+      return { shape, path };
+    });
+    return { id: result.shape.id, name: result.shape.props.name, pathId: result.path.id };
   },
 );
 
@@ -402,6 +408,26 @@ tool(
   async ({ project: ref, timeline, ...s }) => {
     const { result } = await editAuthorized(ref, (doc) => api.addState(doc, { ...s, animation: timeline }));
     return { id: result.id };
+  },
+);
+
+tool(
+  'add_bone',
+  'Add a root bone at an artboard position, or a child bone at the tip of a parent bone. Rotation is in radians.',
+  { project, artboard, parent: z.string().optional().describe('Parent bone for a chained bone'), name: z.string().optional(), x: z.number().optional(), y: z.number().optional(), length: z.number().positive(), rotation: z.number().optional() },
+  async ({ project: ref, ...bone }) => {
+    const { result } = await editAuthorized(ref, (doc) => api.addBone(doc, bone));
+    return { id: result.id, type: result.type, name: result.props.name };
+  },
+);
+
+tool(
+  'bind_skin',
+  'Bind every vertex on a PointsPath or Mesh to the selected bones in its current bind pose. Vertex weights can then be edited in the OpenRive inspector.',
+  { project, artboard, path: z.string().describe('PointsPath or Mesh id or name'), bones: z.array(z.string()).min(1).describe('Bone ids or names') },
+  async ({ project: ref, ...input }) => {
+    const { result } = await editAuthorized(ref, (doc) => api.addSkin(doc, input));
+    return { id: result.id, type: result.type, name: result.props.name };
   },
 );
 

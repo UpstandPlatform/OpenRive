@@ -1,11 +1,15 @@
 import { readFileSync } from 'fs';
 import { exportRiv, importRiv } from '@openrive/rive/document';
 import { newDoc } from '@openrive/rive/factory';
-import { importSvg, parsePathData } from '@openrive/rive/svg';
+import { importSvg, inspectSvg, parsePathData } from '@openrive/rive/svg';
 const svg = readFileSync('apps/web/public/logo.svg', 'utf8');
 const doc = newDoc('SVG test');
 const ab = doc.artboards[0];
 const { group, shapes } = importSvg(svg, { artboard: ab, x: 250, y: 250, width: 300, names: ['Letter', 'Eye', 'Iris', 'Glint'] });
+if (inspectSvg('<svg viewBox="0 0 10 10"><text>Title</text><linearGradient id="g"/></svg>').warnings.length !== 2) {
+  throw new Error('SVG compatibility inspection should report unsupported text and gradients.');
+}
+if (!inspectSvg('not svg').errors.length) throw new Error('SVG compatibility inspection should reject malformed markup.');
 console.log('group scale', group.props.scaleX, 'shapes', shapes.map((s) => `${s.props.name}@${(s.props.x as number).toFixed(1)},${(s.props.y as number).toFixed(1)}`).join(' '));
 console.log('letter subpaths', parsePathData(svg.match(/d="([^"]+)"/)![1]).map((p) => `${p.verts.length}v closed=${p.closed}`).join(', '));
 const a = exportRiv(doc);

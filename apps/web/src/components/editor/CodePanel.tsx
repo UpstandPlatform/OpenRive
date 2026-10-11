@@ -497,7 +497,7 @@ function EmbedTab() {
 
 function AboutRiveScripting() {
   const doc = useEditor((s) => s.doc);
-  const scriptAssets = (doc?.top ?? []).filter((o) => o.type === 'ScriptAsset').length;
+  const scriptAssets = (doc?.top ?? []).filter((o) => o.type === 'ScriptAsset' || o.type === 'ScriptModuleAsset').length;
   return (
     <div className="flex-1 overflow-auto p-4 max-w-3xl text-t1 leading-relaxed text-[12px] flex flex-col gap-2">
       <p>

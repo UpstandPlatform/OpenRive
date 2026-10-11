@@ -12,7 +12,7 @@ export function Logo() {
   return (
     <Link href="/" className="flex items-center gap-2 font-semibold text-[13px] text-t0">
       <AppIcon size={24} />
-      OpenRive
+      <span className="app-header-brand-label">OpenRive</span>
     </Link>
   );
 }
@@ -35,10 +35,14 @@ export function UserSwitcher() {
   if (!user) return <div className="w-32 h-7 rounded bg-bg2 animate-pulse" />;
   return (
     <div className="relative" ref={ref}>
-      <button className="flex items-center gap-2 h-8 pl-1 pr-2 rounded-md hover:bg-bg3" onClick={() => setOpen(!open)}>
+      <button
+        aria-label={`Account menu for ${user.name}, ${ROLE_INFO[user.role].label}`}
+        className="flex items-center gap-2 h-8 pl-1 pr-2 rounded-md hover:bg-bg3"
+        onClick={() => setOpen(!open)}
+      >
         <Avatar user={user} size={24} />
-        <span className="font-medium">{user.name}</span>
-        <span className="text-t2">{ROLE_INFO[user.role].label}</span>
+        <span className="app-header-account-label font-medium">{user.name}</span>
+        <span className="app-header-account-label text-t2">{ROLE_INFO[user.role].label}</span>
         <ChevronDown size={14} className="text-t2" />
       </button>
       {open && (
@@ -75,6 +79,9 @@ export function UserSwitcher() {
               <Users size={14} /> Manage users
             </Link>
           )}
+          <Link href="/settings/integrations" className="menu-item" onClick={() => setOpen(false)}>
+            <Bot size={14} /> AI &amp; API integrations
+          </Link>
           {authEnabled && (
             <button className="menu-item" onClick={() => void signOut()}>
               <LogOut size={14} /> Sign out
@@ -92,26 +99,28 @@ export function AppHeader() {
   const path = usePathname();
   const user = useCurrentUser();
   const authEnabled = useSession((s) => s.authEnabled);
-  const tab = (href: string, label: string) => (
+  const tab = (href: string, label: string, secondary = false) => (
     <Link
       href={href}
-      className={`px-3 h-8 inline-flex items-center rounded-md ${path === href ? 'bg-bg3 text-t0' : 'text-t1 hover:text-t0'}`}
+      className={`${secondary ? 'app-header-secondary-link ' : ''}px-3 h-8 inline-flex items-center rounded-md ${path === href ? 'bg-bg3 text-t0' : 'text-t1 hover:text-t0'}`}
     >
       {label}
     </Link>
   );
   return (
-    <header className="window-drag h-14 flex items-center gap-6 px-5 border-b border-line bg-bg1 sticky top-0 z-20">
-      <Logo />
-      <nav className="flex items-center gap-1">
+    <header className="app-header window-drag h-14 flex items-center gap-6 px-5 border-b border-line bg-bg1 sticky top-0 z-20">
+      <div className="app-header-brand"><Logo /></div>
+      <nav className="app-header-nav flex items-center gap-1">
         {tab('/', 'Files')}
-        {user?.role === 'admin' ? tab('/admin', 'Admin') : null}
-        {!authEnabled && tab('/users', 'Users')}
+        {user?.role === 'admin' ? tab('/admin', 'Admin', true) : null}
+        {!authEnabled && tab('/users', 'Users', true)}
         <Link
           href="/settings/integrations"
-          className={`px-3 h-8 inline-flex items-center gap-1.5 rounded-md ${path.startsWith('/settings/integrations') ? 'bg-bg3 text-t0' : 'text-t1 hover:text-t0'}`}
+          aria-label="AI & API integrations"
+          title="AI & API integrations"
+          className={`app-header-secondary-link px-3 h-8 inline-flex items-center gap-1.5 rounded-md ${path.startsWith('/settings/integrations') ? 'bg-bg3 text-t0' : 'text-t1 hover:text-t0'}`}
         >
-          <Bot size={14} /> AI &amp; API
+          <Bot size={14} /> <span className="app-header-ai-label">AI &amp; API</span>
         </Link>
       </nav>
       <div className="flex-1" />

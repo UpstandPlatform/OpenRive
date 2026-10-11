@@ -14,7 +14,7 @@ import { importRiv } from '@openrive/rive/document';
   await client.connect(transport);
   const tools = await client.listTools();
   console.log('tools:', tools.tools.length, tools.tools.map((t) => t.name).join(', '));
-  if (tools.tools.length !== 33) throw new Error(`Expected 33 MCP tools, found ${tools.tools.length}`);
+  if (tools.tools.length !== 35) throw new Error(`Expected 35 MCP tools, found ${tools.tools.length}`);
   const call = async (name: string, args: Record<string, unknown>) => {
     const r = (await client.callTool({ name, arguments: args })) as { content: { text: string }[]; isError?: boolean };
     if (r.isError) throw new Error(`${name}: ${r.content[0].text}`);
@@ -24,6 +24,10 @@ import { importRiv } from '@openrive/rive/document';
   const p = created.id;
   await call('define_theme_color', { project: p, name: 'Brand', color: '#7c5cff' });
   await call('add_shape', { project: p, kind: 'ellipse', name: 'Dot', x: 250, y: 250, width: 120, height: 120 });
+  const rootBone = JSON.parse(await call('add_bone', { project: p, name: 'Root', x: 80, y: 80, length: 60 }));
+  const childBone = JSON.parse(await call('add_bone', { project: p, parent: rootBone.id, name: 'Child', length: 40, rotation: 0.5 }));
+  const rigPath = JSON.parse(await call('add_path', { project: p, name: 'Rig path', points: [{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 30 }, { x: 0, y: 30 }] }));
+  await call('bind_skin', { project: p, path: rigPath.pathId, bones: [rootBone.id, childBone.id] });
   await call('use_theme_color', { project: p, object: 'Dot', color: 'Brand' });
   await call('add_text', { project: p, text: 'Made by MCP', x: 250, y: 400, origin: 'center', fontSize: 28, color: '#ffffff' });
   await call('add_timeline', { project: p, name: 'Pulse', duration: 1, loop: 'pingPong' });
@@ -69,6 +73,10 @@ import { importRiv } from '@openrive/rive/document';
   const out = 'scripts/mcp-smoke.riv';
   console.log(await call('export_riv', { project: p, path: out }));
   const back = importRiv(new Uint8Array(readFileSync(out)));
+  const rigTypes = new Set(back.artboards[0].objects.map((object) => object.type));
+  for (const type of ['RootBone', 'Bone', 'Skin', 'Tendon', 'Weight']) {
+    if (!rigTypes.has(type)) throw new Error(`MCP rigging did not create ${type}.`);
+  }
   console.log('re-import ok:', back.artboards[0].objects.length, 'objects,', back.artboards[0].stateMachines.length, 'state machines');
   await call('delete_project', { project: p });
   await client.close();

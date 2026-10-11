@@ -6,7 +6,8 @@ The home page lists the projects you can see. Each card plays its animation live
 
 - **Templates**: start from a template or example file (see [Templates](templates.md)).
 - **New file**: a blank file with artboard size presets (phone, tablet, desktop, social, icon…).
-- **Import**: drop `.riv` files anywhere on the page, or use the Import button.
+- **Import**: drop `.riv` or `.oriv` files anywhere on the page, or use the Import button. `.oriv` keeps the editable
+  document and its embedded assets together; the CLI can also export a Git-friendly source folder.
 - Use a card's **⋯** menu to **rename, duplicate, share, download** or **delete** it; click to open it.
 
 ## The editor
@@ -33,9 +34,13 @@ or another tab) changes the file while it's open, a banner lets you reload or ke
 | Rectangle, Ellipse, Triangle, Polygon, Star | `R` `O` `Y` `Shift R` `Shift O` | Drag to draw: the preview shows the real shape and its size. Hold `Shift` for equal sides, `Alt` to draw from the center, `Esc` to cancel. |
 | Pen | `P` | Click to add points, drag for curves, click the first point to close |
 | Text | `T` | Click to add text, then type. Double-click text to edit it later. |
+| Bone | `B` | Drag to add a root bone. Select an existing bone first to extend the skeleton from its tip. |
 | Hand | `H` / hold `Space` | Pan. Scroll with `Ctrl` to zoom. |
 
 - **Groups**: `Ctrl G` / `Ctrl Shift G`. A new group takes the place of its front-most member, so draw order does not change.
+- **Skinning**: create a bone chain with the Bone tool, select a vector path, then choose **Bind bones** in Inspector.
+  Edit vertices in the path and select a point to change its four bone influence slots. Each edit is undoable; curve
+  handles follow their point's weights.
 - **Picking**: `Ctrl`+click selects the object under the cursor even inside a group. Hovering previews what a click will
   pick (a dashed box for groups, text and images). Dragging a marquee picks at the current level, and skips hidden and
   locked objects. `Ctrl A` selects everything at the level you are in, and `Alt ]` / `Alt [` move the selection to the
@@ -111,8 +116,10 @@ State machines make files interactive:
 
 ### Export
 
-**Export** (`Ctrl E`) downloads the `.riv`. Load it with any Rive runtime. The [Code panel](code-panel.md)'s Embed
-tab has ready-made snippets.
+**Export** (`Ctrl E`) downloads the `.riv`. Load it with any Rive runtime. **Check this file** opens a report for
+missing assets, preserved unknown data, and features that currently have limited editing support. **Export GIF or
+sprite sheet** renders the selected timeline on-device. The [Code panel](code-panel.md)'s Embed tab has ready-made
+snippets. For editable backups and CI checks, see [Git-friendly sources and backups](source-format.md).
 
 **Export preview bundle** (`Ctrl Shift E`, in the OpenRive menu) downloads a zip that plays the file on its own:
 `index.html`, an `index.js` player, the `.riv` and the Rive runtime. Unzip it, serve the folder, and you have the

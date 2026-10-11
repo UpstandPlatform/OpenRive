@@ -59,7 +59,7 @@
 | **Productivity** | Smart guides, ruler guides, 60+ rebindable keyboard shortcuts, context menus everywhere, editing presets, undo/redo, copy/paste between files |
 | **Preview** | Full-screen preview with state machine inputs, view model (data binding) controls and an event log; export it as a standalone bundle (`index.html` + `index.js` + runtime) that plays anywhere ([docs](docs/preview-bundles.md)) |
 | **Team** | Local users when running solo; sign-in with passwords, an admin dashboard and enforced Admin / Editor / Viewer roles when self-hosted |
-| **Tools** | `openrive` terminal UI and CLI, MCP server (33 tools), REST API, Docker, desktop builds |
+| **Tools** | `openrive` terminal UI and CLI, MCP server (35 tools), REST API, Docker, desktop builds |
 | **Stack** | Bun · Next.js 16 · React 19 · Zustand · Drizzle ORM + PostgreSQL · zod · Turborepo ([Better-T-Stack](https://better-t-stack.dev)) |
 
 ## Quick start

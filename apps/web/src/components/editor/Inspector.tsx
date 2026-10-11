@@ -28,7 +28,7 @@ import {
   upsertKeyframe,
 } from '@openrive/rive/ops';
 import { artboardPos, buildScene, isEmpty, objectBounds, prop, sampleAnimation, Overrides, invert, apply, setArtboardPos } from '@openrive/rive/scene';
-import { addClip, addDistanceConstraint, clipsOf, removeClip } from '@openrive/rive/api';
+import { addClip, addDistanceConstraint, addSkin, clipsOf, convertVertexType, removeClip } from '@openrive/rive/api';
 import { isA, propDef } from '@openrive/rive/schema';
 import { useEditor } from '@/lib/store/editor';
 import { ColorSwatch, KeyButton, NumberField, Row, Select, TextField } from './controls';
@@ -38,6 +38,7 @@ import { loadBundledFont } from '@/lib/client/fonts';
 import { ARTBOARD_PRESETS } from '@openrive/rive/presets';
 import { displayName } from './Hierarchy';
 import { StateMachineInspector } from './StateMachinePanel';
+import { toast } from '@/lib/client/toast';
 
 const BLEND_MODES = [
   { value: 3, label: 'Normal' },
@@ -224,10 +225,11 @@ export function Inspector() {
         <span className="text-t2 text-[11px] shrink-0">{o.type.replace(/([a-z])([A-Z])/g, '$1 $2')}</span>
       </div>
       {isA(o.type, 'Vertex') ? (
-        <VertexSection o={o} b={b} />
+        <VertexSection o={o} b={b} ab={ab} />
       ) : (
         <>
           {isA(o.type, 'Node') && <TransformSection o={o} b={b} />}
+          {isA(o.type, 'Bone') && <BoneSection o={o} b={b} />}
           {isA(o.type, 'Node') && o.type !== 'Artboard' && <ConstraintsSection ab={ab} o={o} readOnly={b.readOnly} />}
           {isA(o.type, 'ParametricPath') && <ParametricSection o={o} b={b} />}
           {o.type === 'Shape' &&
@@ -319,6 +321,31 @@ function TransformSection({ o, b }: { o: CoreObj; b: Binding }) {
         <Num b={b} o={o} name="scaleX" label="X" step={0.01} precision={3} />
         <Num b={b} o={o} name="scaleY" label="Y" step={0.01} precision={3} />
         <Key b={b} o={o} names={['scaleX', 'scaleY']} />
+      </Row>
+    </div>
+  );
+}
+
+function BoneSection({ o, b }: { o: CoreObj; b: Binding }) {
+  return (
+    <div className="section flex flex-col gap-1.5">
+      <div className="panel-title mb-1">Bone</div>
+      {o.type === 'RootBone' && (
+        <Row label="Position">
+          <Num b={b} o={o} name="x" label="X" />
+          <Num b={b} o={o} name="y" label="Y" />
+          <Key b={b} o={o} names={['x', 'y']} />
+        </Row>
+      )}
+      <Row label="Length">
+        <Num b={b} o={o} name="length" min={0.01} step={1} />
+        <div className="flex-1" />
+        <Key b={b} o={o} names={['length']} />
+      </Row>
+      <Row label="Rotation">
+        <Num b={b} o={o} name="rotation" label="°" scale={180 / Math.PI} precision={2} />
+        <div className="flex-1" />
+        <Key b={b} o={o} names={['rotation']} />
       </Row>
     </div>
   );
@@ -538,6 +565,9 @@ function ParametricSection({ o, b, title }: { o: CoreObj; b: Binding; title?: st
 
 function PointsPathSection({ o, b, ab }: { o: CoreObj; b: Binding; ab: ArtboardDoc }) {
   const verts = childrenOf(ab, o.id).filter((c) => isA(c.type, 'PathVertex'));
+  const bones = ab.objects.filter((object) => isA(object.type, 'Bone'));
+  const skin = childrenOf(ab, o.id).find((child) => child.type === 'Skin');
+  const tendons = skin ? childrenOf(ab, skin.id).filter((child) => child.type === 'Tendon') : [];
   return (
     <div className="section flex flex-col gap-1.5">
       <div className="panel-title mb-1">Path</div>
@@ -548,6 +578,19 @@ function PointsPathSection({ o, b, ab }: { o: CoreObj; b: Binding; ab: ArtboardD
       <button className="btn h-7" onClick={() => useEditor.getState().set('editPathId', o.id)}>
         Edit vertices
       </button>
+      {skin ? (
+        <p className="text-[10px] text-t2">Skin bound to {tendons.length} bone{tendons.length === 1 ? '' : 's'}. Select a vertex to paint its influence.</p>
+      ) : bones.length ? (
+        <button
+          className="btn h-7"
+          disabled={b.readOnly}
+          onClick={() => useEditor.getState().commit((doc) => { addSkin(doc, { artboard: ab.id, path: o.id, bones: bones.map((bone) => bone.id) }); })}
+        >
+          Bind {bones.length} bone{bones.length === 1 ? '' : 's'}
+        </button>
+      ) : (
+        <p className="text-[10px] text-t2">Add bones with the Bone tool before binding this path.</p>
+      )}
     </div>
   );
 }
@@ -559,7 +602,7 @@ const VERTEX_TYPES = [
   { value: 'CubicDetachedVertex', label: 'Detached' },
 ];
 
-function VertexSection({ o, b }: { o: CoreObj; b: Binding }) {
+function VertexSection({ o, b, ab }: { o: CoreObj; b: Binding; ab: ArtboardDoc }) {
   return (
     <div className="section flex flex-col gap-1.5">
       <Row label="Position">
@@ -573,6 +616,7 @@ function VertexSection({ o, b }: { o: CoreObj; b: Binding }) {
           <Key b={b} o={o} names={['radius']} />
         </Row>
       )}
+      <SkinWeightSection vertex={o} ab={ab} />
       <Row label="Type">
         <Select
           value={o.type}
@@ -581,7 +625,7 @@ function VertexSection({ o, b }: { o: CoreObj; b: Binding }) {
             useEditor.getState().commit((d) => {
               for (const a of d.artboards) {
                 const v = findObj(a, o.id);
-                if (v) convertVertex(v, t);
+                if (v) convertVertexType(d, { artboard: a.id, vertex: v.id, type: t as 'StraightVertex' | 'CubicMirroredVertex' | 'CubicAsymmetricVertex' | 'CubicDetachedVertex' });
               }
             })
           }
@@ -591,16 +635,100 @@ function VertexSection({ o, b }: { o: CoreObj; b: Binding }) {
   );
 }
 
-function convertVertex(v: CoreObj, type: string) {
-  const x = prop(v, 'x');
-  const y = prop(v, 'y');
-  const base = { parentId: v.props.parentId, x, y, ...(v.props.name ? { name: v.props.name } : {}) };
-  const d = 30;
-  v.type = type;
-  if (type === 'StraightVertex') v.props = { ...base, radius: 0 };
-  else if (type === 'CubicMirroredVertex') v.props = { ...base, rotation: 0, distance: d };
-  else if (type === 'CubicAsymmetricVertex') v.props = { ...base, rotation: 0, inDistance: d, outDistance: d };
-  else v.props = { ...base, inRotation: Math.PI, inDistance: d, outRotation: 0, outDistance: d };
+function SkinWeightSection({ vertex, ab }: { vertex: CoreObj; ab: ArtboardDoc }) {
+  const pathId = typeof vertex.props.parentId === 'string' ? vertex.props.parentId : '';
+  const skin = childrenOf(ab, pathId).find((child) => child.type === 'Skin');
+  const weight = childrenOf(ab, vertex.id).find((child) => child.type === 'Weight' || child.type === 'CubicWeight');
+  const tendons = skin ? childrenOf(ab, skin.id).filter((child) => child.type === 'Tendon') : [];
+  if (!skin || !weight || !tendons.length) {
+    return <div className="section text-[10px] text-t2">This vertex is not bound to a bone skin.</div>;
+  }
+  const indices = Array.from({ length: 4 }, (_, i) => (Number(weight.props.indices ?? 0) >>> (i * 8)) & 0xff);
+  const values = Array.from({ length: 4 }, (_, i) => (Number(weight.props.values ?? 0) >>> (i * 8)) & 0xff);
+  const influences = tendons.map((tendon, index) => {
+    const bone = typeof tendon.props.boneId === 'string' ? findObj(ab, tendon.props.boneId) : undefined;
+    return { slot: index + 1, name: bone ? displayName(bone) : `Missing bone ${index + 1}` };
+  });
+  const commitWeights = (nextValues: number[], nextIndices: number[]) => {
+    const pack = (items: number[]) => items.reduce((out, value, index) => (out | ((value & 0xff) << (index * 8))) >>> 0, 0);
+    const packedValues = pack(nextValues);
+    const packedIndices = pack(nextIndices);
+    useEditor.getState().commit((doc) => {
+      const target = findObj(findArtboard(doc, ab.id)!, weight.id);
+      if (!target) return;
+      Object.assign(target.props, { values: packedValues, indices: packedIndices });
+      if (target.type === 'CubicWeight') {
+        Object.assign(target.props, { inValues: packedValues, inIndices: packedIndices, outValues: packedValues, outIndices: packedIndices });
+      }
+    });
+  };
+  const setInfluence = (slot: number, amount: number) => {
+    const next = [...values];
+    const otherSlots = next.map((value, index) => ({ value, index })).filter(({ value, index }) => index !== slot && value > 0 && indices[index] > 0);
+    const remaining = 255 - amount;
+    next[slot] = amount;
+    if (!otherSlots.length) {
+      next.fill(0);
+      next[slot] = 255;
+    } else {
+      const total = otherSlots.reduce((sum, item) => sum + item.value, 0);
+      let allocated = 0;
+      otherSlots.forEach(({ value, index }, i) => {
+        const share = i === otherSlots.length - 1 ? remaining - allocated : Math.floor((value / total) * remaining);
+        next[index] = share;
+        allocated += share;
+      });
+    }
+    commitWeights(next, indices);
+  };
+  const setBoneSlot = (slot: number, tendonSlot: number) => {
+    const next = [...indices];
+    const nextValues = [...values];
+    if (tendonSlot > 0) {
+      const duplicate = next.findIndex((value, index) => index !== slot && value === tendonSlot);
+      if (duplicate >= 0) {
+        nextValues[slot] = Math.min(255, nextValues[slot]! + nextValues[duplicate]!);
+        nextValues[duplicate] = 0;
+        next[duplicate] = 0;
+      }
+    }
+    if (tendonSlot === 0 && values[slot] > 0) {
+      const otherSlots = nextValues.map((value, index) => ({ value, index })).filter(({ value, index }) => index !== slot && value > 0 && indices[index] > 0);
+      if (!otherSlots.length) {
+        toast('A skinned vertex must keep at least one weighted bone.');
+        return;
+      }
+      const removed = nextValues[slot];
+      const total = otherSlots.reduce((sum, item) => sum + item.value, 0);
+      let allocated = 0;
+      otherSlots.forEach(({ value, index }, i) => {
+        const share = i === otherSlots.length - 1 ? removed - allocated : Math.floor((value / total) * removed);
+        nextValues[index] += share;
+        allocated += share;
+      });
+      nextValues[slot] = 0;
+    }
+    next[slot] = tendonSlot;
+    commitWeights(nextValues, next);
+  };
+  return (
+    <div className="section flex flex-col gap-2">
+      <div className="panel-title">Bone weights</div>
+      {values.map((value, slot) => (
+        <div key={slot} className="grid grid-cols-[minmax(0,1fr)_86px] gap-2 items-center">
+          <select className="field h-7 min-w-0" value={indices[slot]} aria-label={`Influence ${slot + 1} bone`} disabled={useEditor.getState().readOnly} onChange={(event) => setBoneSlot(slot, Number(event.target.value))}>
+            <option value={0}>No bone</option>
+            {influences.map((influence) => <option key={influence.slot} value={influence.slot}>{influence.name}</option>)}
+          </select>
+          <label className="flex items-center gap-1 text-[10px] text-t2">
+            <input type="range" min={0} max={255} step={1} value={value} aria-label={`Influence ${slot + 1} weight`} disabled={useEditor.getState().readOnly || indices[slot] === 0 || (value > 0 && !values.some((other, index) => index !== slot && other > 0 && indices[index] > 0))} onChange={(event) => setInfluence(slot, Number(event.target.value))} className="w-full" />
+            {Math.round((value / 255) * 100)}%
+          </label>
+        </div>
+      ))}
+      <p className="text-[10px] text-t2">Weights stay normalized to 100%. Cubic path handles follow the same weights.</p>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------

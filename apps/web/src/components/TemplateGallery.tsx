@@ -104,7 +104,7 @@ function ExampleCard({ ex, onUse, disabled }: { ex: Example; onUse: (bytes: Uint
 
 const KEY = 'openrive:templates-collapsed';
 
-export function TemplateGallery({ onCreate, disabled }: { onCreate: (name: string, doc: RiveDoc) => void; disabled?: boolean }) {
+export function TemplateGallery({ onCreate, disabled, firstRun = false }: { onCreate: (name: string, doc: RiveDoc) => void; disabled?: boolean; firstRun?: boolean }) {
   const font = useFont();
   const [collapsed, setCollapsed] = useState(false);
   useEffect(() => {
@@ -128,6 +128,17 @@ export function TemplateGallery({ onCreate, disabled }: { onCreate: (name: strin
   };
   return (
     <section className="mb-8">
+      {firstRun && (
+        <div className="mb-5 max-w-3xl">
+          <h1 className="text-[20px] font-semibold tracking-tight">Make your first animation move</h1>
+          <p className="text-[12px] text-t1 mt-2">Start from an interactive example, try it on the canvas, then open Preview to test what your app will play.</p>
+          <div className="flex flex-wrap gap-x-5 gap-y-1 mt-3 text-[11px] text-t2">
+            <span><strong className="text-t1">Choose</strong> a template below</span>
+            <span><strong className="text-t1">Edit</strong> its shapes or motion</span>
+            <span><strong className="text-t1">Preview</strong> its live interaction</span>
+          </div>
+        </div>
+      )}
       <button className="flex items-center gap-2 mb-3 text-[14px] font-semibold" onClick={toggle}>
         {collapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
         <GraduationCap size={16} className="text-accent" /> Start from a template

@@ -56,9 +56,13 @@ Scripts and pipes still get plain commands: with no TTY, `openrive` prints its h
 | `import <file.riv…> [--name <name>]` | Import `.riv` files as projects |
 | `export <project> [out.riv]` | Write a project's `.riv` |
 | `export <project> [out.zip] --bundle [--cdn]` | Write a standalone [preview bundle](preview-bundles.md): `index.html`, `index.js`, the `.riv` and (without `--cdn`) the Rive runtime |
-| `info <project \| file.riv> [--json]` | Show artboards, objects, timelines, state machines and theme colors |
+| `info <project \| file.riv\|file.oriv\|source-folder> [--json]` | Show artboards, objects, timelines, state machines and theme colors |
 | `delete <project>` | Delete a project |
-| `validate <file.riv…>` | Check files round-trip losslessly |
+| `validate <file.riv\|file.oriv\|source-folder…>` | Check files round-trip losslessly and validate editable sources |
+| `diagnose <file.riv\|file.oriv\|source-folder…> [--json]` | Explain missing assets, unknown objects, uneditable features and compatibility risks |
+| `source export <project\|file.riv> [out.oriv\|folder]` | Export a portable `.oriv` backup or a Git-friendly source folder |
+| `source import <file.oriv\|folder> [name]` | Import an editable source archive or folder as a project |
+| `render <project\|file.riv\|file.oriv\|source-folder> [out.png] [options]` | Render a still frame locally with the Rive runtime |
 
 Projects can be referenced by id or name.
 
@@ -97,8 +101,15 @@ openrive export "Onboarding" ./onboarding.riv
 openrive export "Onboarding" --bundle                # a zip that plays the animation anywhere
 openrive import ~/Downloads/*.riv
 openrive validate ./assets/*.riv                     # CI check that files are intact
+openrive diagnose ./assets/character.riv --json      # machine-readable file health report
+openrive source export "Onboarding" ./onboarding-src # manifest + separately stored assets
+openrive source export ./onboarding.riv ./backup.oriv
+openrive source import ./backup.oriv "Onboarding copy"
+openrive render ./onboarding.riv ./frame.png --animation 0 --time 0.5 --scale 2
 openrive info some.riv --json | jq '.artboards[0].stateMachines'
 openrive --db postgres://localhost/openrive list
 ```
 
 > With the embedded database, stop the web app first (one process at a time), or give the CLI its own `--data` folder.
+
+See [Git-friendly sources and backups](source-format.md) for the folder layout, safety limits and CI examples.

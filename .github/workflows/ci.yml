@@ -32,6 +32,9 @@ jobs:
       - name: Tests (round-trip + SVG importer)
         run: bun run test
 
+      - name: Validate shipped Rive assets
+        run: bun run check:riv
+
       - name: Rive corpus round-trip
         run: |
           bun run rive:init

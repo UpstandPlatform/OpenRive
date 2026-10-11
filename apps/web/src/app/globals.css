@@ -1,5 +1,28 @@
 @import 'tailwindcss';
 
+/* UI typography is bundled so the editor remains fully usable offline. */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  src: url('/fonts/IBMPlexSans-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  src: url('/fonts/IBMPlexSans-SemiBold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  src: url('/fonts/IBMPlexSans-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* bundled font used for text objects (same file that gets embedded in .riv) */
 @font-face {
   font-family: 'Inter';
@@ -52,7 +75,7 @@
   --color-anim: var(--anim);
   --color-danger: var(--danger);
   --color-ok: var(--ok);
-  --font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-sans: 'IBM Plex Sans', 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
 }
 
@@ -480,6 +503,35 @@ select.field {
   }
 }
 
+}
+
+@media (max-width: 640px) {
+  .app-header {
+    gap: 8px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .app-header-brand-label {
+    display: none;
+  }
+
+  .app-header-nav {
+    gap: 0;
+  }
+
+  .app-header-nav > a {
+    padding-left: 8px;
+    padding-right: 8px;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-header-account-label,
+  .app-header-secondary-link {
+    display: none;
+  }
 }
 
 .checker {

@@ -6,6 +6,7 @@ import {
   ChevronDown,
   Download,
   Frame,
+  Film,
   Hand,
   Hexagon,
   Menu,
@@ -15,6 +16,7 @@ import {
   PenTool,
   Redo2,
   Save,
+  Search,
   Square,
   Star,
   Triangle,
@@ -26,6 +28,7 @@ import {
   Keyboard,
   Braces,
   Package,
+  Bone,
 } from 'lucide-react';
 import { runAction } from './actions';
 import { Tool, useEditor } from '@/lib/store/editor';
@@ -44,7 +47,7 @@ const SHAPE_TOOLS: { tool: Tool; label: string; key: string; icon: React.ReactNo
   { tool: 'star', label: 'Star', key: '', icon: <Star size={15} /> },
 ];
 
-export function TopBar({ onSave, onExport, saveState }: { onSave: () => void; onExport: () => void; saveState: string }) {
+export function TopBar({ onSave, onExport, onExportSource, onExportAnimation, onDiagnose, saveState }: { onSave: () => void; onExport: () => void; onExportSource: () => void; onExportAnimation: () => void; onDiagnose: () => void; saveState: string }) {
   const tool = useEditor((s) => s.tool);
   const mode = useEditor((s) => s.mode);
   const codeOpen = useEditor((s) => s.codeOpen);
@@ -113,12 +116,22 @@ export function TopBar({ onSave, onExport, saveState }: { onSave: () => void; on
             <button className="menu-item" onClick={() => (onExport(), setMenu(null))}>
               <Download size={13} /> Export .riv <span className="shortcut">Ctrl E</span>
             </button>
+            <button className="menu-item" onClick={() => (onExportSource(), setMenu(null))}>
+              <Package size={13} /> Export editable source <span className="shortcut">.oriv</span>
+            </button>
+            <button className="menu-item" onClick={() => (onExportAnimation(), setMenu(null))}>
+              <Film size={13} /> Export GIF or sprite sheet
+            </button>
             <button
               className="menu-item whitespace-nowrap"
               onClick={() => (runAction('file.exportBundle'), setMenu(null))}
               title="A zip with index.html, index.js and the runtime that plays this file anywhere"
             >
               <Package size={13} /> Export preview bundle <span className="shortcut">Ctrl Shift E</span>
+            </button>
+            <div className="menu-sep" />
+            <button className="menu-item" onClick={() => (onDiagnose(), setMenu(null))}>
+              <Search size={13} /> Check this file
             </button>
             <div className="menu-sep" />
             <button className="menu-item" disabled={!canUndo} onClick={() => (s.undo(), setMenu(null))}>
@@ -197,6 +210,7 @@ export function TopBar({ onSave, onExport, saveState }: { onSave: () => void; on
         )}
       </div>
       {toolBtn('text', <Type size={15} />, 'Text (T)')}
+      {toolBtn('bone', <Bone size={15} />, 'Bone (B)')}
       {toolBtn('pen', <PenTool size={15} />, 'Pen (P)')}
       <button
         className="icon-btn w-8 h-8"

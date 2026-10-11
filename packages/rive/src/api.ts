@@ -4,7 +4,7 @@
 import { ArtboardDoc, CoreObj, RiveDoc } from './document';
 import { newAnimation, newArtboard, newLayer, newParametricShape, newPenShape, obj, PenPoint, ShapeKind, solidFill, solidStroke } from './factory';
 import { childrenOf, EASE_PRESETS, findObj, insertObjects, isAnimatable, parentIdOf, setInterpolation, upsertKeyframe } from './ops';
-import { artboardPos, prop } from './scene';
+import { artboardPos, buildScene, invert, prop } from './scene';
 import {
   artboardViewModel,
   addProperty,
@@ -182,6 +182,107 @@ export function addGroup(doc: RiveDoc, g: { artboard?: string; parent?: string; 
   const node = obj('Node', { name: g.name ?? 'Group', parentId, x: g.x ?? 0, y: g.y ?? 0 });
   insertObjects(ab, [node]);
   return node;
+}
+
+/** Adds a root bone on the artboard or a child bone at its selected bone's tip. */
+export function addBone(
+  doc: RiveDoc,
+  bone: { artboard?: string; parent?: string; name?: string; x?: number; y?: number; length: number; rotation?: number },
+): CoreObj {
+  const ab = getArtboard(doc, bone.artboard);
+  const parent = bone.parent ? getObject(doc, bone.parent, ab.id).o : ab.artboard;
+  if (bone.parent && !isA(parent.type, 'Bone')) throw new ApiError('A child bone must be parented to another bone.');
+  const length = Number(bone.length);
+  if (!Number.isFinite(length) || length <= 0) throw new ApiError('Bone length must be greater than zero.');
+  const rotation = Number(bone.rotation ?? 0);
+  if (!Number.isFinite(rotation)) throw new ApiError('Bone rotation must be a finite angle in radians.');
+  if (!isA(parent.type, 'Bone') && (!Number.isFinite(Number(bone.x ?? 0)) || !Number.isFinite(Number(bone.y ?? 0)))) {
+    throw new ApiError('Root bone coordinates must be finite numbers.');
+  }
+  const isChildBone = isA(parent.type, 'Bone');
+  const created = obj(isChildBone ? 'Bone' : 'RootBone', {
+    name: bone.name ?? (isChildBone ? 'Bone' : `Root Bone ${ab.objects.filter((o) => o.type === 'RootBone').length + 1}`),
+    parentId: parent.id,
+    length,
+    rotation,
+    ...(isChildBone ? {} : { x: bone.x ?? 0, y: bone.y ?? 0 }),
+  });
+  insertObjects(ab, [created]);
+  return created;
+}
+
+/** Binds every vertex on a mesh/path to a set of bones using bind-pose inverse transforms. */
+export function addSkin(doc: RiveDoc, input: { artboard?: string; path: string; bones: string[] }): CoreObj {
+  const ab = getArtboard(doc, input.artboard);
+  const path = getObject(doc, input.path, ab.id).o;
+  if (path.type !== 'PointsPath' && path.type !== 'Mesh') throw new ApiError('Skinning requires a PointsPath or Mesh.');
+  if (childrenOf(ab, path.id).some((child) => child.type === 'Skin')) throw new ApiError('This path already has a skin.');
+  if (input.bones.length > 255) throw new ApiError('A skin cannot contain more than 255 bones because vertex influence indices are stored in 8 bits.');
+  const bones = input.bones.map((ref) => getObject(doc, ref, ab.id).o);
+  if (!bones.length || bones.some((bone) => !isA(bone.type, 'Bone'))) throw new ApiError('Choose one or more bones to bind to the path.');
+  if (new Set(bones.map((bone) => bone.id)).size !== bones.length) throw new ApiError('Choose each bone only once when binding a skin.');
+  const scene = buildScene(ab);
+  const skin = obj('Skin', { name: 'Skin', parentId: path.id });
+  const tendons = bones.map((bone) => {
+    const node = scene.nodes.get(bone.id);
+    if (!node) throw new ApiError(`Could not resolve the bind transform for bone "${displayObjectName(bone)}".`);
+    const inverse = invert(node.world);
+    return obj('Tendon', {
+      name: `${displayObjectName(bone)} tendon`,
+      parentId: skin.id,
+      boneId: bone.id,
+      xx: inverse[0], xy: inverse[1], yx: inverse[2], yy: inverse[3], tx: inverse[4], ty: inverse[5],
+    });
+  });
+  const vertices = childrenOf(ab, path.id).filter((child) => isA(child.type, 'Vertex'));
+  const weights = vertices.map((vertex) =>
+    obj(isA(vertex.type, 'CubicVertex') ? 'CubicWeight' : 'Weight', {
+      name: 'Weight',
+      parentId: vertex.id,
+      values: 255,
+      indices: 1,
+      ...(isA(vertex.type, 'CubicVertex') ? { inValues: 255, inIndices: 1, outValues: 255, outIndices: 1 } : {}),
+    }),
+  );
+  ab.objects.push(skin, ...tendons, ...weights);
+  return skin;
+}
+
+/** Changes a path vertex shape while keeping any attached skin weights valid. */
+export function convertVertexType(doc: RiveDoc, input: { artboard?: string; vertex: string; type: 'StraightVertex' | 'CubicMirroredVertex' | 'CubicAsymmetricVertex' | 'CubicDetachedVertex' }): CoreObj {
+  const { ab, o: vertex } = getObject(doc, input.vertex, input.artboard);
+  if (!isA(vertex.type, 'Vertex')) throw new ApiError('Only path vertices can be converted.');
+  const x = prop(vertex, 'x');
+  const y = prop(vertex, 'y');
+  const base = { parentId: vertex.props.parentId, x, y, ...(vertex.props.name ? { name: vertex.props.name } : {}) };
+  const distance = 30;
+  vertex.type = input.type;
+  if (input.type === 'StraightVertex') vertex.props = { ...base, radius: 0 };
+  else if (input.type === 'CubicMirroredVertex') vertex.props = { ...base, rotation: 0, distance };
+  else if (input.type === 'CubicAsymmetricVertex') vertex.props = { ...base, rotation: 0, inDistance: distance, outDistance: distance };
+  else vertex.props = { ...base, inRotation: Math.PI, inDistance: distance, outRotation: 0, outDistance: distance };
+
+  const weight = childrenOf(ab, vertex.id).find((child) => child.type === 'Weight' || child.type === 'CubicWeight');
+  if (weight) {
+    const targetIsCubic = isA(input.type, 'CubicVertex');
+    if (targetIsCubic && weight.type === 'Weight') {
+      weight.type = 'CubicWeight';
+      Object.assign(weight.props, {
+        inValues: weight.props.values ?? 0,
+        inIndices: weight.props.indices ?? 0,
+        outValues: weight.props.values ?? 0,
+        outIndices: weight.props.indices ?? 0,
+      });
+    } else if (!targetIsCubic && weight.type === 'CubicWeight') {
+      weight.type = 'Weight';
+      for (const key of ['inValues', 'inIndices', 'outValues', 'outIndices']) delete weight.props[key];
+    }
+  }
+  return vertex;
+}
+
+function displayObjectName(object: CoreObj): string {
+  return typeof object.props.name === 'string' && object.props.name ? object.props.name : object.type;
 }
 
 export function addText(

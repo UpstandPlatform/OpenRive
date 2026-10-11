@@ -22,8 +22,13 @@ Projects
   templates                                        List starter templates and example files
   import <file.riv...> [--name <name>]             Import .riv files as projects
   export <project> [out.riv]                       Export a project to a .riv file
+  render <project|file.riv> [out.png]              Render a still frame with the official Rive runtime
+    [--artboard <name|index>] [--animation <name|index>] [--time <seconds>] [--scale <factor>]
+  source export <project|file.riv> [folder|out.oriv] Export reviewable source files or a portable archive
+  source import <folder|file.oriv> [name]           Restore editable source as a project
   export <project> [out.zip] --bundle [--cdn]      Export a standalone preview bundle (index.html + index.js)
   info <project | file.riv> [--json]               Show artboards, objects, timelines, state machines
+  diagnose <file.riv|file.oriv|folder...> [--json] Check references, assets, format, and editability
   delete <project>                                 Delete a project
   validate <file.riv...>                           Check files round-trip losslessly
 
@@ -92,12 +97,18 @@ async function main() {
       return commands.importProjects(args, options);
     case 'export':
       return commands.exportProject(args, options);
+    case 'render':
+      return commands.render(args, options);
     case 'info':
       return commands.info(args, options);
     case 'delete':
       return commands.deleteProject(args);
     case 'validate':
       return commands.validate(args);
+    case 'source':
+      return commands.sourceCommand(args);
+    case 'diagnose':
+      return commands.diagnose(args, options);
     case 'users':
       return commands.users(args, options);
     case 'db':

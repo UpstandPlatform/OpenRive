@@ -9,6 +9,7 @@ import { api, canEdit, canSee, useCurrentUser, useSession } from '@/lib/client/s
 import { createProjectFromDoc, importRivFile } from '@/lib/client/projects';
 import { NewFileDialog, TemplateGallery } from '@/components/TemplateGallery';
 import type { RiveDoc } from '@openrive/rive/document';
+import { importSource, isOpenRiveSource } from '@openrive/rive/source';
 import type { ProjectMeta } from '@openrive/shared';
 import { Modal } from '@openrive/ui';
 
@@ -67,6 +68,7 @@ export default function Dashboard() {
     setBusy(true);
     try {
       const meta = await createProjectFromDoc(name, user.id, doc);
+      if (projects !== null && !projects.some((p) => p.ownerId === user.id)) markOnboardingPending();
       router.push(`/editor/${meta.id}`);
     } catch (e) {
       setError((e as Error).message);
@@ -79,16 +81,27 @@ export default function Dashboard() {
     setBusy(true);
     setError(null);
     try {
+      const firstOwnFile = projects !== null && !projects.some((p) => p.ownerId === user.id);
+      let onboardingMarked = false;
       let last: ProjectMeta | null = null;
       for (const f of Array.from(files)) {
+        if (f.name.toLowerCase().endsWith('.oriv')) {
+          const bytes = new Uint8Array(await f.arrayBuffer());
+          if (!isOpenRiveSource(bytes)) throw new Error(`${f.name} is not a valid OpenRive source archive`);
+          const doc = importSource(bytes);
+          last = await createProjectFromDoc(f.name.replace(/\.oriv$/i, ''), user.id, doc);
+          if (firstOwnFile && !onboardingMarked) { markOnboardingPending(); onboardingMarked = true; }
+          continue;
+        }
         if (!f.name.toLowerCase().endsWith('.riv')) {
           throw new Error(
             f.name.toLowerCase().endsWith('.rev')
               ? '.rev files are Rive’s private editor backup format and cannot be opened outside rive.app. Export a .riv from Rive and import that.'
-              : `${f.name} is not a .riv file`,
+            : `${f.name} is not a .riv or .oriv file`,
           );
         }
         last = await importRivFile(f);
+        if (firstOwnFile && !onboardingMarked) { markOnboardingPending(); onboardingMarked = true; }
       }
       await load();
       if (last && files.length === 1) router.push(`/editor/${last.id}`);
@@ -154,13 +167,13 @@ export default function Dashboard() {
           <input
             ref={fileInput}
             type="file"
-            accept=".riv"
+            accept=".riv,.oriv"
             multiple
             className="hidden"
             onChange={(e) => e.target.files && importFiles(e.target.files)}
           />
           <button className="btn" disabled={busy || isViewer} onClick={() => fileInput.current?.click()}>
-            <FileUp size={14} /> Import .riv
+            <FileUp size={14} /> Import file
           </button>
           <button className="btn btn-primary" disabled={busy || isViewer} onClick={newFile}>
             <Plus size={14} /> New file
@@ -181,7 +194,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {!isViewer && filter === 'mine' && !query && <TemplateGallery onCreate={createFrom} disabled={busy} />}
+        {!isViewer && filter === 'mine' && !query && <TemplateGallery onCreate={createFrom} disabled={busy} firstRun={!!projects && !projects.some((p) => p.ownerId === user?.id)} />}
         {projects !== null && <h2 className="text-[14px] font-semibold mb-3">{filter === 'mine' ? 'My files' : filter === 'shared' ? 'Shared with me' : 'All files'}</h2>}
 
         {projects === null ? (
@@ -196,7 +209,7 @@ export default function Dashboard() {
               >
                 <Plus size={28} />
                 <span className="font-medium">New file</span>
-                <span className="text-t2 text-[11px]">or drop .riv files anywhere</span>
+                <span className="text-t2 text-[11px]">or drop .riv and .oriv files anywhere</span>
               </button>
             )}
             {visible.map((p) => {
@@ -302,7 +315,7 @@ export default function Dashboard() {
 
       {dragOver && (
         <div className="fixed inset-0 z-50 bg-[#57a5e0]/10 border-2 border-dashed border-accent flex items-center justify-center pointer-events-none">
-          <div className="text-[16px] font-medium bg-bg2 px-5 py-3 rounded-lg">Drop .riv files to import</div>
+          <div className="text-[16px] font-medium bg-bg2 px-5 py-3 rounded-lg">Drop .riv or .oriv files to import</div>
         </div>
       )}
       {busy && (
@@ -312,6 +325,14 @@ export default function Dashboard() {
       )}
     </div>
   );
+}
+
+function markOnboardingPending() {
+  try {
+    localStorage.setItem('openrive:onboarding:pending', '1');
+  } catch {
+    // Project creation/import succeeds even when browser storage is disabled or full.
+  }
 }
 
 function ShareDialog({ project, onClose, onSaved }: { project: ProjectMeta; onClose: () => void; onSaved: () => void }) {

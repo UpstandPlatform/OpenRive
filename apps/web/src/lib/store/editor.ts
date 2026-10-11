@@ -21,6 +21,7 @@ export type Tool =
   | 'star'
   | 'text'
   | 'pen'
+  | 'bone'
   | 'hand'
   | 'group';
 

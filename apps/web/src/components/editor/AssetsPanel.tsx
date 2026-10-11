@@ -5,8 +5,8 @@ import { CoreObj } from '@openrive/rive/document';
 import { addFontAsset, addImageAsset, assetBytes, assetKind, assetUsers, fileAssets, guessMime, imageSizes, placeImage, removeAsset } from '@openrive/rive/assets';
 import { findArtboard } from '@openrive/rive/ops';
 import { registerImageSizes } from '@openrive/rive/scene';
-import { importSvg } from '@openrive/rive/svg';
 import { useEditor } from '@/lib/store/editor';
+import { importSvgMarkup } from '@/lib/client/svgImport';
 import { ListRow } from '@openrive/ui';
 import { openContextMenu, sep } from './ContextMenu';
 import { toast } from '@/lib/client/toast';
@@ -35,15 +35,7 @@ export async function importAssetFiles(files: File[], place = true) {
     try {
       if (lower.endsWith('.svg')) {
         const text = await file.text();
-        let group: CoreObj | null = null;
-        st.commit((d) => {
-          const c = artboardCenter();
-          const ab = c && findArtboard(d, c.ab.id);
-          if (!c || !ab) return;
-          group = importSvg(text, { artboard: ab, x: c.x, y: c.y, width: Math.min(c.max, 300), name: base }).group;
-        });
-        if (group) st.select([(group as CoreObj).id]);
-        toast(`Imported ${file.name} as vector shapes`);
+        importSvgMarkup(text, base || file.name);
       } else if (/\.(ttf|otf)$/.test(lower)) {
         const bytes = new Uint8Array(await file.arrayBuffer());
         st.commit((d) => void addFontAsset(d, base, bytes));

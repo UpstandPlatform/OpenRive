@@ -16,16 +16,18 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
+    "@napi-rs/canvas": "^1.0.11",
+    "@openrive/auth": "workspace:*",
     "@openrive/db": "workspace:*",
     "@openrive/rive": "workspace:*",
     "@openrive/shared": "workspace:*",
     "@openrive/storage": "workspace:*",
     "@opentui/core": "^0.5.12",
     "@opentui/react": "^0.5.12",
+    "@rive-app/canvas-advanced": "^2.44.2",
     "nanoid": "catalog:",
     "react": "catalog:",
-    "zod": "catalog:",
-    "@openrive/auth": "workspace:*"
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@openrive/config": "workspace:*",

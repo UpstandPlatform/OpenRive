@@ -385,11 +385,39 @@ export interface SvgImportOptions {
   names?: string[];
 }
 
+export interface SvgInspection { warnings: string[]; errors: string[]; }
+
+/** Report common vector-editor SVG features that the editable importer cannot represent yet. */
+export function inspectSvg(svg: string): SvgInspection {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  if (typeof svg !== 'string' || svg.length === 0) return { errors: ['The SVG file is empty.'], warnings };
+  if (!/<svg\b/i.test(svg)) errors.push('The file does not contain an SVG root element.');
+  const unsupported = new Map<string, string>([
+    ['text', 'SVG text is skipped; convert text to outlines in your design tool before importing.'],
+    ['image', 'Embedded or linked raster images are skipped; import PNG or WebP files separately.'],
+    ['use', 'Referenced symbols are skipped; expand instances in your design tool before importing.'],
+    ['linearGradient', 'SVG linear gradients are skipped; use solid fills or add gradients after import.'],
+    ['radialGradient', 'SVG radial gradients are skipped; use solid fills or add gradients after import.'],
+    ['filter', 'SVG filters and effects are skipped.'],
+    ['mask', 'SVG masks are skipped; supported clipping can be applied after import.'],
+    ['clipPath', 'SVG clipping paths are skipped; supported clipping can be applied after import.'],
+    ['pattern', 'SVG patterns are skipped.'],
+    ['foreignObject', 'Embedded HTML content is skipped.'],
+  ]);
+  for (const [tag, message] of unsupported) if (new RegExp(`<${tag}\\b`, 'i').test(svg)) warnings.push(message);
+  if (!/<svg\b[^>]*\bviewBox\s*=/i.test(svg)) warnings.push('This SVG has no viewBox; its width and height are used as the coordinate space.');
+  if (/url\(\s*['"]?https?:/i.test(svg) || /(?:href|src)\s*=\s*['"]https?:/i.test(svg)) warnings.push('External resources are not downloaded during import.');
+  return { errors, warnings };
+}
+
 /**
  * Imports SVG markup as a group of Rive shapes. Circles/ellipses/rects become
  * parametric shapes (easy to animate); everything else becomes vector paths.
  */
-export function importSvg(svg: string, o: SvgImportOptions): { group: CoreObj; shapes: CoreObj[] } {
+export function importSvg(svg: string, o: SvgImportOptions): { group: CoreObj; shapes: CoreObj[]; warnings: string[] } {
+  const inspection = inspectSvg(svg);
+  if (inspection.errors.length) throw new Error(inspection.errors.join(' '));
   const { shapes, viewBox } = collectShapes(svg);
   if (!shapes.length) throw new Error('No drawable shapes found in the SVG');
   const [vx, vy, vw, vh] = viewBox;
@@ -468,5 +496,5 @@ export function importSvg(svg: string, o: SvgImportOptions): { group: CoreObj; s
     out.splice(1, 0, ...objs);
   });
   insertObjects(ab, out);
-  return { group, shapes: docOrder };
+  return { group, shapes: docOrder, warnings: inspection.warnings };
 }

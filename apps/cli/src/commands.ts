@@ -1,11 +1,16 @@
 // Non-interactive commands. `openrive` with no arguments opens the TUI instead.
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createCanvas, ImageData, Path2D } from '@napi-rs/canvas';
+import initRive from '@rive-app/canvas-advanced';
 import { authEnabled, createAccount, deleteAccountAndTransferProjects, listAccounts, passwordProblem, updateAccount } from '@openrive/auth';
 import { deleteLocalUserAndTransferProjects, importLegacyDataDir } from '@openrive/db';
 import { outline } from '@openrive/rive/api';
 import { buildBundle, bundleFileName, type BundleFile } from '@openrive/rive/bundle';
 import { exportRiv, importRiv } from '@openrive/rive/document';
+import { diagnoseRiv } from '@openrive/rive/diagnostics';
+import { exportSource, exportSourceFiles, importSource, importSourceFiles, isOpenRiveSource } from '@openrive/rive/source';
 import { roleSchema } from '@openrive/shared';
 import { env } from '@openrive/shared/env';
 import {
@@ -13,6 +18,7 @@ import {
   deleteProject as deleteStoredProject,
   EXAMPLES,
   importFile,
+  importDoc,
   loadDoc,
   PROJECT_ROOT,
   resolveProject,
@@ -78,7 +84,11 @@ function printOutline(o: ReturnType<typeof outline>) {
 
 /** Loads a document from a project reference or a .riv path. */
 async function docFrom(ref: string) {
-  if (ref.toLowerCase().endsWith('.riv') && existsSync(ref)) return importRiv(new Uint8Array(readFileSync(ref)));
+  if (existsSync(ref) && statSync(ref).isDirectory()) return importSourceFiles(readSourceDirectory(ref));
+  if (existsSync(ref) && /\.(riv|oriv)$/i.test(ref)) {
+    const bytes = new Uint8Array(readFileSync(ref));
+    return isOpenRiveSource(bytes) ? importSource(bytes) : importRiv(bytes);
+  }
   return (await loadDoc(ref)).doc;
 }
 
@@ -192,10 +202,17 @@ export async function deleteProject(args: string[]) {
 export function validate(args: string[]) {
   let failed = 0;
   for (const file of args) {
-    const bytes = new Uint8Array(readFileSync(file));
     try {
-      const out = exportRiv(importRiv(bytes));
-      const same = Buffer.from(out).equals(Buffer.from(bytes));
+      const isFolder = existsSync(file) && statSync(file).isDirectory();
+      const bytes = isFolder ? null : new Uint8Array(readFileSync(file));
+      if (isFolder || isOpenRiveSource(bytes!)) {
+        const sourceReport = isFolder ? diagnoseSourceFiles(readSourceDirectory(file)) : diagnoseSource(bytes!);
+        if (!sourceReport.valid) throw new Error(sourceReport.diagnostics.map((d) => d.message).join('; '));
+        console.log(`✓ ${file} (editable source)`);
+        continue;
+      }
+      const out = exportRiv(importRiv(bytes!));
+      const same = Buffer.from(out).equals(Buffer.from(bytes!));
       console.log(`${same ? '✓' : '≈'} ${file}${same ? ' (byte-identical)' : ' (re-encoded differently)'}`);
     } catch (e) {
       failed++;
@@ -203,6 +220,173 @@ export function validate(args: string[]) {
     }
   }
   if (failed) process.exitCode = 1;
+}
+
+function readSourceDirectory(dir: string): Record<string, Uint8Array> {
+  const files: Record<string, Uint8Array> = {};
+  const maxFiles = 10_000;
+  const maxBytes = 512 * 1024 * 1024;
+  let fileCount = 0;
+  let totalBytes = 0;
+  const visit = (current: string) => {
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const file = path.join(current, entry.name);
+      if (entry.isSymbolicLink()) throw new StoreError(`Editable source folders cannot contain symbolic links: ${file}`);
+      if (entry.isDirectory()) visit(file);
+      else if (entry.isFile()) {
+        if (++fileCount > maxFiles) throw new StoreError(`Editable source folders cannot contain more than ${maxFiles} files`);
+        const size = statSync(file).size;
+        totalBytes += size;
+        if (totalBytes > maxBytes) throw new StoreError('Editable source folders cannot exceed 512 MB');
+        files[path.relative(dir, file).split(path.sep).join('/')] = new Uint8Array(readFileSync(file));
+      }
+    }
+  };
+  visit(dir);
+  return files;
+}
+
+export async function sourceCommand(args: string[]) {
+  const [sub, ...values] = args;
+  if (sub === 'export') {
+    if (!values[0]) throw new StoreError('Usage: source export <project|file.riv> [out.oriv]');
+    const doc = await docFrom(values[0]);
+    const defaultName = path.basename(values[0]).replace(/\.(riv|oriv)$/i, '') || 'openrive-project';
+    const out = values[1] ?? `${safeFileName(defaultName)}.oriv`;
+    if (/\.oriv$/i.test(out)) {
+      writeFileSync(out, exportSource(doc));
+      console.log(`Wrote editable OpenRive source archive ${out}`);
+    } else {
+      mkdirSync(out, { recursive: true });
+      for (const [file, bytes] of Object.entries(exportSourceFiles(doc))) {
+        const target = path.join(out, ...file.split('/'));
+        mkdirSync(path.dirname(target), { recursive: true });
+        writeFileSync(target, bytes);
+      }
+      console.log(`Wrote Git-friendly editable source folder ${out}`);
+    }
+    return;
+  }
+  if (sub === 'import') {
+    const file = values[0];
+    if (!file) throw new StoreError('Usage: source import <file.oriv> [project name]');
+    const isFolder = existsSync(file) && statSync(file).isDirectory();
+    const bytes = isFolder ? null : new Uint8Array(readFileSync(file));
+    if (!isFolder && !isOpenRiveSource(bytes!)) throw new StoreError(`${file} is not an OpenRive source folder or .oriv archive`);
+    const name = values.slice(1).join(' ') || path.basename(file).replace(/\.oriv$/i, '');
+    const doc = isFolder ? importSourceFiles(readSourceDirectory(file)) : importSource(bytes!);
+    const meta = await importDoc(doc, name);
+    console.log(`Imported ${file} → "${meta.name}" (${meta.id})\nOpen: ${editorUrl(meta.id)}`);
+    return;
+  }
+  throw new StoreError('Usage: source export <project|file.riv> [out.oriv] | source import <file.oriv> [name]');
+}
+
+function safeFileName(value: string) {
+  return value.replace(/[^\w-]+/g, '-').replace(/^-+|-+$/g, '') || 'openrive-project';
+}
+
+export function diagnose(args: string[], opts: Options) {
+  if (!args.length) throw new StoreError('Usage: diagnose <file.riv|file.oriv|source-folder...> [--json]');
+  const results = args.map((file) => {
+    const isFolder = existsSync(file) && statSync(file).isDirectory();
+    const bytes = isFolder ? null : new Uint8Array(readFileSync(file));
+    const report = isFolder ? diagnoseSourceFiles(readSourceDirectory(file)) : isOpenRiveSource(bytes!) ? diagnoseSource(bytes!) : diagnoseRiv(bytes!);
+    return { file, ...report };
+  });
+  if (opts.json) console.log(JSON.stringify(results, null, 2));
+  else for (const result of results) {
+    console.log(`${result.valid ? '✓' : '✗'} ${result.file} — Rive ${result.fileVersion ?? 'unknown'} · ${result.counts.artboards} artboards · ${result.counts.objects} objects`);
+    if (!result.diagnostics.length) console.log('  No file health issues found.');
+    for (const item of result.diagnostics) console.log(`  ${item.severity.toUpperCase()} ${item.title}: ${item.message}`);
+  }
+  if (results.some((r) => !r.valid)) process.exitCode = 1;
+}
+
+function diagnoseSourceFiles(files: Record<string, Uint8Array>) {
+  try {
+    const doc = importSourceFiles(files);
+    const report = diagnoseRiv(exportRiv(doc));
+    return { ...report, roundTripsByteIdentically: null };
+  } catch (error) {
+    return {
+      valid: false,
+      fileVersion: null,
+      roundTripsByteIdentically: null,
+      counts: { artboards: 0, objects: 0, timelines: 0, stateMachines: 0, assets: 0 },
+      diagnostics: [{ code: 'invalid-source', severity: 'error' as const, title: 'Could not read this editable source', message: (error as Error).message }],
+    };
+  }
+}
+
+/** Render one still frame with the same official Rive WASM runtime as the editor. */
+export async function render(args: string[], opts: Options) {
+  if (!args[0]) throw new StoreError('Usage: render <project|file.riv|file.oriv> [out.png] [--artboard <name|index>] [--animation <name|index>] [--time <seconds>] [--scale <factor>]');
+  const doc = await docFrom(args[0]);
+  const artboardRef = String(opts.artboard ?? '0');
+  const artboardIndex = /^\d+$/.test(artboardRef) ? Number(artboardRef) : doc.artboards.findIndex((a) => a.artboard.props.name === artboardRef);
+  const abDoc = doc.artboards[artboardIndex];
+  if (!abDoc) throw new StoreError(`Artboard "${artboardRef}" not found`);
+  const animationRef = opts.animation === undefined ? '' : String(opts.animation);
+  const animationIndex = animationRef === '' ? -1 : /^\d+$/.test(animationRef) ? Number(animationRef) : abDoc.animations.findIndex((a) => a.props.name === animationRef);
+  if (animationRef && !abDoc.animations[animationIndex]) throw new StoreError(`Timeline "${animationRef}" not found on artboard "${String(abDoc.artboard.props.name)}"`);
+  if (typeof opts.time === 'boolean' || (typeof opts.time === 'string' && !opts.time.trim())) throw new StoreError('--time requires a finite, non-negative number of seconds');
+  if (typeof opts.scale === 'boolean' || (typeof opts.scale === 'string' && !opts.scale.trim())) throw new StoreError('--scale requires a finite number greater than zero');
+  const requestedTime = Number(opts.time ?? 0);
+  const requestedScale = Number(opts.scale ?? 1);
+  if (!Number.isFinite(requestedTime) || requestedTime < 0) throw new StoreError('--time must be a finite, non-negative number of seconds');
+  if (!Number.isFinite(requestedScale) || requestedScale <= 0 || requestedScale > 4) throw new StoreError('--scale must be a finite number greater than zero and no greater than 4');
+  const time = requestedTime;
+  const scale = requestedScale;
+  const width = Math.max(1, Math.round(Number(abDoc.artboard.props.width) * scale));
+  const height = Math.max(1, Math.round(Number(abDoc.artboard.props.height) * scale));
+  if (width * height > 64_000_000) throw new StoreError('Output exceeds the 64-million-pixel safety limit');
+  const runtimeDir = path.dirname(fileURLToPath(import.meta.resolve('@rive-app/canvas-advanced')));
+  if (typeof globalThis.ImageData === 'undefined') Object.defineProperty(globalThis, 'ImageData', { value: ImageData });
+  if (typeof globalThis.Path2D === 'undefined') Object.defineProperty(globalThis, 'Path2D', { value: Path2D });
+  const wasmBinary = Uint8Array.from(readFileSync(path.join(runtimeDir, 'rive.wasm'))).buffer as ArrayBuffer;
+  const rive = await initRive({ wasmBinary, locateFile: (file) => path.join(runtimeDir, file === 'canvas_advanced.wasm' ? 'rive.wasm' : file) });
+  const file = await rive.load(exportRiv(doc), undefined, false);
+  const artboard = file.artboardByIndex(artboardIndex);
+  const canvas = createCanvas(width, height);
+  const renderer = rive.makeRenderer(canvas as unknown as HTMLCanvasElement);
+  const animation = animationIndex >= 0 ? new rive.LinearAnimationInstance(artboard.animationByIndex(animationIndex), artboard) : null;
+  try {
+    renderer.clear();
+    if (animation) {
+      animation.time = time;
+      animation.apply(1);
+    }
+    artboard.advance(0);
+    renderer.save();
+    (renderer as unknown as { transform: (...values: number[]) => void }).transform(scale, 0, 0, scale, 0, 0);
+    artboard.draw(renderer);
+    renderer.restore();
+    const output = args[1] ?? `${safeFileName(String(abDoc.artboard.props.name || path.basename(args[0]).replace(/\.(riv|oriv)$/i, '')))}.png`;
+    writeFileSync(output, canvas.toBuffer('image/png'));
+    console.log(`Rendered ${output} (${width}×${height})`);
+  } finally {
+    animation?.delete();
+    artboard.delete();
+    (renderer as { delete?: () => void }).delete?.();
+    file.unref?.();
+  }
+}
+
+function diagnoseSource(bytes: Uint8Array) {
+  try {
+    const doc = importSource(bytes);
+    const report = diagnoseRiv(exportRiv(doc));
+    return { ...report, roundTripsByteIdentically: null };
+  } catch (error) {
+    return {
+      valid: false,
+      fileVersion: null,
+      roundTripsByteIdentically: null,
+      counts: { artboards: 0, objects: 0, timelines: 0, stateMachines: 0, assets: 0 },
+      diagnostics: [{ code: 'invalid-source', severity: 'error' as const, title: 'Could not read this editable source', message: (error as Error).message }],
+    };
+  }
 }
 
 export async function users(args: string[], opts: Options) {

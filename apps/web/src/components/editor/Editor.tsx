@@ -1,6 +1,8 @@
 'use client';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { startTransition, useCallback, useEffect, useRef, useState } from 'react';
 import { exportRiv, RiveDoc } from '@openrive/rive/document';
+import { diagnoseDocument, type FileHealthReport } from '@openrive/rive/diagnostics';
+import { exportSource } from '@openrive/rive/source';
 import { artboardPos, prop } from '@openrive/rive/scene';
 import { downloadBytes, docStats } from '@/lib/client/projects';
 import { parseDoc, stringifyDoc, toBase64 } from '@openrive/shared/serialize';
@@ -14,6 +16,8 @@ import { PreferencesDialog } from './PreferencesDialog';
 import { ContextMenuHost } from './ContextMenu';
 import { EditorWorkspace } from './EditorWorkspace';
 import { Toaster } from '@/components/Toaster';
+import { Modal } from '@openrive/ui';
+import { AnimationExportDialog } from './AnimationExportDialog';
 import { toast } from '@/lib/client/toast';
 import { imageSizes } from '@openrive/rive/assets';
 import { registerImageSizes } from '@openrive/rive/scene';
@@ -39,12 +43,35 @@ export function Editor() {
   if (liveDoc) registerImageSizes(imageSizes(liveDoc));
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<'shortcuts' | 'prefs' | null>(null);
+  const [dialog, setDialog] = useState<'shortcuts' | 'prefs' | 'animation-export' | null>(null);
+  const [healthReport, setHealthReport] = useState<FileHealthReport | null>(null);
+  const [svgImportWarnings, setSvgImportWarnings] = useState<string[] | null>(null);
+  const [quickStartStep, setQuickStartStep] = useState<number | null>(null);
   const [externalChange, setExternalChange] = useState<ProjectMeta | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => usePrefs.getState().init(), []);
+
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('openrive:onboarding:pending') === '1') {
+        localStorage.removeItem('openrive:onboarding:pending');
+        startTransition(() => setQuickStartStep(0));
+      }
+    } catch {
+      /* onboarding remains optional when storage is unavailable */
+    }
+  }, []);
+
+  useEffect(() => {
+    const onSvgWarnings = (event: Event) => {
+      const warnings = (event as CustomEvent<string[]>).detail;
+      if (Array.isArray(warnings) && warnings.length) setSvgImportWarnings(warnings);
+    };
+    window.addEventListener('editor:svg-import-warnings', onSvgWarnings);
+    return () => window.removeEventListener('editor:svg-import-warnings', onSvgWarnings);
+  }, []);
 
   const save = useCallback(async () => {
     setSaving(true);
@@ -95,6 +122,23 @@ export function Editor() {
     } catch (error) {
       toast(`Export failed: ${(error as Error).message}`);
     }
+  }, []);
+
+  const exportEditableSource = useCallback(() => {
+    const s = useEditor.getState();
+    if (!s.doc) return;
+    try {
+      const filename = `${s.projectName.replace(/[^\w\- ]+/g, '').trim() || 'file'}.oriv`;
+      downloadBytes(exportSource(s.doc), filename);
+      toast(`Exported editable source ${filename}`);
+    } catch (error) {
+      toast(`Source export failed: ${(error as Error).message}`);
+    }
+  }, []);
+
+  const checkFile = useCallback(() => {
+    const doc = useEditor.getState().doc;
+    if (doc) setHealthReport(diagnoseDocument(doc));
   }, []);
 
   // The bundle is built server side from the saved .riv, so save first.
@@ -206,6 +250,10 @@ export function Editor() {
         // still allow save/undo-free shortcuts like Ctrl+S from inputs
         if (!((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's')) return;
       }
+      // Let the browser emit its paste event so SVG or PNG data from Figma,
+      // Illustrator and the system clipboard can be imported before falling
+      // back to OpenRive's internal object clipboard.
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') return;
       if (dialog) return;
       // buttons keep focus after clicks; don't let Enter/Space re-click them
       if (t.tagName === 'BUTTON' && (e.key === 'Enter' || e.key === ' ')) t.blur();
@@ -226,7 +274,8 @@ export function Editor() {
   const s = useEditor.getState();
   return (
     <div className="h-full flex flex-col">
-      <TopBar onSave={save} onExport={exportFile} saveState={saveState} />
+      <TopBar onSave={save} onExport={exportFile} onExportSource={exportEditableSource} onExportAnimation={() => setDialog('animation-export')} onDiagnose={checkFile} saveState={saveState} />
+      {quickStartStep !== null && <QuickStart step={quickStartStep} onStep={setQuickStartStep} onClose={() => setQuickStartStep(null)} />}
       {externalChange && (
         <div className="flex items-center gap-3 px-4 py-2 bg-[#3a3320] text-[#ffe6a3] border-b border-line">
           <span className="flex-1">This file was changed outside the editor (for example by the CLI or an AI tool) while you have unsaved edits.</span>
@@ -248,9 +297,89 @@ export function Editor() {
       <EditorWorkspace mode={mode} leftTab={leftTab} codeOpen={codeOpen} onLeftTabChange={(tab) => s.set('leftTab', tab)} />
       {dialog === 'shortcuts' && <ShortcutsDialog onClose={() => setDialog(null)} />}
       {dialog === 'prefs' && <PreferencesDialog onClose={() => setDialog(null)} />}
+      {dialog === 'animation-export' && liveDoc && <AnimationExportDialog doc={liveDoc} projectName={s.projectName} onClose={() => setDialog(null)} />}
+      {healthReport && <FileHealthDialog report={healthReport} onClose={() => setHealthReport(null)} />}
+      {svgImportWarnings && <SvgImportWarningsDialog warnings={svgImportWarnings} onClose={() => setSvgImportWarnings(null)} />}
       <ContextMenuHost />
       <Toaster />
     </div>
+  );
+}
+
+function QuickStart({ step, onStep, onClose }: { step: number; onStep: (step: number) => void; onClose: () => void }) {
+  const copy = [
+    { title: 'Start with the canvas', body: 'Select a shape in Layers or on the canvas. Change its size or color in Inspector; every edit is undoable.', action: 'Show me Animate mode' },
+    { title: 'Make it move', body: 'Animate mode gives you timelines and keyframes. Press Tab to switch back to Design mode whenever you need.', action: 'Open Preview' },
+    { title: 'Try the finished interaction', body: 'Preview runs the saved Rive file with its state machine and data properties. Hover or click the artboard to test it.', action: 'Done' },
+  ][step]!;
+  const next = () => {
+    if (step === 0) {
+      useEditor.getState().set('mode', 'animate');
+      onStep(1);
+    } else if (step === 1) {
+      editorHandlers.preview?.();
+      onStep(2);
+    } else {
+      onClose();
+    }
+  };
+  return (
+    <div className="quick-start flex items-center gap-4 px-4 py-2.5 bg-bg2 border-b border-line" role="region" aria-label={`Quick start, step ${step + 1} of 3`}>
+      <div className="flex-1 min-w-0">
+        <div className="text-[12px] font-semibold">{copy.title}<span className="text-t3 font-normal ml-2">{step + 1} of 3</span></div>
+        <p className="text-[11px] text-t1 mt-0.5">{copy.body}</p>
+      </div>
+      <button className="btn btn-primary h-7 whitespace-nowrap" onClick={next}>{copy.action}</button>
+      <button className="btn h-7" onClick={onClose} aria-label="Skip quick start">Skip</button>
+    </div>
+  );
+}
+
+function FileHealthDialog({ report, onClose }: { report: FileHealthReport; onClose: () => void }) {
+  const errors = report.diagnostics.filter((d) => d.severity === 'error').length;
+  const warnings = report.diagnostics.filter((d) => d.severity === 'warning').length;
+  const infos = report.diagnostics.filter((d) => d.severity === 'info').length;
+  return (
+    <Modal title="File health" width={580} className="max-h-[85vh] flex flex-col" onClose={onClose}>
+      <div className="p-4 flex flex-col gap-4 min-h-0">
+        <div>
+          <p className="text-[13px] font-medium">{report.valid ? 'This file is ready to export.' : 'Fix the errors below before relying on this file.'}</p>
+          <p className="text-[11px] text-t2 mt-1">Rive format {report.fileVersion ?? 'unknown'} · {report.counts.artboards} artboards · {report.counts.objects} objects · {report.counts.assets} assets</p>
+        </div>
+        <div className="flex gap-4 text-[11px] text-t1" aria-label="Diagnostic totals">
+          <span className={errors ? 'text-red-300' : ''}>{errors} errors</span><span>{warnings} warnings</span><span>{infos} notes</span>
+        </div>
+        <div className="overflow-y-auto min-h-0 flex flex-col divide-y divide-line">
+          {report.diagnostics.length ? report.diagnostics.map((item, i) => (
+            <div key={`${item.code}-${i}`} className="py-3 first:pt-0">
+              <div className="flex items-center gap-2">
+                <span className={`text-[10px] uppercase font-semibold ${item.severity === 'error' ? 'text-red-300' : item.severity === 'warning' ? 'text-amber-300' : 'text-t2'}`}>{item.severity}</span>
+                <span className="text-[12px] font-medium">{item.title}</span>
+              </div>
+              <p className="text-[11px] text-t1 mt-1">{item.message}</p>
+              {item.fix && <p className="text-[11px] text-t2 mt-1">Suggested fix: {item.fix}</p>}
+            </div>
+          )) : <p className="text-[12px] text-t2 py-2">No file health issues found.</p>}
+        </div>
+        <p className="text-[10px] text-t3">This check covers file structure and features OpenRive can identify. Always preview the exported file in your target runtime.</p>
+      </div>
+    </Modal>
+  );
+}
+
+function SvgImportWarningsDialog({ warnings, onClose }: { warnings: string[]; onClose: () => void }) {
+  return (
+    <Modal title="SVG import notes" width={520} onClose={onClose}>
+      <div className="p-4 flex flex-col gap-3">
+        <p className="text-[12px] text-t1">The supported vector artwork was imported as editable shapes. These SVG features could not be preserved:</p>
+        <ul className="list-disc pl-5 flex flex-col gap-2 text-[11px] text-t2" aria-label="Unsupported SVG features">
+          {warnings.map((warning, index) => <li key={`${warning}-${index}`}>{warning}</li>)}
+        </ul>
+        <div className="flex justify-end pt-1">
+          <button className="btn btn-primary" onClick={onClose}>Got it</button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

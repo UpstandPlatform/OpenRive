@@ -12,6 +12,7 @@
     "postinstall": "bun run ../../scripts/copy-wasm.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "@openrive/auth": "workspace:*",
     "@openrive/cli": "workspace:*",
     "@openrive/db": "workspace:*",
@@ -19,9 +20,9 @@
     "@openrive/shared": "workspace:*",
     "@openrive/storage": "workspace:*",
     "@openrive/ui": "workspace:*",
-    "@rive-app/canvas-advanced": "^2.42.2",
-    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@rive-app/canvas-advanced": "^2.44.2",
     "better-auth": "1.7.6",
+    "gifenc": "^1.0.3",
     "immer": "^11.1.18",
     "lucide-react": "catalog:",
     "nanoid": "catalog:",
