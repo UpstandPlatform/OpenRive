@@ -81,6 +81,7 @@ type Drag =
     }
   | { kind: 'resizeArtboard'; abId: string; handle: Handle; x: number; y: number; w: number; h: number; sx: number; sy: number }
   | { kind: 'rotate'; abId: string; id: string; cx: number; cy: number; a0: number; rot0: number }
+  | { kind: 'boneTip'; abId: string; id: string; parentInverse: Mat; baseX: number; baseY: number }
   | {
       kind: 'create';
       tool: ShapeKind | 'artboard' | 'bone';
@@ -809,6 +810,31 @@ export function Stage() {
     if (ab.id !== activeArtboardId) s.setActiveArtboard(ab.id);
     const scene = scenes.get(ab.id)!;
     const p = abPos(ab);
+    const boneHit = tool === 'select' && !previewing
+      ? hitBone(ab, scene, cx, cy, p, toScreen, s.selection[0])
+      : null;
+    if (boneHit) {
+      s.set('selectionContext', null);
+      s.select([boneHit.id]);
+      if (boneHit.tip && !readOnly) {
+        const bone = findObj(ab, boneHit.id)!;
+        const node = scene.nodes.get(bone.id)!;
+        const parentWorld = node.parent ? scene.nodes.get(node.parent)?.world : undefined;
+        const parentInverse = parentWorld ? invert(parentWorld) : ([1, 0, 0, 1, 0, 0] as Mat);
+        s.beginGesture();
+        setDrag({
+          kind: 'boneTip',
+          abId: ab.id,
+          id: bone.id,
+          parentInverse,
+          baseX: bone.type === 'RootBone' ? prop(bone, 'x') : 0,
+          baseY: bone.type === 'RootBone' ? prop(bone, 'y') : 0,
+        });
+      } else {
+        beginMove(ab, scene, [boneHit.id], sx, sy);
+      }
+      return;
+    }
     const rawHit = hitTestShape(scene, sx - p.x, sy - p.y, 4 / view.zoom);
     if (rawHit) {
       let hit = rawHit;
@@ -960,8 +986,10 @@ export function Stage() {
         let hit: string | null = null;
         if (ab) {
           const p = abPos(ab);
-          hit = hitTestShape(scenes.get(ab.id)!, sx - p.x, sy - p.y, 4 / view.zoom);
-          if (hit) {
+          const scene = scenes.get(ab.id)!;
+          const boneHit = hitBone(ab, scene, cx, cy, p, toScreen, s.selection[0]);
+          hit = boneHit?.id ?? hitTestShape(scene, sx - p.x, sy - p.y, 4 / view.zoom);
+          if (hit && !boneHit) {
             const deep = e.ctrlKey || e.metaKey;
             hit = resolveSelectable(ab, hit, { selection: s.selection, drill: false, mode: deep ? 'object' : selectMode, context: s.selectionContext });
           }
@@ -971,6 +999,17 @@ export function Stage() {
       return;
     }
     switch (drag.kind) {
+      case 'boneTip': {
+        const ab = findArtboard(doc!, drag.abId);
+        const bone = ab && findObj(ab, drag.id);
+        if (!ab || !bone) break;
+        const p = abPos(ab);
+        const [localX, localY] = apply(drag.parentInverse, sx - p.x, sy - p.y);
+        const dx = localX - drag.baseX;
+        const dy = localY - drag.baseY;
+        s.setProps(drag.id, { length: Math.max(0.01, Math.hypot(dx, dy)), rotation: Math.atan2(dy, dx) }, true);
+        break;
+      }
       case 'pan':
         s.set('view', { ...view, panX: drag.panX + cx - drag.sx, panY: drag.panY + cy - drag.sy });
         break;
@@ -1324,6 +1363,16 @@ export function Stage() {
     setBadge(null);
   };
 
+  const onPointerCancel = () => {
+    if (!drag) return;
+    if (drag.kind !== 'pan' && drag.kind !== 'marquee' && drag.kind !== 'create') cancelDrag();
+    else {
+      setDrag(null);
+      setGuides([]);
+      setBadge(null);
+    }
+  };
+
   const onContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     if (!doc || previewing) return;
@@ -1559,11 +1608,12 @@ export function Stage() {
       const [x1, y1] = toScreen(baseX + artboardOffset.x, baseY + artboardOffset.y);
       const [x2, y2] = toScreen(tipX + artboardOffset.x, tipY + artboardOffset.y);
       const selected = selection.includes(bone.id);
+      const hovered = hoverId === bone.id;
       overlay.push(
-        <g key={`bone-${bone.id}`} fill="none" stroke={selected ? '#76c8ff' : '#e5b65c'} pointerEvents="none">
-          <line x1={x1} y1={y1} x2={x2} y2={y2} strokeWidth={selected ? 3 : 2} />
+        <g key={`bone-${bone.id}`} fill="none" stroke={selected || hovered ? '#76c8ff' : '#e5b65c'} pointerEvents="none">
+          <line x1={x1} y1={y1} x2={x2} y2={y2} strokeWidth={selected || hovered ? 3 : 2} />
           <circle cx={x1} cy={y1} r={3.5} fill={selected ? '#76c8ff' : '#e5b65c'} />
-          <circle cx={x2} cy={y2} r={3.5} fill="var(--bg1)" strokeWidth={2} />
+          <circle cx={x2} cy={y2} r={selected ? 5 : 3.5} fill="var(--bg1)" strokeWidth={2} />
         </g>,
       );
     }
@@ -1850,6 +1900,7 @@ export function Stage() {
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
       onPointerLeave={() => {
         if (previewing && activeAb) engine.current?.pointer('exit', -1, -1);
         useEditor.getState().set('hoverId', null);
@@ -2027,6 +2078,44 @@ function resolveSelectable(ab: ArtboardDoc, hitId: string, o: SelectOptions): st
   }
   const pick = chain[Math.min(floor, chain.length - 1)]!;
   return o.drill && floor + 1 < chain.length ? chain[floor + 1]! : pick;
+}
+
+function hitBone(
+  ab: ArtboardDoc,
+  scene: Scene,
+  screenX: number,
+  screenY: number,
+  artboardOffset: { x: number; y: number },
+  toScreen: (x: number, y: number) => [number, number],
+  selectedId?: string,
+): { id: string; tip: boolean } | null {
+  const bones = ab.objects.filter((object) => isA(object.type, 'Bone'));
+  const endpoints = bones.flatMap((bone) => {
+    const node = scene.nodes.get(bone.id);
+    if (!node) return [];
+    const [baseX, baseY] = apply(node.world, 0, 0);
+    const [tipX, tipY] = apply(node.world, prop(bone, 'length'), 0);
+    return [{
+      id: bone.id,
+      base: toScreen(baseX + artboardOffset.x, baseY + artboardOffset.y),
+      tip: toScreen(tipX + artboardOffset.x, tipY + artboardOffset.y),
+    }];
+  });
+  // The tip handle wins over an overlapping segment so it remains easy to grab.
+  const tipPriority = [...endpoints].sort((a, b) => Number(b.id === selectedId) - Number(a.id === selectedId));
+  for (const endpoint of tipPriority) {
+    if (Math.hypot(screenX - endpoint.tip[0], screenY - endpoint.tip[1]) <= 10) return { id: endpoint.id, tip: true };
+  }
+  let closest: { id: string; distance: number } | null = null;
+  for (const endpoint of [...endpoints].reverse()) {
+    const dx = endpoint.tip[0] - endpoint.base[0];
+    const dy = endpoint.tip[1] - endpoint.base[1];
+    const lengthSquared = dx * dx + dy * dy;
+    const t = lengthSquared ? Math.max(0, Math.min(1, ((screenX - endpoint.base[0]) * dx + (screenY - endpoint.base[1]) * dy) / lengthSquared)) : 0;
+    const distance = Math.hypot(screenX - endpoint.base[0] - t * dx, screenY - endpoint.base[1] - t * dy);
+    if (distance <= 8 && (!closest || distance < closest.distance)) closest = { id: endpoint.id, distance };
+  }
+  return closest ? { id: closest.id, tip: false } : null;
 }
 
 /** True when the object can be entered (a group with children). */

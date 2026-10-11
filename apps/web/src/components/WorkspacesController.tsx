@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Building2, Check, Crown, LoaderCircle, MailPlus, Plus, RefreshCw, Shield, Trash2, UserRound, Users } from 'lucide-react';
+import { AlertTriangle, Building2, Check, Crown, LoaderCircle, MailPlus, Plus, RefreshCw, Shield, Trash2, UserRound, Users } from 'lucide-react';
 import { authClient, authError } from '@/lib/client/auth';
 import { api, useSession } from '@/lib/client/session';
 
@@ -20,6 +20,7 @@ export function WorkspacesController() {
   const [name, setName] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<Role>('editor');
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -205,6 +206,23 @@ export function WorkspacesController() {
     }, 'Could not transfer ownership');
   }
 
+  async function deleteWorkspace() {
+    if (!active || !isOwner || deleteConfirmation.trim() !== active.name) return;
+    await runAction(async () => {
+      await api.json(`/api/workspaces/${active.id}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ confirmation: deleteConfirmation.trim() }),
+      });
+      setOrganizations((rows) => rows.filter((organization) => organization.id !== active.id));
+      setSelectedId(activeOrganizationId === active.id ? null : activeOrganizationId ?? null);
+      setDetails(null);
+      setDeleteConfirmation('');
+      // The deletion transaction clears activeOrganizationId for every session.
+      await session.refresh();
+      setNotice(`${active.name} and its workspace files were permanently deleted.`);
+    }, 'Could not delete workspace', true);
+  }
+
   if (!session.authEnabled) return (
     <main className="max-w-3xl mx-auto px-6 py-12">
       <h1 className="text-xl font-semibold">Workspaces need accounts</h1>
@@ -290,6 +308,17 @@ export function WorkspacesController() {
               </div>}
             </>}
             {!canManage && <p className="text-xs text-t2 mt-4 inline-flex items-center gap-1"><Shield size={12} /> Workspace administrators manage members and invitations.</p>}
+            {isOwner && <section aria-labelledby="workspace-danger-heading" className="mt-8 border-t border-danger/30 pt-5">
+              <h3 id="workspace-danger-heading" className="font-semibold text-danger flex items-center gap-2"><AlertTriangle size={16} /> Danger zone</h3>
+              <p className="mt-2 max-w-2xl text-sm text-t2">Deleting this workspace permanently removes its members, invitations, projects, and uploaded files. This action cannot be undone. Your personal projects are not affected.</p>
+              <div className="mt-4 max-w-lg space-y-2">
+                <label htmlFor="delete-workspace-confirmation" className="text-sm text-t1">Type <span className="font-semibold">{active.name}</span> to confirm</label>
+                <input id="delete-workspace-confirmation" className="field h-9 w-full" value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} autoComplete="off" disabled={busy} />
+                <button type="button" className="btn btn-danger" disabled={busy || deleteConfirmation.trim() !== active.name} onClick={() => void deleteWorkspace()}>
+                  {busy ? <LoaderCircle size={14} className="animate-spin" /> : <Trash2 size={14} />} Delete workspace permanently
+                </button>
+              </div>
+            </section>}
           </>}
         </section>
       </div>

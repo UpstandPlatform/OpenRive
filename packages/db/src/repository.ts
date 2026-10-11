@@ -4,7 +4,7 @@ import { idSchema, type ProjectMeta, type User } from '@openrive/shared';
 import { and, asc, desc, eq, notInArray, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from './client';
-import { members, projects, settings, users, type ProjectRow, type UserRow } from './schema';
+import { invitations, members, organizations, projects, sessions, settings, users, type ProjectRow, type UserRow } from './schema';
 
 const toMeta = (row: ProjectRow): ProjectMeta => ({
   id: row.id,
@@ -240,6 +240,39 @@ export async function updateOrganizationMemberRole(
       .where(and(eq(members.organizationId, organizationId), eq(members.userId, userId), sql`${members.role} <> 'owner'`))
       .returning();
     return updated.length ? 'updated' : 'missing';
+  });
+}
+
+export type DeleteOrganizationResult =
+  | { status: 'deleted'; storageKeys: string[] }
+  | { status: 'forbidden' | 'missing' | 'name-mismatch'; storageKeys: [] };
+
+/** Deletes a workspace and all of its files atomically, only for its current owner. */
+export async function deleteOrganization(
+  organizationId: string,
+  ownerId: string,
+  expectedName: string,
+): Promise<DeleteOrganizationResult> {
+  const conn = await db();
+  return conn.transaction(async (tx) => {
+    const [owner] = await tx.select({ id: members.id, role: members.role }).from(members)
+      .where(and(eq(members.organizationId, organizationId), eq(members.userId, ownerId)))
+      .for('update').limit(1);
+    if (!owner || owner.role !== 'owner') return { status: 'forbidden', storageKeys: [] };
+
+    const [organization] = await tx.select({ name: organizations.name }).from(organizations)
+      .where(eq(organizations.id, organizationId)).limit(1);
+    if (!organization) return { status: 'missing', storageKeys: [] };
+    if (organization.name !== expectedName) return { status: 'name-mismatch', storageKeys: [] };
+
+    const rows = await tx.select({ rivStorageKey: projects.rivStorageKey }).from(projects)
+      .where(eq(projects.organizationId, organizationId));
+    await tx.delete(projects).where(eq(projects.organizationId, organizationId));
+    await tx.update(sessions).set({ activeOrganizationId: null, updatedAt: new Date() })
+      .where(eq(sessions.activeOrganizationId, organizationId));
+    await tx.delete(invitations).where(eq(invitations.organizationId, organizationId));
+    await tx.delete(organizations).where(eq(organizations.id, organizationId));
+    return { status: 'deleted', storageKeys: rows.flatMap((row) => row.rivStorageKey ? [row.rivStorageKey] : []) };
   });
 }
 

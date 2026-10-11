@@ -50,8 +50,11 @@ Workspace roles are independent of global account roles:
 | **Viewer** | Open and preview workspace projects |
 
 Invitations expire after seven days. Invitees must sign in with the invited email address and verify ownership of that
-address. Workspace ownership must be transferred before its owner account can be deleted. Workspace deletion is
-disabled so deleting a workspace cannot accidentally turn its projects into personal files.
+address. Workspace ownership must be transferred before its owner account can be deleted. Owners can delete a
+workspace from its Danger zone in Workspace settings; that operation removes the workspace's projects and invitations
+in one database transaction, clears active workspace selections, and then best-effort deletes uploaded assets. Personal
+projects are never reassigned or deleted by this operation. Better Auth's direct organization-deletion endpoint stays
+disabled so it cannot bypass this cleanup path.
 
 ## Who may sign up
 

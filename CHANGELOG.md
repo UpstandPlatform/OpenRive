@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.1 - 2026-10-11
+
+### Workspaces
+
+- Add owner-only workspace deletion in a typed-confirmation Danger zone; projects and invitations are removed safely, active sessions return to Personal, and personal projects remain untouched.
+
+### Rigging
+
+- Select bones directly on the canvas, move their roots, and drag selected tips to adjust length and rotation in one undoable gesture.
+- Clarify the current bone and skin editing scope in the user and file-format guides.
+
 ## 0.1.0 - 2026-10-11
 
 ### Editor

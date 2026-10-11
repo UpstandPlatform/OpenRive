@@ -208,15 +208,26 @@ jobs:
         run: ls -lh artifacts
 
       - name: Attach desktop assets to the selected existing release
-        if: inputs.release_version != ''
+        if: github.ref_type == 'tag' || inputs.release_version != ''
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.version.outputs.tag }}
-        run: gh release upload "${TAG}" artifacts/* --repo "${GITHUB_REPOSITORY}" --clobber
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            if gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+              gh release upload "${TAG}" artifacts/* --repo "${GITHUB_REPOSITORY}" --clobber
+              exit 0
+            fi
+            echo "Release ${TAG} is not available yet (attempt ${attempt}/60); waiting for validation workflow."
+            sleep 10
+          done
+          echo "Release ${TAG} was not created by the validation workflow." >&2
+          exit 1
 
       - name: Publish the release
         uses: softprops/action-gh-release@v2
-        if: inputs.release_version == ''
+        if: github.ref_type != 'tag' && inputs.release_version == ''
         with:
           tag_name: ${{ needs.version.outputs.tag }}
           name: OpenRive ${{ needs.version.outputs.version }}

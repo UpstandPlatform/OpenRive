@@ -19,7 +19,7 @@ const { env, resetEnv } = await import('@openrive/shared/env');
 resetEnv();
 
 const auth = await import('@openrive/auth');
-const { closeDatabase, createProject, db, getOrganizationMemberRole, schema, transferOrganizationOwnership, updateOrganizationMemberRole } = await import('@openrive/db');
+const { closeDatabase, createProject, db, deleteOrganization, getOrganizationMemberRole, schema, transferOrganizationOwnership, updateOrganizationMemberRole } = await import('@openrive/db');
 const { eq } = await import('drizzle-orm');
 
 let failures = 0;
@@ -139,6 +139,31 @@ try {
   const ownerCount = (await conn.select().from(schema.members).where(eq(schema.members.organizationId, organization!.id)))
     .filter((row) => row.role === 'owner').length;
   check(concurrentTransfers.filter(Boolean).length === 1 && ownerCount === 1, 'concurrent transfers cannot create multiple workspace owners');
+
+  const deletableResponse = await (await api()).createOrganization({
+    body: { name: 'Temporary Workspace', slug: 'temporary-workspace' }, headers: session!, asResponse: true,
+  });
+  const deletable = deletableResponse.ok ? await deletableResponse.json() as { id: string } : null;
+  const storedWorkspaceFile = await createProject({ name: 'Workspace file', ownerId: admin.id, organizationId: deletable!.id, rivStorageKey: 'workspace/test-file', doc: '{}' });
+  const personalFile = await createProject({ name: 'Personal file', ownerId: admin.id, doc: '{}' });
+  await conn.insert(schema.invitations).values({
+    id: 'delete-workspace-invite', organizationId: deletable!.id, email: 'pending@example.com', role: 'editor', status: 'pending',
+    expiresAt: new Date(Date.now() + 60_000), createdAt: new Date(), inviterId: admin.id,
+  });
+  check((await deleteOrganization(deletable!.id, member.id, 'Temporary Workspace')).status === 'forbidden', 'a non-owner cannot delete a workspace');
+  check((await deleteOrganization(deletable!.id, admin.id, 'Stale workspace name')).status === 'name-mismatch', 'workspace deletion rejects stale confirmation names');
+  const deletion = await deleteOrganization(deletable!.id, admin.id, 'Temporary Workspace');
+  check(deletion.status === 'deleted' && deletion.storageKeys[0] === 'workspace/test-file', 'workspace deletion returns cloud asset keys after a successful transaction');
+  const remainingWorkspaceProjects = await conn.select().from(schema.projects).where(eq(schema.projects.id, storedWorkspaceFile.id));
+  const remainingPersonalProjects = await conn.select().from(schema.projects).where(eq(schema.projects.id, personalFile.id));
+  const remainingWorkspaceMembers = await conn.select().from(schema.members).where(eq(schema.members.organizationId, deletable!.id));
+  const remainingWorkspaceInvitations = await conn.select().from(schema.invitations).where(eq(schema.invitations.id, 'delete-workspace-invite'));
+  check(!remainingWorkspaceProjects.length, 'workspace projects are removed rather than becoming personal files');
+  check(!!remainingPersonalProjects.length, 'workspace deletion preserves personal projects');
+  check(!remainingWorkspaceMembers.length, 'workspace deletion removes memberships');
+  check(!remainingWorkspaceInvitations.length, 'workspace deletion removes pending invitations');
+  const activeAfterDeletion = await auth.sessionUser(session!);
+  check(activeAfterDeletion?.activeOrganizationId == null, 'deleting the active workspace clears the owner session selection');
 
   const editorAdminApi = await (await api()).listUsers({ query: { limit: 10 }, headers: memberSession!, asResponse: true }).catch(() => null);
   const adminApi = await (await api()).listUsers({ query: { limit: 10 }, headers: session!, asResponse: true }).catch(() => null);
