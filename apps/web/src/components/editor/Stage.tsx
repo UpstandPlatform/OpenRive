@@ -42,6 +42,7 @@ import { importSvgMarkup } from '@/lib/client/svgImport';
 import { hasClipboard, runAction } from './actions';
 import { toast } from '@/lib/client/toast';
 import { addBone } from '@openrive/rive/api';
+import { boneCreationFromDrag, boneDragFrame, boneParentPoint, boneRootPositionFromPointer, boneRotationFromPointer, boneTipProps, hitBone } from './boneEditing';
 
 type Handle = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 
@@ -82,6 +83,8 @@ type Drag =
   | { kind: 'resizeArtboard'; abId: string; handle: Handle; x: number; y: number; w: number; h: number; sx: number; sy: number }
   | { kind: 'rotate'; abId: string; id: string; cx: number; cy: number; a0: number; rot0: number }
   | { kind: 'boneTip'; abId: string; id: string; parentInverse: Mat; baseX: number; baseY: number }
+  | { kind: 'boneBase'; abId: string; id: string; frame: ReturnType<typeof boneDragFrame> }
+  | { kind: 'boneRotate'; abId: string; id: string; frame: ReturnType<typeof boneDragFrame>; pointerAngle: number; rotation: number }
   | {
       kind: 'create';
       tool: ShapeKind | 'artboard' | 'bone';
@@ -567,10 +570,10 @@ export function Stage() {
     return { x, y, guides: [] as Guide[] };
   };
 
-  const startCreate = (tool: ShapeKind | 'artboard' | 'bone', ab: ArtboardDoc | null, sx: number, sy: number, e: React.PointerEvent, parentId?: string) => {
+  const startCreate = (tool: ShapeKind | 'artboard' | 'bone', ab: ArtboardDoc | null, sx: number, sy: number, e: React.PointerEvent, parentId?: string, snapStart = true) => {
     const targets = createTargets(ab);
     const origin = ab ? abPos(ab) : { x: 0, y: 0 };
-    const p = snapCreatePoint(sx, sy, origin, targets, e.ctrlKey || e.metaKey);
+    const p = snapStart ? snapCreatePoint(sx, sy, origin, targets, e.ctrlKey || e.metaKey) : { x: sx, y: sy, guides: [] as Guide[] };
     setGuides(p.guides);
     setDrag({ kind: 'create', tool, abId: ab?.id ?? null, ...(parentId ? { parentId } : {}), x0: p.x, y0: p.y, x1: p.x, y1: p.y, shift: e.shiftKey, alt: e.altKey, targets });
   };
@@ -656,7 +659,7 @@ export function Stage() {
         if (boneScene) {
           const p = abPos(ab);
           const [tipX, tipY] = apply(boneScene.world, prop(selectedBone, 'length'), 0);
-          startCreate('bone', ab, tipX + p.x, tipY + p.y, e, selectedBone.id);
+          startCreate('bone', ab, tipX + p.x, tipY + p.y, e, selectedBone.id, false);
           return;
         }
       }
@@ -816,20 +819,19 @@ export function Stage() {
     if (boneHit) {
       s.set('selectionContext', null);
       s.select([boneHit.id]);
-      if (boneHit.tip && !readOnly) {
+      if (boneHit.handle !== 'shaft' && !readOnly) {
         const bone = findObj(ab, boneHit.id)!;
-        const node = scene.nodes.get(bone.id)!;
-        const parentWorld = node.parent ? scene.nodes.get(node.parent)?.world : undefined;
-        const parentInverse = parentWorld ? invert(parentWorld) : ([1, 0, 0, 1, 0, 0] as Mat);
+        const frame = boneDragFrame(scene, bone);
         s.beginGesture();
-        setDrag({
-          kind: 'boneTip',
-          abId: ab.id,
-          id: bone.id,
-          parentInverse,
-          baseX: bone.type === 'RootBone' ? prop(bone, 'x') : 0,
-          baseY: bone.type === 'RootBone' ? prop(bone, 'y') : 0,
-        });
+        if (boneHit.handle === 'tip') setDrag({ kind: 'boneTip', abId: ab.id, id: bone.id, ...frame });
+        else setDrag({ kind: 'boneBase', abId: ab.id, id: bone.id, frame });
+      } else if (boneHit.handle === 'shaft' && !readOnly) {
+        const bone = findObj(ab, boneHit.id)!;
+        const frame = boneDragFrame(scene, bone);
+        const [localX, localY] = boneParentPoint(frame, sx, sy, p);
+        const pointerAngle = Math.atan2(localY - frame.baseY, localX - frame.baseX);
+        s.beginGesture();
+        setDrag({ kind: 'boneRotate', abId: ab.id, id: bone.id, frame, pointerAngle, rotation: prop(bone, 'rotation') });
       } else {
         beginMove(ab, scene, [boneHit.id], sx, sy);
       }
@@ -905,7 +907,7 @@ export function Stage() {
     // move only top-most selected nodes
     const nodes = ids.filter((id) => {
       const o = findObj(ab, id);
-      return o && isA(o.type, 'Node') && o.type !== 'Artboard' && !ids.some((other) => other !== id && isAncestor(ab, other, id));
+      return o && (isA(o.type, 'Node') || o.type === 'RootBone') && o.type !== 'Artboard' && !ids.some((other) => other !== id && isAncestor(ab, other, id));
     });
     if (ids.includes(ab.artboard.id)) {
       beginArtboardMove([ab.id], sx, sy);
@@ -1004,10 +1006,21 @@ export function Stage() {
         const bone = ab && findObj(ab, drag.id);
         if (!ab || !bone) break;
         const p = abPos(ab);
-        const [localX, localY] = apply(drag.parentInverse, sx - p.x, sy - p.y);
-        const dx = localX - drag.baseX;
-        const dy = localY - drag.baseY;
-        s.setProps(drag.id, { length: Math.max(0.01, Math.hypot(dx, dy)), rotation: Math.atan2(dy, dx) }, true);
+        s.setProps(drag.id, boneTipProps(drag, sx, sy, p, prop(bone, 'rotation')), true);
+        break;
+      }
+      case 'boneBase': {
+        const ab = findArtboard(doc!, drag.abId);
+        const bone = ab && findObj(ab, drag.id);
+        if (!ab || !bone || bone.type !== 'RootBone') break;
+        const position = boneRootPositionFromPointer(drag.frame, sx, sy, abPos(ab));
+        s.setProps(drag.id, { x: round2(position[0]), y: round2(position[1]) }, true);
+        break;
+      }
+      case 'boneRotate': {
+        const ab = findArtboard(doc!, drag.abId);
+        if (!ab || !findObj(ab, drag.id)) break;
+        s.setProps(drag.id, { rotation: boneRotationFromPointer(drag.frame, sx, sy, abPos(ab), drag.pointerAngle, drag.rotation) }, true);
         break;
       }
       case 'pan':
@@ -1304,12 +1317,9 @@ export function Stage() {
       } else if (drag.abId && drag.tool === 'bone') {
         const parentId = drag.parentId;
         const ab = findArtboard(doc, drag.abId)!;
-        const parentWorld = parentId ? buildScene(ab).nodes.get(parentId)?.world : undefined;
-        const worldAngle = Math.atan2(drag.y1 - drag.y0, drag.x1 - drag.x0);
-        const parentAngle = parentWorld ? Math.atan2(parentWorld[1], parentWorld[0]) : 0;
         const p = abPos(ab);
-        const length = Math.hypot(drag.x1 - drag.x0, drag.y1 - drag.y0);
-        if (length < 1) {
+        const boneTransform = boneCreationFromDrag(ab, buildScene(ab), parentId, drag.x0, drag.y0, drag.x1, drag.y1, p);
+        if (boneTransform.length < 1) {
           toast('Drag at least one pixel to create a bone.');
         } else {
           let createdId = '';
@@ -1317,10 +1327,10 @@ export function Stage() {
             const bone = addBone(d, {
               artboard: drag.abId!,
               ...(parentId ? { parent: parentId } : {}),
-              x: Math.round(drag.x0 - p.x),
-              y: Math.round(drag.y0 - p.y),
-              length: Math.round(length * 100) / 100,
-              rotation: worldAngle - parentAngle,
+              x: Math.round(boneTransform.x),
+              y: Math.round(boneTransform.y),
+              length: round2(boneTransform.length),
+              rotation: boneTransform.rotation,
             });
             createdId = bone.id;
           });
@@ -1612,7 +1622,7 @@ export function Stage() {
       overlay.push(
         <g key={`bone-${bone.id}`} fill="none" stroke={selected || hovered ? '#76c8ff' : '#e5b65c'} pointerEvents="none">
           <line x1={x1} y1={y1} x2={x2} y2={y2} strokeWidth={selected || hovered ? 3 : 2} />
-          <circle cx={x1} cy={y1} r={3.5} fill={selected ? '#76c8ff' : '#e5b65c'} />
+          <circle cx={x1} cy={y1} r={selected && bone.type === 'RootBone' ? 5.5 : selected ? 4.5 : 3.5} fill={selected ? '#76c8ff' : '#e5b65c'} />
           <circle cx={x2} cy={y2} r={selected ? 5 : 3.5} fill="var(--bg1)" strokeWidth={2} />
         </g>,
       );
@@ -2078,44 +2088,6 @@ function resolveSelectable(ab: ArtboardDoc, hitId: string, o: SelectOptions): st
   }
   const pick = chain[Math.min(floor, chain.length - 1)]!;
   return o.drill && floor + 1 < chain.length ? chain[floor + 1]! : pick;
-}
-
-function hitBone(
-  ab: ArtboardDoc,
-  scene: Scene,
-  screenX: number,
-  screenY: number,
-  artboardOffset: { x: number; y: number },
-  toScreen: (x: number, y: number) => [number, number],
-  selectedId?: string,
-): { id: string; tip: boolean } | null {
-  const bones = ab.objects.filter((object) => isA(object.type, 'Bone'));
-  const endpoints = bones.flatMap((bone) => {
-    const node = scene.nodes.get(bone.id);
-    if (!node) return [];
-    const [baseX, baseY] = apply(node.world, 0, 0);
-    const [tipX, tipY] = apply(node.world, prop(bone, 'length'), 0);
-    return [{
-      id: bone.id,
-      base: toScreen(baseX + artboardOffset.x, baseY + artboardOffset.y),
-      tip: toScreen(tipX + artboardOffset.x, tipY + artboardOffset.y),
-    }];
-  });
-  // The tip handle wins over an overlapping segment so it remains easy to grab.
-  const tipPriority = [...endpoints].sort((a, b) => Number(b.id === selectedId) - Number(a.id === selectedId));
-  for (const endpoint of tipPriority) {
-    if (Math.hypot(screenX - endpoint.tip[0], screenY - endpoint.tip[1]) <= 10) return { id: endpoint.id, tip: true };
-  }
-  let closest: { id: string; distance: number } | null = null;
-  for (const endpoint of [...endpoints].reverse()) {
-    const dx = endpoint.tip[0] - endpoint.base[0];
-    const dy = endpoint.tip[1] - endpoint.base[1];
-    const lengthSquared = dx * dx + dy * dy;
-    const t = lengthSquared ? Math.max(0, Math.min(1, ((screenX - endpoint.base[0]) * dx + (screenY - endpoint.base[1]) * dy) / lengthSquared)) : 0;
-    const distance = Math.hypot(screenX - endpoint.base[0] - t * dx, screenY - endpoint.base[1] - t * dy);
-    if (distance <= 8 && (!closest || distance < closest.distance)) closest = { id: endpoint.id, distance };
-  }
-  return closest ? { id: closest.id, tip: false } : null;
 }
 
 /** True when the object can be entered (a group with children). */

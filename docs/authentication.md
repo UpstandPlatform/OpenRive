@@ -30,9 +30,11 @@ the **administrator** and is signed in straight away; everyone who signs up late
 By default, the address is only used to sign in and no mail is sent. To enable verification emails and workspace
 invitations, configure both `OPENRIVE_SMTP_URL` and `OPENRIVE_EMAIL_FROM`. OpenRive requires verified email ownership
 before an invite recipient can join a workspace. SMTP transport errors do not leave a pending invitation behind.
-CLI and MCP clients can select a workspace per request with the
+CLI and MCP API-key clients can select a workspace per request with the
 `X-OpenRive-Organization-Id` header. OpenRive validates membership and role on
-every request; the header never grants access by itself.
+every request; the header never grants access by itself. A stateful MCP session
+is bound to the workspace selected when it starts; create a new MCP session to
+switch workspace. Stateless MCP requests can select a workspace independently.
 
 ## Workspaces and members
 

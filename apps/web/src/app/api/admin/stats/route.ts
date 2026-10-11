@@ -1,5 +1,6 @@
 import { authEnabled, listAccounts, listSessions } from '@openrive/auth';
 import { describeDatabase, listProjects } from '@openrive/db';
+import { isAdministratorRole } from '@openrive/shared';
 import { env } from '@openrive/shared/env';
 import { requireAdmin } from '@/lib/server/auth';
 import { handler, json } from '@/lib/server/route';
@@ -21,7 +22,7 @@ export const GET = handler(async () => {
     database: { backend, where },
     users: {
       total: accounts.length,
-      admins: accounts.filter((a) => a.role === 'admin').length,
+      admins: accounts.filter((account) => isAdministratorRole(account.role)).length,
       editors: accounts.filter((a) => a.role === 'editor').length,
       viewers: accounts.filter((a) => a.role === 'viewer').length,
       disabled: accounts.filter((a) => a.disabled).length,

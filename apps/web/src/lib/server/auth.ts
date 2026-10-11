@@ -5,6 +5,7 @@ import {
   authEnabled,
   canEditProject,
   canManageProject,
+  canShareProject,
   canSeeProject,
   canTransferProject,
   isAdmin,
@@ -18,7 +19,7 @@ import type { ProjectMeta } from '@openrive/shared';
 import { headers as nextHeaders } from 'next/headers';
 import { fail } from './route';
 
-export { auth, authEnabled, canEditProject, canManageProject, canSeeProject, canTransferProject, isAdmin, SESSION_COOKIE };
+export { auth, authEnabled, canEditProject, canManageProject, canShareProject, canSeeProject, canTransferProject, isAdmin, SESSION_COOKIE };
 export type { Account };
 
 /**
@@ -51,7 +52,7 @@ export async function currentUserFromHeaders(requestHeaders: Headers): Promise<A
   }
   if (authEnabled()) return sessionUser(requestHeaders);
   const users = await listUsers();
-  const local = users.find((u) => u.role === 'admin') ?? users[0];
+  const local = users.find((u) => isAdmin(u)) ?? users[0];
   return local ? { ...local, email: null, emailVerified: false, disabled: false, lastLoginAt: null, hasPassword: false } : null;
 }
 

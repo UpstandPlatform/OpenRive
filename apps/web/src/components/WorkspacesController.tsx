@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, Building2, Check, Crown, LoaderCircle, MailPlus, Plus, RefreshCw, Shield, Trash2, UserRound, Users } from 'lucide-react';
 import { authClient, authError } from '@/lib/client/auth';
 import { api, useSession } from '@/lib/client/session';
+import { canCreateWorkspace, canDeleteWorkspace, canManageWorkspace, canRenameWorkspace, canAssignWorkspaceAdministrators, workspaceRoleForDisplay } from '@openrive/shared';
 
 type Organization = { id: string; name: string; slug: string; createdAt: Date | string };
 type Member = { id: string; organizationId: string; userId: string; role: string; user?: { name: string; email?: string | null; image?: string | null } };
@@ -102,8 +103,9 @@ export function WorkspacesController() {
   const invitations = details?.organizationId === selectedId ? details.invitations : [];
   const active = organizations.find((organization) => organization.id === selectedId);
   const currentMember = members.find((member) => member.userId === session.account?.id);
-  const isOwner = currentMember?.role.split(',').includes('owner') ?? false;
-  const canManage = isOwner || currentMember?.role.split(',').includes('admin') === true;
+  const isOwner = canDeleteWorkspace(currentMember?.role);
+  const canManage = canManageWorkspace(currentMember?.role);
+  const canAssignAdmins = canAssignWorkspaceAdministrators(currentMember?.role);
 
   async function runAction(action: () => Promise<void>, fallback: string, clearNotice = false) {
     setBusy(true);
@@ -252,10 +254,10 @@ export function WorkspacesController() {
             </button>
           ))}
           {loading && <div className="flex justify-center py-3"><LoaderCircle size={16} className="animate-spin text-t2" /></div>}
-          <form onSubmit={createWorkspace} className="border-t border-line mt-2 pt-3 flex gap-2">
+          {canCreateWorkspace(session.account) && <form onSubmit={createWorkspace} className="border-t border-line mt-2 pt-3 flex gap-2">
             <input className="field min-w-0 flex-1 h-8" value={name} onChange={(event) => setName(event.target.value)} placeholder="Workspace name" maxLength={80} aria-label="New workspace name" />
             <button className="btn btn-primary px-2" disabled={busy || !name.trim()} title="Create workspace"><Plus size={15} /></button>
-          </form>
+          </form>}
         </section>
 
         <section className="panel p-5 min-w-0">
@@ -268,7 +270,7 @@ export function WorkspacesController() {
               <div className="min-w-0 flex-1"><h2 className="font-semibold text-lg truncate">{active.name}</h2><p className="text-xs text-t2 mt-1">{members.length} {members.length === 1 ? 'member' : 'members'} · {currentMember?.role ?? 'member'}</p></div>
               {session.account?.activeOrganizationId !== active.id && <button className="btn btn-primary" disabled={busy} onClick={() => void setActive(active.id)}>Use this workspace</button>}
             </div>
-            {canManage && <form onSubmit={renameWorkspace} className="mt-5 flex gap-2 max-w-lg">
+            {canRenameWorkspace(currentMember?.role) && <form onSubmit={renameWorkspace} className="mt-5 flex gap-2 max-w-lg">
               <input className="field h-9 flex-1" value={name} onChange={(event) => setName(event.target.value)} placeholder={active.name} maxLength={80} aria-label="Workspace name" />
               <button className="btn" disabled={busy || !name.trim()}>Rename</button>
             </form>}
@@ -276,13 +278,13 @@ export function WorkspacesController() {
             <h3 className="font-medium flex items-center gap-2 mb-3"><Users size={15} /> Members</h3>
             <div className="divide-y divide-line">
               {members.map((member) => {
-                const memberIsOwner = member.role.split(',').includes('owner');
+                const memberIsOwner = canDeleteWorkspace(member.role);
                 const display = member.user?.name || member.user?.email || 'OpenRive member';
                 return <div key={member.id} className="py-3 flex items-center gap-3 flex-wrap">
                   <div className="min-w-0 flex-1"><div className="text-sm truncate">{display}{member.userId === session.account?.id ? ' (you)' : ''}</div><div className="text-xs text-t2 truncate">{member.user?.email ?? 'Member'}</div></div>
                   {memberIsOwner ? <span className="text-xs text-t1 inline-flex items-center gap-1"><Crown size={13} /> Owner</span> : canManage ? <>
-                    <select className="field h-8" value={member.role as Role} disabled={busy} onChange={(event) => void updateRole(member, event.target.value as Role)} aria-label={`Role for ${display}`}>
-                      <option value="admin">Administrator</option><option value="editor">Editor</option><option value="viewer">Viewer</option>
+                    <select className="field h-8" value={workspaceRoleForDisplay(member.role) ?? 'viewer'} disabled={busy} onChange={(event) => void updateRole(member, event.target.value as Role)} aria-label={`Role for ${display}`}>
+                      {canAssignAdmins && <option value="admin">Administrator</option>}<option value="editor">Editor</option><option value="viewer">Viewer</option>
                     </select>
                     {isOwner && <button className="btn" disabled={busy} onClick={() => void transferOwnership(member)} title="Transfer workspace ownership"><Crown size={13} /></button>}
                     <button className="btn btn-danger" disabled={busy} onClick={() => void removeMember(member)} title={`Remove ${display}`}><Trash2 size={13} /></button>
@@ -296,7 +298,7 @@ export function WorkspacesController() {
               <form onSubmit={invite} className="flex gap-2 flex-wrap">
                 <input className="field h-9 flex-1 min-w-[180px]" type="email" required value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="name@example.com" aria-label="Teammate email" />
                 <select className="field h-9" value={inviteRole} onChange={(event) => setInviteRole(event.target.value as Role)} aria-label="Invitation role">
-                  <option value="editor">Editor</option><option value="viewer">Viewer</option>{isOwner && <option value="admin">Administrator</option>}
+                  <option value="editor">Editor</option><option value="viewer">Viewer</option>{canAssignAdmins && <option value="admin">Administrator</option>}
                 </select>
                 <button className="btn btn-primary" disabled={busy || !inviteEmail.trim()}><MailPlus size={14} /> Send invite</button>
               </form>

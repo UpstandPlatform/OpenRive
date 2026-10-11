@@ -6,7 +6,7 @@
 //    OpenRive has always worked
 //  - sign-in on (self-hosted): the signed-in account, from a session cookie
 import { create } from 'zustand';
-import type { ProjectMeta, Role, User } from '@openrive/shared';
+import { canAccessProject, canCreateProject, type ProjectMeta, type Role, type User } from '@openrive/shared';
 import { authClient } from './auth';
 
 const KEY = 'openrive:user';
@@ -114,22 +114,14 @@ export function useRole(): Role | null {
 }
 
 export function canEdit(user: User | null, project: ProjectMeta | null | undefined): boolean {
-  if (!user || !project) return false;
-  if (user.role === 'viewer') return false;
-  if (user.role === 'admin') return true;
-  if (project.organizationId) {
-    return user.activeOrganizationId === project.organizationId && ['owner', 'admin', 'editor'].includes(user.activeOrganizationRole ?? '');
-  }
-  return project.ownerId === user.id || !!project.sharedWith?.includes(user.id);
+  return !!project && canAccessProject(user, project, 'edit');
 }
 
 export function canSee(user: User | null, project: ProjectMeta): boolean {
-  if (!user) return false;
-  if (user.role === 'admin') return true;
-  if (project.organizationId) return user.activeOrganizationId === project.organizationId && !!user.activeOrganizationRole;
-  if (user.role === 'viewer') return true;
-  return project.ownerId === user.id || !!project.sharedWith?.includes(user.id);
+  return canAccessProject(user, project, 'read');
 }
+
+export { canCreateProject };
 
 export const api = {
   async json<T>(url: string, init?: RequestInit): Promise<T> {

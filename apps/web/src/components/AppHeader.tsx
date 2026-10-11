@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { Bot, Building2, Check, ChevronDown, LogOut, Shield, Users } from 'lucide-react';
 import { useCurrentUser, useSession } from '@/lib/client/session';
-import { ROLE_INFO } from '@openrive/shared';
+import { canManageAccounts, ROLE_INFO } from '@openrive/shared';
 import { Avatar } from './Avatar';
 import { HelpMenuItems, UpdateMenuSection, WindowControls } from './desktop';
 
@@ -69,7 +69,7 @@ export function UserSwitcher() {
               <div className="menu-sep" />
             </>
           )}
-          {user.role === 'admin' && (
+          {canManageAccounts(user.role) && (
             <Link href="/admin" className="menu-item" onClick={() => setOpen(false)}>
               <Shield size={14} /> Admin dashboard
             </Link>
@@ -113,7 +113,7 @@ export function AppHeader() {
       <div className="app-header-brand"><Logo /></div>
       <nav className="app-header-nav flex items-center gap-1">
         {tab('/', 'Files')}
-        {user?.role === 'admin' ? tab('/admin', 'Admin', true) : null}
+        {user && canManageAccounts(user.role) ? tab('/admin', 'Admin', true) : null}
         {authEnabled ? tab('/settings/workspaces', 'Workspaces', true) : null}
         {!authEnabled && tab('/users', 'Users', true)}
         <Link

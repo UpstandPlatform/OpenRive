@@ -41,8 +41,9 @@ or another tab) changes the file while it's open, a banner lets you reload or ke
 - **Skinning**: create a bone chain with the Bone tool, select a vector path, then choose **Bind bones** in Inspector.
   Edit vertices in the path and select a point to change its four bone influence slots. Each edit is undoable; curve
   handles follow their point's weights.
-- **Bones**: with Select active, click a bone shaft to select and move its root. Drag the highlighted tip to change its
-  length and rotation; the gesture is one undo step and can be canceled with `Esc`. Use the Inspector for precise values.
+- **Bones**: with Select active, drag a root bone's base handle to position it, a shaft to rotate it around its joint,
+  or a tip to change its length and angle. Child bones remain linked to their parent's tip. Each gesture is one undo
+  step and can be canceled with `Esc`. Use the Inspector for precise values.
 - **Picking**: `Ctrl`+click selects the object under the cursor even inside a group. Hovering previews what a click will
   pick (a dashed box for groups, text and images). Dragging a marquee picks at the current level, and skips hidden and
   locked objects. `Ctrl A` selects everything at the level you are in, and `Alt ]` / `Alt [` move the selection to the

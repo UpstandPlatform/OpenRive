@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.2 - 2026-10-11
+
+### Editor
+
+- Create bones on the canvas, select and reposition them, edit bone tips, and validate weighted skinning through the shared editing API.
+- Expand bone editor scenario coverage for hierarchy transforms, hit testing, positioning, rotation, creation, and edge cases.
+
+### Accounts and collaboration
+
+- Centralize account and workspace capabilities so UI, API, CLI, MCP, and repository operations enforce the same role policy.
+- Keep account roles independent from active workspace roles, refresh MCP authorization context per request, and bind stateful sessions to their selected workspace.
+- Protect the final active administrator from concurrent demotion or deletion and apply workspace membership permissions consistently.
+
+### Reliability
+
+- Add role and permission matrix tests, strengthen MCP smoke-test cleanup, and document the authorization boundaries.
+
 ## 0.1.1 - 2026-10-11
 
 ### Workspaces

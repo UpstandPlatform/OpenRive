@@ -5,6 +5,12 @@ import { z } from 'zod';
 export const roleSchema = z.enum(['admin', 'editor', 'viewer']);
 export type Role = z.infer<typeof roleSchema>;
 
+export const WORKSPACE_ROLE_VALUES = ['owner', 'admin', 'editor', 'viewer'] as const;
+export const workspaceRoleSchema = z.string().min(1).max(64).refine(
+  (value) => value.split(',').every((role) => WORKSPACE_ROLE_VALUES.includes(role.trim() as (typeof WORKSPACE_ROLE_VALUES)[number])),
+  'Expected a valid workspace role assignment',
+);
+
 export const userSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -12,7 +18,7 @@ export const userSchema = z.object({
   role: roleSchema,
   createdAt: z.number().int().nonnegative(),
   activeOrganizationId: z.string().min(1).optional(),
-  activeOrganizationRole: z.enum(['owner', 'admin', 'editor', 'viewer']).optional(),
+  activeOrganizationRole: workspaceRoleSchema.optional(),
   emailVerified: z.boolean().optional(),
 });
 export type User = z.infer<typeof userSchema>;

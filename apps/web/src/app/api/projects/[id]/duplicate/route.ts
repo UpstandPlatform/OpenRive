@@ -1,4 +1,4 @@
-import { canCreateProjects } from '@openrive/auth';
+import { canCreateProject } from '@openrive/auth';
 import { deleteProject, duplicateProject, getProjectMeta } from '@openrive/db';
 import { duplicateProjectSchema } from '@openrive/shared';
 import { body, fail, handler, json, notFound, routeId } from '@/lib/server/route';
@@ -10,11 +10,10 @@ export const POST = handler(async (request: Request, ctx: RouteContext<'/api/pro
   if (error) return error;
   const guard = await requireUser();
   if (guard.error) return guard.error;
-  if (!canCreateProjects(guard.user)) return fail('Viewers cannot create files', 403);
-  if (guard.user.role !== 'admin' && guard.user.activeOrganizationRole === 'viewer') return fail('Viewers cannot create files in this workspace', 403);
   const source = await getProjectMeta(id);
   if (!source) return notFound();
   if (!canSeeProject(guard.user, source)) return notFound();
+  if (!canCreateProject(guard.user, source.organizationId)) return fail('You cannot create a copy in this project workspace', 403);
   const parsed = await body(request, duplicateProjectSchema);
   if (parsed.error) return parsed.error;
   // the copy belongs to whoever duplicated it

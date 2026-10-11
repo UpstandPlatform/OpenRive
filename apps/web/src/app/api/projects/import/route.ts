@@ -1,4 +1,4 @@
-import { canCreateProjects } from '@openrive/auth';
+import { canCreateProject } from '@openrive/auth';
 import { MAX_RIV_BYTES } from '@openrive/shared';
 import { fail, handler, json, limitedRequest, requireSameOrigin } from '@/lib/server/route';
 import { requireUser } from '@/lib/server/auth';
@@ -14,8 +14,7 @@ export const POST = handler(async (request: Request) => {
   request = bounded;
   const guard = await requireUser();
   if (guard.error) return guard.error;
-  if (!canCreateProjects(guard.user)) return fail('Viewers cannot create files', 403);
-  if (guard.user.role !== 'admin' && guard.user.activeOrganizationRole === 'viewer') return fail('Viewers cannot import files into this workspace', 403);
+  if (!canCreateProject(guard.user)) return fail('You cannot import files into the selected workspace', 403);
 
   let form: FormData;
   try {

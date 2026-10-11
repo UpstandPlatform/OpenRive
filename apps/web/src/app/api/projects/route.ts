@@ -1,7 +1,7 @@
 import { createProject, deleteProject, getProjectMeta, listProjects } from '@openrive/db';
 import { createProjectSchema } from '@openrive/shared';
 import { fromBase64 } from '@openrive/shared/serialize';
-import { canCreateProjects } from '@openrive/auth';
+import { canCreateProject } from '@openrive/auth';
 import { body, fail, handler, json, MAX_PROJECT_JSON_BODY_BYTES } from '@/lib/server/route';
 import { canSeeProject, requireUser } from '@/lib/server/auth';
 import { cloudEdition, pointProjectRiv, removeProjectRiv, uploadProjectRiv } from '@/lib/server/project-storage';
@@ -18,8 +18,7 @@ export const GET = handler(async () => {
 export const POST = handler(async (request: Request) => {
   const guard = await requireUser();
   if (guard.error) return guard.error;
-  if (!canCreateProjects(guard.user)) return fail('Viewers cannot create files', 403);
-  if (guard.user.role !== 'admin' && guard.user.activeOrganizationRole === 'viewer') return fail('Viewers cannot create files in this workspace', 403);
+  if (!canCreateProject(guard.user)) return fail('You cannot create files in the selected workspace', 403);
   const { data, error } = await body(request, createProjectSchema, MAX_PROJECT_JSON_BODY_BYTES);
   if (error) return error;
   const bytes = data.riv ? fromBase64(data.riv) : undefined;

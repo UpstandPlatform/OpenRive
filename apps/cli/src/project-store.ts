@@ -6,7 +6,7 @@ import * as storage from '@openrive/db';
 import { exportRiv, importRiv, type RiveDoc } from '@openrive/rive/document';
 import { EXAMPLES, getExample } from '@openrive/rive/examples';
 import { getTemplate, TEMPLATES } from '@openrive/rive/templates';
-import { MAX_RIV_BYTES, type ProjectMeta } from '@openrive/shared';
+import { isAdministratorRole, MAX_RIV_BYTES, type ProjectMeta } from '@openrive/shared';
 import { env } from '@openrive/shared/env';
 import { parseDoc, stringifyDoc } from '@openrive/shared/serialize';
 import { createObjectStorage, legacyProjectRivKey, projectRivKey, type ObjectStorage } from '@openrive/storage';
@@ -99,7 +99,7 @@ export async function defaultOwner(): Promise<string> {
   const preferred = env().OPENRIVE_USER;
   const user =
     (preferred && users.find((u) => u.id === preferred || u.name.toLowerCase() === preferred.toLowerCase())) ||
-    users.find((u) => u.role === 'admin') ||
+    users.find((u) => isAdministratorRole(u.role)) ||
     users[0];
   if (!user) throw new StoreError('No users exist yet');
   return user.id;
@@ -151,7 +151,7 @@ export async function edit<T>(ref: string, fn: (doc: RiveDoc) => T): Promise<{ m
   return { meta: next ?? meta, result };
 }
 
-export async function createProject(name: string, template = 'blank', ownerId?: string) {
+export async function createProject(name: string, template = 'blank', ownerId?: string, organizationId?: string) {
   const fromTemplate = getTemplate(template);
   const example = getExample(template);
   if (!fromTemplate && !example) {
@@ -162,23 +162,25 @@ export async function createProject(name: string, template = 'blank', ownerId?: 
   return createStoredProject({
     name,
     ownerId: ownerId ?? (await defaultOwner()),
+    ...(organizationId ? { organizationId } : {}),
     doc: stringifyDoc(doc),
     ...stats(doc),
   }, riv);
 }
 
-export async function importFile(file: string, name?: string, ownerId?: string) {
-  return importBytes(new Uint8Array(readFileSync(file)), name ?? path.basename(file).replace(/\.riv$/i, ''), ownerId);
+export async function importFile(file: string, name?: string, ownerId?: string, organizationId?: string) {
+  return importBytes(new Uint8Array(readFileSync(file)), name ?? path.basename(file).replace(/\.riv$/i, ''), ownerId, organizationId);
 }
 
 /** Imports already-uploaded bytes; used by the HTTP MCP transport as well as the CLI. */
-export async function importBytes(bytes: Uint8Array, name?: string, ownerId?: string) {
+export async function importBytes(bytes: Uint8Array, name?: string, ownerId?: string, organizationId?: string) {
   if (bytes.byteLength > MAX_RIV_BYTES) throw new StoreError('The .riv file is larger than the 100 MB upload limit');
   const doc = importRiv(bytes);
   const riv = exportRiv(doc);
   return createStoredProject({
     name: name ?? 'Untitled',
     ownerId: ownerId ?? (await defaultOwner()),
+    ...(organizationId ? { organizationId } : {}),
     doc: stringifyDoc(doc),
     ...stats(doc),
   }, riv);

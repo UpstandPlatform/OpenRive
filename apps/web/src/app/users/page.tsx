@@ -5,7 +5,7 @@ import { Check, LogIn, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { AppHeader } from '@/components/AppHeader';
 import { Avatar } from '@/components/Avatar';
 import { api, useCurrentUser, useSession } from '@/lib/client/session';
-import { ProjectMeta, Role, ROLE_INFO, User, USER_COLORS } from '@openrive/shared';
+import { canManageAccounts, isAdministratorRole, ProjectMeta, Role, ROLE_INFO, User, USER_COLORS } from '@openrive/shared';
 import { Modal } from '@openrive/ui';
 
 export default function UsersPage() {
@@ -27,7 +27,7 @@ export default function UsersPage() {
     api.json<ProjectMeta[]>('/api/projects').then(setProjects);
   }, [loaded, refresh]);
 
-  const isAdmin = me?.role === 'admin';
+  const isAdmin = me ? canManageAccounts(me.role) : false;
 
   const save = async (id: string | null, data: Partial<User>) => {
     setError(null);
@@ -194,7 +194,7 @@ function DeleteDialog({
   onCancel: () => void;
   onConfirm: (transferTo: string) => void;
 }) {
-  const [to, setTo] = useState(users.find((u) => u.role === 'admin')?.id ?? users[0]?.id ?? '');
+  const [to, setTo] = useState(users.find((u) => isAdministratorRole(u.role))?.id ?? users[0]?.id ?? '');
   return (
     <Modal
       title={`Delete ${user.name}?`}

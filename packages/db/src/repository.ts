@@ -1,6 +1,13 @@
 // Users and projects. The only module that talks to the database; the web API,
 // the CLI and the MCP server all go through it.
-import { idSchema, type ProjectMeta, type User } from '@openrive/shared';
+import {
+  canAssignWorkspaceRole,
+  canDeleteWorkspace,
+  idSchema,
+  isAdministratorRole,
+  type ProjectMeta,
+  type User,
+} from '@openrive/shared';
 import { and, asc, desc, eq, notInArray, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from './client';
@@ -188,9 +195,9 @@ export async function getOrganizationMemberRole(organizationId: string, userId: 
 /** Organization owners must transfer ownership before their account can be removed. */
 export async function listOwnedOrganizationIds(userId: string): Promise<string[]> {
   const conn = await db();
-  const rows = await conn.select({ organizationId: members.organizationId }).from(members)
-    .where(and(eq(members.userId, userId), eq(members.role, 'owner')));
-  return rows.map((row) => row.organizationId);
+  const rows = await conn.select({ organizationId: members.organizationId, role: members.role }).from(members)
+    .where(eq(members.userId, userId));
+  return rows.filter((row) => canDeleteWorkspace(row.role)).map((row) => row.organizationId);
 }
 
 /** Transfer the single owner role atomically, preserving one owner at every commit. */
@@ -200,13 +207,13 @@ export async function transferOrganizationOwnership(organizationId: string, from
     return await conn.transaction(async (tx) => {
       const [target] = await tx.select({ id: members.id }).from(members)
         .where(and(eq(members.organizationId, organizationId), eq(members.userId, toUserId))).limit(1);
-      const [owner] = await tx.select({ id: members.id }).from(members)
-        .where(and(eq(members.organizationId, organizationId), eq(members.userId, fromUserId), eq(members.role, 'owner'))).limit(1);
-      if (!target || !owner || fromUserId === toUserId) return false;
+      const [owner] = await tx.select({ id: members.id, role: members.role }).from(members)
+        .where(and(eq(members.organizationId, organizationId), eq(members.userId, fromUserId))).for('update').limit(1);
+      if (!target || !owner || !canDeleteWorkspace(owner.role) || fromUserId === toUserId) return false;
       // Conditional update is the compare-and-swap guard against two owners
       // transferring simultaneously from the same owner row.
       const demoted = await tx.update(members).set({ role: 'admin' })
-        .where(and(eq(members.id, owner.id), eq(members.role, 'owner'))).returning();
+        .where(and(eq(members.id, owner.id), eq(members.role, owner.role))).returning();
       if (!demoted.length) return false;
       const promoted = await tx.update(members).set({ role: 'owner' })
         .where(and(eq(members.id, target.id), eq(members.organizationId, organizationId), sql`${members.role} <> 'owner'`))
@@ -234,10 +241,12 @@ export async function updateOrganizationMemberRole(
     const [actor] = await tx.select({ role: members.role }).from(members)
       .where(and(eq(members.organizationId, organizationId), eq(members.userId, actorId)))
       .for('update').limit(1);
-    if (!actor || !['owner', 'admin'].includes(actor.role)) return 'forbidden';
-    if (role === 'admin' && actor.role !== 'owner') return 'forbidden';
+    if (!actor || !canAssignWorkspaceRole(actor.role, role)) return 'forbidden';
+    const [target] = await tx.select({ id: members.id, role: members.role }).from(members)
+      .where(and(eq(members.organizationId, organizationId), eq(members.userId, userId))).for('update').limit(1);
+    if (!target || canDeleteWorkspace(target.role)) return 'missing';
     const updated = await tx.update(members).set({ role })
-      .where(and(eq(members.organizationId, organizationId), eq(members.userId, userId), sql`${members.role} <> 'owner'`))
+      .where(and(eq(members.id, target.id), eq(members.role, target.role)))
       .returning();
     return updated.length ? 'updated' : 'missing';
   });
@@ -258,7 +267,7 @@ export async function deleteOrganization(
     const [owner] = await tx.select({ id: members.id, role: members.role }).from(members)
       .where(and(eq(members.organizationId, organizationId), eq(members.userId, ownerId)))
       .for('update').limit(1);
-    if (!owner || owner.role !== 'owner') return { status: 'forbidden', storageKeys: [] };
+    if (!owner || !canDeleteWorkspace(owner.role)) return { status: 'forbidden', storageKeys: [] };
 
     const [organization] = await tx.select({ name: organizations.name }).from(organizations)
       .where(eq(organizations.id, organizationId)).limit(1);
@@ -292,7 +301,7 @@ export async function updateLocalUser(id: string, patch: Partial<Pick<User, 'nam
   return conn.transaction(async (tx) => {
     const [current] = await tx.select().from(users).where(eq(users.id, safeId(id)));
     if (!current) return null;
-    if (patch.role && patch.role !== 'admin' && current.role === 'admin') {
+    if (patch.role && !isAdministratorRole(patch.role) && isAdministratorRole(current.role)) {
       const admins = await tx.execute(sql`SELECT id FROM users WHERE role = 'admin' FOR UPDATE`);
       if (admins.rows.length === 1) throw new Error('At least one admin is required');
     }
@@ -358,7 +367,7 @@ export async function ensureSeeded() {
     import('@openrive/shared/serialize'),
   ]);
   const list = await listUsers();
-  const owner = list.find((u) => u.role === 'admin') ?? list[0]!;
+  const owner = list.find((u) => isAdministratorRole(u.role)) ?? list[0]!;
   const doc = openriveLogo.build();
   await createProject({
     name: 'Welcome to OpenRive',

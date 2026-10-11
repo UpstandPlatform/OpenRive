@@ -1,7 +1,9 @@
 // End-to-end check of the MCP server over stdio using the official client.
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { readFileSync } from 'fs';
+import { mkdtempSync, readFileSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import path from 'path';
 import { importRiv } from '@openrive/rive/document';
 
 (async () => {
@@ -12,6 +14,8 @@ import { importRiv } from '@openrive/rive/document';
   });
   const client = new Client({ name: 'smoke', version: '1.0.0' });
   await client.connect(transport);
+  const outputDirectory = mkdtempSync(path.join(tmpdir(), 'openrive-mcp-smoke-'));
+  try {
   const tools = await client.listTools();
   console.log('tools:', tools.tools.length, tools.tools.map((t) => t.name).join(', '));
   if (tools.tools.length !== 35) throw new Error(`Expected 35 MCP tools, found ${tools.tools.length}`);
@@ -70,7 +74,7 @@ import { importRiv } from '@openrive/rive/document';
   console.log('blend states:', JSON.stringify(states));
   console.log('inputs left:', JSON.stringify(outline.artboards[0].stateMachines.map((m: { name: string; inputs: unknown[] }) => `${m.name}:${m.inputs.length}`)));
   console.log('outline:', JSON.stringify(outline.artboards[0].children), JSON.stringify(outline.themeColors));
-  const out = 'scripts/mcp-smoke.riv';
+  const out = path.join(outputDirectory, 'mcp-smoke.riv');
   console.log(await call('export_riv', { project: p, path: out }));
   const back = importRiv(new Uint8Array(readFileSync(out)));
   const rigTypes = new Set(back.artboards[0].objects.map((object) => object.type));
@@ -80,6 +84,9 @@ import { importRiv } from '@openrive/rive/document';
   console.log('re-import ok:', back.artboards[0].objects.length, 'objects,', back.artboards[0].stateMachines.length, 'state machines');
   await call('delete_project', { project: p });
   await client.close();
+  } finally {
+    rmSync(outputDirectory, { recursive: true, force: true });
+  }
 })().catch((e) => {
   console.error(e);
   process.exit(1);

@@ -189,10 +189,19 @@ export function parentOf(o: CoreObj, ab: ArtboardDoc): string | null {
   return ab.artboard.id;
 }
 
-export function localMatrix(o: CoreObj, overrides?: Overrides): Mat {
+export function localMatrix(o: CoreObj, overrides?: Overrides, parent?: CoreObj): Mat {
   if (o.type === 'Artboard' || !isA(o.type, 'TransformComponent')) {
     if (isA(o.type, 'Vertex') || !isA(o.type, 'WorldTransformComponent')) return [...IDENTITY];
     return [...IDENTITY];
+  }
+  // Rive bones have different local origins from ordinary nodes: roots use
+  // their authored x/y, while each child starts at the end of its parent.
+  // Keeping this in the shared scene evaluator makes editor overlays, picking,
+  // skin bind poses, and all document consumers agree on the same rig.
+  if (isA(o.type, 'Bone')) {
+    const x = o.type === 'RootBone' ? prop(o, 'x', overrides) : parent ? prop(parent, 'length', overrides) : 0;
+    const y = o.type === 'RootBone' ? prop(o, 'y', overrides) : 0;
+    return compose(x, y, prop(o, 'rotation', overrides), prop(o, 'scaleX', overrides), prop(o, 'scaleY', overrides));
   }
   const isNode = isA(o.type, 'Node');
   const x = isNode ? prop(o, 'x', overrides) : 0;
@@ -237,7 +246,8 @@ export function buildScene(ab: ArtboardDoc, overrides: Overrides = new Map()): S
     const n = nodes.get(id)!;
     if (done.has(id) || depth > 200) return n.world;
     const parentWorld = n.parent && nodes.has(n.parent) ? resolveWorld(n.parent, depth + 1) : nodes.get(ab.artboard.id)!.world;
-    n.world = mul(parentWorld, localMatrix(n.obj, overrides));
+    const parent = n.parent ? nodes.get(n.parent)?.obj : undefined;
+    n.world = mul(parentWorld, localMatrix(n.obj, overrides, parent));
     done.add(id);
     return n.world;
   };

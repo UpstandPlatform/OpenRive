@@ -11,7 +11,7 @@ import { buildBundle, bundleFileName, type BundleFile } from '@openrive/rive/bun
 import { exportRiv, importRiv } from '@openrive/rive/document';
 import { diagnoseRiv } from '@openrive/rive/diagnostics';
 import { exportSource, exportSourceFiles, importSource, importSourceFiles, isOpenRiveSource } from '@openrive/rive/source';
-import { roleSchema } from '@openrive/shared';
+import { isAdministratorRole, roleSchema } from '@openrive/shared';
 import { env } from '@openrive/shared/env';
 import {
   createProject,
@@ -436,7 +436,7 @@ export async function users(args: string[], opts: Options) {
     const user = list.find((u) => u.id === ref || u.name.toLowerCase() === ref.toLowerCase());
     if (!user) throw new StoreError(`User "${ref}" not found`);
     const rest = list.filter((u) => u.id !== user.id && (!('disabled' in u) || !u.disabled));
-    const heir = rest.find((u) => u.role === 'admin');
+    const heir = rest.find((u) => isAdministratorRole(u.role));
     if (!heir) throw new StoreError('Cannot remove the last admin');
     if (authEnabled()) await deleteAccountAndTransferProjects(user.id, heir.id);
     else await deleteLocalUserAndTransferProjects(user.id, heir.id);

@@ -113,6 +113,13 @@ try {
   check(auth.canEditProject(activeMember!, workspaceProject), 'workspace editors can edit workspace projects');
   check(!auth.canManageProject(activeMember!, workspaceProject), 'workspace editors cannot manage project access');
   check(!auth.canSeeProject(member, workspaceProject), 'an inactive workspace session cannot read workspace files');
+  await auth.updateAccount(member.id, { role: 'viewer' });
+  const globalViewerWorkspaceEditor = await auth.sessionUser(memberSession!);
+  check(globalViewerWorkspaceEditor?.role === 'viewer' && globalViewerWorkspaceEditor.activeOrganizationRole === 'editor', 'account and workspace roles remain independent in the resolved session');
+  check(auth.canEditProject(globalViewerWorkspaceEditor!, workspaceProject), 'a global viewer may edit projects where their workspace role is editor');
+  check(auth.canCreateProject(globalViewerWorkspaceEditor!), 'a global viewer may create projects in an editor workspace');
+  check(!auth.canCreateProject(globalViewerWorkspaceEditor!, null), 'the same account viewer cannot create personal projects');
+  await auth.updateAccount(member.id, { role: 'editor' });
 
   const noMailInvite = await (await api()).createInvitation({
     body: { email: 'new-member@example.com', role: 'editor', organizationId: organization!.id },
@@ -128,6 +135,8 @@ try {
   check(viewerSession?.activeOrganizationRole === 'viewer', 'role changes are reflected in the active session');
   check(!auth.canEditProject(viewerSession!, workspaceProject), 'workspace viewers cannot edit workspace projects');
   check(auth.canSeeProject(viewerSession!, workspaceProject), 'workspace viewers can view workspace projects');
+  check(!auth.canCreateProject(viewerSession!), 'workspace viewers cannot create projects in the selected workspace');
+  check(auth.canCreateProject(viewerSession!, null), 'an account editor can still create a personal project while viewing a workspace');
   check((await updateOrganizationMemberRole(organization!.id, admin.id, admin.id, 'editor')) === 'missing', 'the owner cannot be demoted through the member-role helper');
   check(await transferOrganizationOwnership(organization!.id, admin.id, member.id), 'workspace ownership can be transferred atomically');
   check((await getOrganizationMemberRole(organization!.id, admin.id)) === 'admin' && (await getOrganizationMemberRole(organization!.id, member.id)) === 'owner', 'ownership transfer retains an owner and demotes the previous owner');
@@ -255,6 +264,21 @@ try {
   check(!(await auth.sessionUser(session!)), 'ending a session signs that browser out');
   await auth.revokeUserSessions(admin.id);
   check(!(await auth.listSessions()).some((s) => s.userId === admin.id), 'and an administrator can end every session of an account');
+
+  // Concurrent role changes must never remove the final global administrator.
+  const concurrentAdmin = await auth.createAccount({ name: 'Concurrent Admin', role: 'admin' });
+  const concurrentChanges = await Promise.allSettled([
+    auth.updateAccount(admin.id, { role: 'editor' }),
+    auth.updateAccount(concurrentAdmin.id, { disabled: true }),
+  ]);
+  const activeAdmins = (await auth.listAccounts()).filter((account) => account.role === 'admin' && !account.disabled);
+  check(concurrentChanges.filter((result) => result.status === 'fulfilled').length === 1 && activeAdmins.length === 1, 'concurrent role changes preserve exactly one active administrator');
+  let lastAdminDemotionRejected = false;
+  try { await auth.updateAccount(activeAdmins[0]!.id, { role: 'editor' }); } catch { lastAdminDemotionRejected = true; }
+  check(lastAdminDemotionRejected, 'the last active administrator cannot be demoted by the account update path');
+  let lastAdminDeletionRejected = false;
+  try { await auth.deleteAccountAndTransferProjects(activeAdmins[0]!.id, admin.id); } catch { lastAdminDeletionRejected = true; }
+  check(lastAdminDeletionRejected, 'the last active administrator cannot be deleted by the account transaction');
   await conn.delete(schema.users).where(eq(schema.users.id, legacy.id));
   check((await conn.$count(schema.accounts, eq(schema.accounts.userId, legacy.id))) === 0, 'deleting an account takes its sign-in with it');
 } finally {

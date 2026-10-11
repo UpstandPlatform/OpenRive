@@ -10,7 +10,7 @@ import { createProjectFromDoc, importRivFile } from '@/lib/client/projects';
 import { NewFileDialog, TemplateGallery } from '@/components/TemplateGallery';
 import type { RiveDoc } from '@openrive/rive/document';
 import { importSource, isOpenRiveSource } from '@openrive/rive/source';
-import type { ProjectMeta } from '@openrive/shared';
+import { canAccessProject, canCreateProject, type ProjectMeta } from '@openrive/shared';
 import { Modal } from '@openrive/ui';
 import { getProjectActivity, setProjectFavorite } from '@/lib/client/projectActivity';
 
@@ -162,20 +162,20 @@ export default function Dashboard() {
     } catch (e) { setError((e as Error).message || 'Could not delete file'); }
   };
 
-  const isViewer = user?.role === 'viewer' || (user?.role !== 'admin' && user?.activeOrganizationRole === 'viewer');
+  const canCreate = canCreateProject(user);
 
   return (
     <div
       className="min-h-full flex flex-col"
       onDragOver={(e) => {
         e.preventDefault();
-        if (!isViewer) setDragOver(true);
+        if (canCreate) setDragOver(true);
       }}
       onDragLeave={() => setDragOver(false)}
       onDrop={(e) => {
         e.preventDefault();
         setDragOver(false);
-        if (!isViewer && e.dataTransfer.files.length) importFiles(e.dataTransfer.files);
+        if (canCreate && e.dataTransfer.files.length) importFiles(e.dataTransfer.files);
       }}
     >
       <AppHeader />
@@ -206,10 +206,10 @@ export default function Dashboard() {
             className="hidden"
             onChange={(e) => e.target.files && importFiles(e.target.files)}
           />
-          <button className="btn" disabled={busy || isViewer} onClick={() => fileInput.current?.click()}>
+            <button className="btn" disabled={busy || !canCreate} onClick={() => fileInput.current?.click()}>
             <FileUp size={14} /> Import file
           </button>
-          <button className="btn btn-primary" disabled={busy || isViewer} onClick={newFile}>
+          <button className="btn btn-primary" disabled={busy || !canCreate} onClick={newFile}>
             <Plus size={14} /> New file
           </button>
         </div>
@@ -222,20 +222,20 @@ export default function Dashboard() {
             </button>
           </div>
         )}
-        {isViewer && (
+        {!canCreate && (
           <div className="mb-4 px-3 py-2 rounded-md bg-bg2 text-t1">
-            You are signed in as a viewer: files open read-only and you can preview animations and state machines.
+            You have read-only access in the selected workspace. You can still open files shared with you and preview their animations.
           </div>
         )}
 
-        {!isViewer && activeFilter === 'mine' && !query && <TemplateGallery onCreate={createFrom} disabled={busy} firstRun={!!projects && !projects.some((p) => p.ownerId === user?.id)} />}
+        {canCreate && activeFilter === 'mine' && !query && <TemplateGallery onCreate={createFrom} disabled={busy} firstRun={!!projects && !projects.some((p) => p.ownerId === user?.id)} />}
         {projects !== null && <h2 className="text-[14px] font-semibold mb-3">{activeFilter === 'mine' ? 'My files' : activeFilter === 'workspace' ? 'Workspace files' : activeFilter === 'recent' ? 'Recent files' : activeFilter === 'favorites' ? 'Favorites' : activeFilter === 'shared' ? 'Shared with me' : 'All files'}</h2>}
 
         {projects === null ? (
           <div className="text-t2">Loading…</div>
         ) : (
           <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>
-            {!isViewer && activeFilter === 'mine' && !query && (
+            {canCreate && activeFilter === 'mine' && !query && (
               <button
                 onClick={newFile}
                 disabled={busy}
@@ -316,7 +316,7 @@ export default function Dashboard() {
                       <button className="menu-item" disabled={!editable} onClick={() => (setMenu(null), setRenaming(p.id))}>
                         <Pencil size={14} /> Rename
                       </button>
-                      <button className="menu-item" disabled={isViewer} onClick={() => (setMenu(null), duplicate(p))}>
+                      <button className="menu-item" disabled={!canCreateProject(user, p.organizationId)} onClick={() => (setMenu(null), duplicate(p))}>
                         <Copy size={14} /> Duplicate
                       </button>
                       <a className="menu-item" href={`/api/projects/${p.id}/riv`} onClick={() => setMenu(null)}>
@@ -324,7 +324,7 @@ export default function Dashboard() {
                       </a>
                       {!p.organizationId && <button
                         className="menu-item"
-                        disabled={!(user?.role === 'admin' || p.ownerId === user?.id)}
+                        disabled={!canAccessProject(user, p, 'share')}
                         onClick={() => (setMenu(null), setSharing(p))}
                       >
                         <Share2 size={14} /> Share with users
@@ -332,7 +332,7 @@ export default function Dashboard() {
                       <div className="menu-sep" />
                       <button
                         className="menu-item"
-                        disabled={!(user?.role === 'admin' || p.ownerId === user?.id || (p.organizationId === user?.activeOrganizationId && ['owner', 'admin'].includes(user?.activeOrganizationRole ?? '')))}
+                        disabled={!canAccessProject(user, p, 'manage')}
                         onClick={() => (setMenu(null), remove(p))}
                       >
                         <Trash2 size={14} /> Delete
@@ -344,7 +344,7 @@ export default function Dashboard() {
             })}
           </div>
         )}
-        {projects && !visible.length && (activeFilter !== 'mine' || query || isViewer) && (
+        {projects && !visible.length && (activeFilter !== 'mine' || query || !canCreate) && (
           <div className="text-t2 mt-10 text-center flex flex-col items-center gap-2">
             {activeFilter === 'recent' ? <Clock3 size={18} /> : activeFilter === 'favorites' ? <Star size={18} /> : null}
             <span>{activeFilter === 'recent' ? 'Files you open will appear here.' : activeFilter === 'favorites' ? 'Star a file to keep it close at hand.' : 'No files here yet.'}</span>

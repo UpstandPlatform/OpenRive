@@ -5,8 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { KeyRound, LogOut, Plus, RefreshCw, Trash2, UserCog } from 'lucide-react';
 import { Modal } from '@openrive/ui';
-import type { Role } from '@openrive/shared';
-import { ROLE_INFO } from '@openrive/shared';
+import { canManageAccounts, ROLE_INFO, type Role } from '@openrive/shared';
 import { AppHeader } from '@/components/AppHeader';
 import { Avatar } from '@/components/Avatar';
 import { api, useCurrentUser, useSession, type Account } from '@/lib/client/session';
@@ -65,11 +64,11 @@ export default function AdminPage() {
   }, [loaded, refreshSession]);
 
   useEffect(() => {
-    if (loaded && me && me.role !== 'admin') router.replace('/');
+    if (loaded && me && !canManageAccounts(me.role)) router.replace('/');
   }, [loaded, me, router]);
 
   useEffect(() => {
-    if (!loaded || me?.role !== 'admin') return;
+    if (!loaded || !me || !canManageAccounts(me.role)) return;
     let cancelled = false;
     void (async () => {
       const data = await fetchDashboard();
@@ -80,7 +79,7 @@ export default function AdminPage() {
     };
   }, [loaded, me, fetchDashboard, apply]);
 
-  if (loaded && me && me.role !== 'admin') return null;
+  if (loaded && me && !canManageAccounts(me.role)) return null;
 
   return (
     <div className="min-h-screen flex flex-col">

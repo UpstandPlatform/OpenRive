@@ -115,8 +115,15 @@ the OpenTUI interface; `mcp-server.ts` exposes 35 MCP tools. All of them go thro
 
 ### Access control
 
-`apps/web/src/proxy.ts` (Next 16's replacement for middleware) enforces `OPENRIVE_ACCESS_TOKEN` with HTTP Basic auth.
-Roles are enforced in the UI, since OpenRive assumes a trusted environment behind that token.
+`packages/shared/src/permissions.ts` is the single browser-safe policy for account roles, workspace roles, and project
+capabilities. The dashboard uses it to present the right actions; `packages/auth` and every web API use the same
+decisions at the server boundary. Workspace membership governs workspace projects independently of account roles,
+while account roles govern personal projects and global administration. Database transactions re-check sensitive
+workspace membership changes and ownership transfers. HTTP MCP resolves the signed-in account and active workspace on
+each request, including requests on an existing stateful MCP connection.
+
+`apps/web/src/proxy.ts` (Next 16's replacement for middleware) enforces `OPENRIVE_ACCESS_TOKEN` with HTTP Basic auth
+for self-hosted deployments; it is an additional access gate and does not replace role checks.
 
 ## Tests
 

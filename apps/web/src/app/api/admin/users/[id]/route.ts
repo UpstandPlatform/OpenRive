@@ -1,6 +1,6 @@
-import { deleteAccountAndTransferProjects, getAccount, listAccounts, revokeUserSessions, updateAccount } from '@openrive/auth';
+import { deleteAccountAndTransferProjects, getAccount, listAccounts, updateAccount } from '@openrive/auth';
 import { listOwnedOrganizationIds, listProjects } from '@openrive/db';
-import { adminUpdateUserSchema } from '@openrive/shared';
+import { adminUpdateUserSchema, isActiveAdministrator, isAdministratorRole } from '@openrive/shared';
 import { requireAdmin } from '@/lib/server/auth';
 import { routeId } from '@/lib/server/route';
 import { body, fail, handler, json, notFound } from '@/lib/server/route';
@@ -18,8 +18,9 @@ export const PATCH = handler(async (request: Request, ctx: RouteContext<'/api/ad
   const accounts = await listAccounts();
   const target = accounts.find((a) => a.id === id);
   if (!target) return notFound();
-  const admins = accounts.filter((a) => a.role === 'admin' && !a.disabled);
-  const losingLastAdmin = target.role === 'admin' && admins.length === 1 && (parsed.data.role === 'editor' || parsed.data.role === 'viewer' || parsed.data.disabled);
+  const admins = accounts.filter(isActiveAdministrator);
+  const losingLastAdmin = isActiveAdministrator(target) && admins.length === 1
+    && (!isAdministratorRole(parsed.data.role ?? target.role) || parsed.data.disabled === true);
   if (losingLastAdmin) return fail('At least one administrator is required');
 
   try {
@@ -42,8 +43,8 @@ export const DELETE = handler(async (request: Request, ctx: RouteContext<'/api/a
   const accounts = await listAccounts();
   const target = accounts.find((a) => a.id === id);
   if (!target) return notFound();
-  const activeAdmins = accounts.filter((a) => a.role === 'admin' && !a.disabled);
-  if (target.role === 'admin' && !target.disabled && activeAdmins.length === 1) {
+  const activeAdmins = accounts.filter(isActiveAdministrator);
+  if (isActiveAdministrator(target) && activeAdmins.length === 1) {
     return fail('Cannot delete the last administrator');
   }
   if ((await listOwnedOrganizationIds(id)).length) {
@@ -55,7 +56,6 @@ export const DELETE = handler(async (request: Request, ctx: RouteContext<'/api/a
   const heir = accounts.find((a) => a.id === transferTo && a.id !== id && !a.disabled) ?? activeAdmins.find((a) => a.id !== id);
   const hasOwnedProjects = (await listProjects()).some((project) => project.ownerId === id);
   if (hasOwnedProjects && !heir) return fail('An active user is required to receive the account files', 409);
-  await revokeUserSessions(id);
   const deleted = await deleteAccountAndTransferProjects(id, heir?.id);
   if (!deleted) return notFound();
   return json({ ok: true, transferredTo: heir?.id ?? null });

@@ -1,4 +1,5 @@
 import { getOrganizationMemberRole, transferOrganizationOwnership } from '@openrive/db';
+import { canDeleteWorkspace } from '@openrive/shared';
 import { z } from 'zod';
 import { body, fail, handler, json, routeId } from '@/lib/server/route';
 import { requireUser } from '@/lib/server/auth';
@@ -13,7 +14,8 @@ export const POST = handler(async (request: Request, ctx: RouteContext<'/api/wor
   if (error) return error;
   const guard = await requireUser();
   if (guard.error) return guard.error;
-  if (await getOrganizationMemberRole(id, guard.user.id) !== 'owner') {
+  const role = await getOrganizationMemberRole(id, guard.user.id);
+  if (!canDeleteWorkspace(role) || guard.user.activeOrganizationId !== id) {
     return fail('Only the active workspace owner can transfer ownership', 403);
   }
   const parsed = await body(request, transferSchema);

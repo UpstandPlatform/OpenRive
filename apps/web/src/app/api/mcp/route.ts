@@ -1,5 +1,5 @@
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
-import { canCreateProjects, canEditProject, canManageProject, canSeeProject, type Account } from '@openrive/auth';
+import { canCreateProject, canEditProject, canManageProject, canSeeProject, type Account } from '@openrive/auth';
 import { createMcpServer } from '@openrive/cli/mcp-server';
 import { env } from '@openrive/shared/env';
 import { requireUser } from '@/lib/server/auth';
@@ -10,6 +10,9 @@ export const dynamic = 'force-dynamic';
 
 type Session = {
   userId: string;
+  authorization: { user: Account };
+  organizationId?: string;
+  queue: Promise<void>;
   createdAt: number;
   lastUsedAt: number;
   transport: WebStandardStreamableHTTPServerTransport;
@@ -43,13 +46,15 @@ async function userForRequest() {
 }
 
 async function statelessHandle(request: Request, user: Account): Promise<Response> {
+  const authorization = { user };
   const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   const server = createMcpServer({
-    ownerId: user.id,
-    canCreateProjects: canCreateProjects(user),
-    canSeeProject: (project) => canSeeProject(user, project),
-    canEditProject: (project) => canEditProject(user, project),
-    canManageProject: (project) => canManageProject(user, project),
+    ownerId: authorization.user.id,
+    canCreateProject: () => canCreateProject(authorization.user),
+    organizationId: () => authorization.user.activeOrganizationId,
+    canSeeProject: (project) => canSeeProject(authorization.user, project),
+    canEditProject: (project) => canEditProject(authorization.user, project),
+    canManageProject: (project) => canManageProject(authorization.user, project),
     allowFilePaths: false,
     editorUrlBase: env().OPENRIVE_URL,
   });
@@ -86,34 +91,60 @@ async function handle(request: Request): Promise<Response> {
   if (!session) {
     if (request.method !== 'POST') return Response.json({ error: 'Start an MCP session with POST initialize' }, { status: 400 });
     let sessionKey: string | undefined;
+    const authorization = { user };
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: () => crypto.randomUUID(),
       enableJsonResponse: true,
       onsessioninitialized: (id) => {
         sessionKey = id;
-        sessions.set(id, { userId: user.id, createdAt: Date.now(), lastUsedAt: Date.now(), transport });
+        if (session) sessions.set(id, session);
       },
     });
     transport.onclose = () => {
       if (sessionKey) sessions.delete(sessionKey);
     };
     const server = createMcpServer({
-      ownerId: user.id,
-      canCreateProjects: canCreateProjects(user),
-      canSeeProject: (project) => canSeeProject(user, project),
-      canEditProject: (project) => canEditProject(user, project),
-      canManageProject: (project) => canManageProject(user, project),
+      ownerId: authorization.user.id,
+      canCreateProject: () => canCreateProject(authorization.user),
+      organizationId: () => authorization.user.activeOrganizationId,
+      canSeeProject: (project) => canSeeProject(authorization.user, project),
+      canEditProject: (project) => canEditProject(authorization.user, project),
+      canManageProject: (project) => canManageProject(authorization.user, project),
       allowFilePaths: false,
       editorUrlBase: env().OPENRIVE_URL,
     });
     await server.connect(transport);
-    session = { userId: user.id, createdAt: Date.now(), lastUsedAt: Date.now(), transport };
+    session = {
+      userId: user.id,
+      authorization,
+      ...(user.activeOrganizationId ? { organizationId: user.activeOrganizationId } : {}),
+      queue: Promise.resolve(),
+      createdAt: Date.now(),
+      lastUsedAt: Date.now(),
+      transport,
+    };
   }
 
-  session.lastUsedAt = Date.now();
-  const response = await session.transport.handleRequest(request);
-  reapSessions();
-  return response;
+  // Serialize requests so a mutable authorization context cannot race between
+  // concurrent MCP calls. A session stays bound to its initialized workspace;
+  // start a new MCP session to switch workspace context.
+  const previousRequest = session.queue;
+  let releaseRequest!: () => void;
+  session.queue = new Promise<void>((resolve) => { releaseRequest = resolve; });
+  await previousRequest;
+  try {
+    if (user.activeOrganizationId !== session.organizationId) {
+      return Response.json({ error: 'This MCP session is bound to a different workspace. Start a new session to switch workspaces.' }, { status: 409 });
+    }
+    // Refresh role, disabled status, and current workspace membership on every
+    // request, including requests on an already initialized stateful session.
+    session.authorization.user = user;
+    session.lastUsedAt = Date.now();
+    return await session.transport.handleRequest(request);
+  } finally {
+    releaseRequest();
+    reapSessions();
+  }
 }
 
 export const GET = handle;

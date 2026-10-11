@@ -17,8 +17,20 @@ import { hashPassword as hashScrypt, verifyPassword as verifyScrypt } from 'bett
 import { db, schema } from '@openrive/db';
 import { createRedisInfrastructure, type RedisInfrastructure } from '@openrive/redis';
 import { authRequired, env } from '@openrive/shared/env';
-import type { ProjectMeta, Role, User } from '@openrive/shared';
-import { and, eq, gt, isNotNull, lt } from 'drizzle-orm';
+import {
+  canAccessProject,
+  canCreateProject,
+  canCreateWorkspace,
+  canManageAccounts,
+  canAssignWorkspaceRole,
+  canTransferProject as canTransferProjectPermission,
+  hasWorkspaceCapability,
+  isAdministratorRole,
+  type ProjectMeta,
+  type Role,
+  type User,
+} from '@openrive/shared';
+import { and, asc, eq, gt, isNotNull, lt } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import nodemailer, { type Transporter } from 'nodemailer';
 import { isLegacyHash, verifyLegacyPassword } from './legacy';
@@ -32,10 +44,28 @@ const organizationAccess = createAccessControl({
   team: ['create', 'update', 'delete'],
   ac: ['create', 'read', 'update', 'delete'],
 });
-const ownerRole = organizationAccess.newRole({ organization: ['update', 'delete'], member: ['create', 'update', 'delete'], invitation: ['create', 'cancel'], team: [], ac: ['read'] });
-const workspaceAdminRole = organizationAccess.newRole({ organization: ['update'], member: ['create', 'update', 'delete'], invitation: ['create', 'cancel'], team: [], ac: ['read'] });
-const workspaceEditorRole = organizationAccess.newRole({ organization: [], member: [], invitation: [], team: [], ac: ['read'] });
-const workspaceViewerRole = organizationAccess.newRole({ organization: [], member: [], invitation: [], team: [], ac: ['read'] });
+function organizationRole(role: 'owner' | 'admin' | 'editor' | 'viewer') {
+  return organizationAccess.newRole({
+    organization: [
+      ...(hasWorkspaceCapability(role, 'renameWorkspace') ? ['update' as const] : []),
+      ...(hasWorkspaceCapability(role, 'deleteWorkspace') ? ['delete' as const] : []),
+    ],
+    member: [
+      ...(hasWorkspaceCapability(role, 'inviteMembers') ? ['create' as const] : []),
+      ...(hasWorkspaceCapability(role, 'manageMembers') ? ['update' as const, 'delete' as const] : []),
+    ],
+    invitation: [
+      ...(hasWorkspaceCapability(role, 'inviteMembers') ? ['create' as const] : []),
+      ...(hasWorkspaceCapability(role, 'manageInvitations') ? ['cancel' as const] : []),
+    ],
+    team: [],
+    ac: ['read'],
+  });
+}
+const ownerRole = organizationRole('owner');
+const workspaceAdminRole = organizationRole('admin');
+const workspaceEditorRole = organizationRole('editor');
+const workspaceViewerRole = organizationRole('viewer');
 
 // Keep account mutations on OpenRive's guarded admin routes. Better Auth's
 // plugin exposes read and session-revoke endpoints only.
@@ -285,7 +315,7 @@ async function build() {
         cancelPendingInvitationsOnReInvite: true,
         requireEmailVerificationOnInvitation: true,
         disableOrganizationDeletion: true,
-        allowUserToCreateOrganization: (user) => authRequired() && user.role !== 'viewer',
+        allowUserToCreateOrganization: (user) => authRequired() && canCreateWorkspace(user as unknown as { role: string }),
         organizationHooks: {
           beforeCreateOrganization: async ({ organization }) => {
             validateOrganizationFields(organization);
@@ -294,12 +324,12 @@ async function build() {
             validateOrganizationFields(organization);
           },
           beforeAddMember: async ({ member }) => {
-            if (member.role === 'owner') {
+            if (hasWorkspaceCapability(member.role, 'deleteWorkspace')) {
               const [existingMembership] = await conn.select({ id: schema.members.id }).from(schema.members)
                 .where(eq(schema.members.organizationId, member.organizationId)).limit(1);
               if (!existingMembership) return;
             }
-            if (!['editor', 'viewer'].includes(member.role)) {
+            if (!hasWorkspaceCapability(member.role, 'editProjects') || hasWorkspaceCapability(member.role, 'manageMembers')) {
               throw new APIError('FORBIDDEN', { message: 'Add members as editors or viewers; administrators must be invited by the workspace owner' });
             }
           },
@@ -310,18 +340,18 @@ async function build() {
             if (!['admin', 'editor', 'viewer'].includes(invitation.role)) {
               throw new APIError('BAD_REQUEST', { message: 'Choose an allowed workspace role' });
             }
-            if (invitation.role === 'admin') {
+            if (hasWorkspaceCapability(invitation.role, 'manageMembers')) {
               const [membership] = await conn.select({ role: schema.members.role }).from(schema.members)
                 .where(and(eq(schema.members.organizationId, invitation.organizationId), eq(schema.members.userId, inviter.id))).limit(1);
-              if (membership?.role !== 'owner') throw new APIError('FORBIDDEN', { message: 'Only a workspace owner can invite an administrator' });
+              if (!hasWorkspaceCapability(membership?.role, 'assignAdministrators')) throw new APIError('FORBIDDEN', { message: 'Only a workspace owner can invite an administrator' });
             }
           },
           beforeRemoveMember: async ({ member }) => {
-            if (member.role.split(',').includes('owner')) throw new APIError('FORBIDDEN', { message: 'Transfer workspace ownership before removing its owner' });
+            if (hasWorkspaceCapability(member.role, 'deleteWorkspace')) throw new APIError('FORBIDDEN', { message: 'Transfer workspace ownership before removing its owner' });
           },
           beforeUpdateMemberRole: async ({ member, newRole }) => {
-            if (!['editor', 'viewer'].includes(newRole)) throw new APIError('FORBIDDEN', { message: 'Use Workspace settings to assign administrator access' });
-            if (member.role.split(',').includes('owner')) throw new APIError('FORBIDDEN', { message: 'Transfer workspace ownership through the owner account before changing this role' });
+            if (!canAssignWorkspaceRole('admin', newRole)) throw new APIError('FORBIDDEN', { message: 'Use Workspace settings to assign administrator access' });
+            if (hasWorkspaceCapability(member.role, 'deleteWorkspace')) throw new APIError('FORBIDDEN', { message: 'Transfer workspace ownership through the owner account before changing this role' });
           },
           beforeAcceptInvitation: async ({ invitation, user }) => {
             if (!user.emailVerified) throw new APIError('FORBIDDEN', { message: 'Verify your email address before accepting this invitation' });
@@ -394,8 +424,6 @@ export interface Account extends User {
   lastLoginAt: number | null;
   /** whether a password has been set (never the hash itself) */
   hasPassword: boolean;
-  activeOrganizationId?: string;
-  activeOrganizationRole?: 'owner' | 'admin' | 'editor' | 'viewer';
 }
 
 const toAccount = (row: schema.UserRow, hasPassword: boolean): Account => ({
@@ -531,7 +559,25 @@ export async function updateAccount(id: string, patch: AccountPatch): Promise<Ac
   if (patch.disabled !== undefined) values.disabled = patch.disabled;
   if (Object.keys(values).length) {
     values.updatedAt = new Date();
-    await conn.update(schema.users).set(values).where(eq(schema.users.id, id));
+    await conn.transaction(async (tx) => {
+      const [before] = await tx.select({ role: schema.users.role, disabled: schema.users.disabled, banned: schema.users.banned })
+        .from(schema.users).where(eq(schema.users.id, id)).limit(1);
+      const removingAdmin = !!before && isAdministratorRole(before.role) && !before.disabled && !before.banned
+        && ((patch.role !== undefined && !isAdministratorRole(patch.role)) || patch.disabled === true);
+      if (removingAdmin) {
+        // Lock the active-admin set in a stable order so concurrent demotions
+        // and disables cannot both remove the final administrators.
+        const admins = await tx.select({ id: schema.users.id }).from(schema.users)
+          .where(and(eq(schema.users.role, 'admin'), eq(schema.users.disabled, false), eq(schema.users.banned, false)))
+          .orderBy(asc(schema.users.id)).for('update');
+        const [current] = await tx.select({ role: schema.users.role, disabled: schema.users.disabled, banned: schema.users.banned })
+          .from(schema.users).where(eq(schema.users.id, id)).for('update').limit(1);
+        const stillRemovingAdmin = !!current && isAdministratorRole(current.role) && !current.disabled && !current.banned
+          && ((patch.role !== undefined && !isAdministratorRole(patch.role)) || patch.disabled === true);
+        if (stillRemovingAdmin && admins.length <= 1) throw new Error('At least one administrator is required');
+      }
+      await tx.update(schema.users).set(values).where(eq(schema.users.id, id));
+    });
   }
   if (patch.password !== undefined) {
     const problem = passwordProblem(patch.password);
@@ -618,6 +664,18 @@ export async function deleteAccount(userId: string) {
 export async function deleteAccountAndTransferProjects(userId: string, heirId?: string) {
   const conn = await db();
   return conn.transaction(async (tx) => {
+    const [before] = await tx.select({ role: schema.users.role, disabled: schema.users.disabled, banned: schema.users.banned })
+      .from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+    if (before && isAdministratorRole(before.role) && !before.disabled && !before.banned) {
+      const admins = await tx.select({ id: schema.users.id }).from(schema.users)
+        .where(and(eq(schema.users.role, 'admin'), eq(schema.users.disabled, false), eq(schema.users.banned, false)))
+        .orderBy(asc(schema.users.id)).for('update');
+      const [current] = await tx.select({ role: schema.users.role, disabled: schema.users.disabled, banned: schema.users.banned })
+        .from(schema.users).where(eq(schema.users.id, userId)).for('update').limit(1);
+      if (current && isAdministratorRole(current.role) && !current.disabled && !current.banned && admins.length <= 1) {
+        throw new Error('Cannot delete the last administrator');
+      }
+    }
     if (heirId) {
       await tx
         .update(schema.projects)
@@ -642,35 +700,22 @@ export async function purgeExpiredSessions() {
 // Permissions (enforced on the server, not only in the interface)
 
 export function canSeeProject(user: Account | User, project: ProjectMeta): boolean {
-  if (user.role === 'admin') return true;
-  if (project.organizationId) {
-    return user.activeOrganizationId === project.organizationId && !!user.activeOrganizationRole;
-  }
-  if (user.role === 'viewer') return true;
-  return project.ownerId === user.id || !!project.sharedWith?.includes(user.id);
+  return canAccessProject(user, project, 'read');
 }
 
 export function canEditProject(user: Account | User, project: ProjectMeta): boolean {
-  if (user.role === 'viewer') return false;
-  if (user.role === 'admin') return true;
-  if (project.organizationId) {
-    return user.activeOrganizationId === project.organizationId && ['owner', 'admin', 'editor'].includes(user.activeOrganizationRole ?? '');
-  }
-  return project.ownerId === user.id || !!project.sharedWith?.includes(user.id);
+  return canAccessProject(user, project, 'edit');
 }
 
 /** Sharing, ownership and deletion are more privileged than editing content. */
 export function canManageProject(user: Account | User, project: ProjectMeta): boolean {
-  if (user.role === 'admin') return true;
-  if (project.organizationId) {
-    return user.activeOrganizationId === project.organizationId && ['owner', 'admin'].includes(user.activeOrganizationRole ?? '');
-  }
-  return project.ownerId === user.id;
+  return canAccessProject(user, project, 'manage');
 }
 
-export function canTransferProject(user: Account | User): boolean {
-  return user.role === 'admin';
+export function canShareProject(user: Account | User, project: ProjectMeta): boolean {
+  return canAccessProject(user, project, 'share');
 }
 
-export const canCreateProjects = (user: Account | User) => user.role !== 'viewer';
-export const isAdmin = (user: Account | User) => user.role === 'admin';
+export const canTransferProject = canTransferProjectPermission;
+export { canCreateProject };
+export const isAdmin = (user: Account | User) => canManageAccounts(user.role);

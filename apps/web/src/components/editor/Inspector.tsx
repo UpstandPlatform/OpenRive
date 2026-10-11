@@ -330,6 +330,11 @@ function BoneSection({ o, b }: { o: CoreObj; b: Binding }) {
   return (
     <div className="section flex flex-col gap-1.5">
       <div className="panel-title mb-1">Bone</div>
+      <p className="text-[10px] leading-relaxed text-t2">
+        {o.type === 'RootBone'
+          ? 'Drag the root handle to position this bone, the shaft to rotate it, or the tip to change its length and angle.'
+          : 'This bone is linked to its parent’s tip. Drag the shaft to rotate it, or drag the tip to change its length and angle.'}
+      </p>
       {o.type === 'RootBone' && (
         <Row label="Position">
           <Num b={b} o={o} name="x" label="X" />

@@ -27,7 +27,9 @@ export interface McpServerOptions {
   canSeeProject?: (project: ProjectMeta) => boolean;
   canEditProject?: (project: ProjectMeta) => boolean;
   canManageProject?: (project: ProjectMeta) => boolean;
-  canCreateProjects?: boolean;
+  canCreateProject?: boolean | (() => boolean);
+  /** Active workspace for projects created by an authenticated HTTP session. */
+  organizationId?: () => string | undefined;
   /** Filesystem paths are intentionally disabled for remote HTTP MCP sessions. */
   allowFilePaths?: boolean;
   editorUrlBase?: string;
@@ -71,6 +73,9 @@ const project = z.string().describe('Project id or name');
 const artboard = z.string().optional().describe('Artboard id or name (default: first artboard)');
 const color = z.string().describe('CSS color, e.g. #ff5c7a or #00000080');
 const url = (id: string) => `${(options.editorUrlBase ?? env().OPENRIVE_URL).replace(/\/$/, '')}/editor/${id}`;
+const isCreateAllowed = () => typeof options.canCreateProject === 'function'
+  ? options.canCreateProject()
+  : options.canCreateProject !== false;
 
 async function authorized(ref: string, operation: 'read' | 'edit' | 'manage') {
   const meta = await resolveProject(ref);
@@ -118,8 +123,8 @@ tool(
   'Create a new project, optionally from a template (see list_templates). Returns its id and editor URL.',
   { name: z.string(), template: z.string().optional().describe('Template id, default "blank"') },
   async ({ name, template }) => {
-    if (options.canCreateProjects === false) throw new Error('You do not have permission to create projects');
-    const meta = await createProject(name, template, options.ownerId);
+    if (!isCreateAllowed()) throw new Error('You do not have permission to create projects');
+    const meta = await createProject(name, template, options.ownerId, options.organizationId?.());
     return { id: meta.id, name: meta.name, editor: url(meta.id) };
   },
 );
@@ -147,8 +152,11 @@ tool(
   async ({ path: p, dataBase64, name }) => {
     if (!!p === !!dataBase64) throw new Error('Provide exactly one of path or dataBase64');
     if (p && !options.allowFilePaths) throw new Error('Filesystem paths are not available through HTTP MCP; send dataBase64');
-    if (options.canCreateProjects === false) throw new Error('You do not have permission to create projects');
-    const meta = p ? await importFile(p, name, options.ownerId) : await importBytes(fromBase64(dataBase64!), name, options.ownerId);
+    if (!isCreateAllowed()) throw new Error('You do not have permission to create projects');
+    const organizationId = options.organizationId?.();
+    const meta = p
+      ? await importFile(p, name, options.ownerId, organizationId)
+      : await importBytes(fromBase64(dataBase64!), name, options.ownerId, organizationId);
     return { id: meta.id, name: meta.name, editor: url(meta.id) };
   },
 );
