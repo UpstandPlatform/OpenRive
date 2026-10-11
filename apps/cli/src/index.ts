@@ -22,7 +22,8 @@ Projects
   templates                                        List starter templates and example files
   import <file.riv...> [--name <name>]             Import .riv files as projects
   export <project> [out.riv]                       Export a project to a .riv file
-  render <project|file.riv> [out.png]              Render a still frame with the official Rive runtime
+  render <project|file.riv> [out.png]              Render a still frame (images/meshes use local Chromium)
+       [--renderer browser|software] [--browser <executable>]
     [--artboard <name|index>] [--animation <name|index>] [--time <seconds>] [--scale <factor>]
   source export <project|file.riv> [folder|out.oriv] Export reviewable source files or a portable archive
   source import <folder|file.oriv> [name]           Restore editable source as a project

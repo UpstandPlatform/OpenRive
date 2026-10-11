@@ -54,6 +54,15 @@ apps/cli/src/index.ts     CLI launcher
 
 See [docs/architecture.md](../docs/architecture.md) for the data flow.
 
+### Rigging verification
+
+Install local test/render Chromium with `bunx playwright-core@1.64.0 install chromium` (Linux CI adds `--with-deps`).
+`bun run test` includes 27 bone scenarios and official-runtime pixel checks for bind, pose, scale, mirror,
+rebind/unbind, and image meshes. `bun run test:browser` starts an isolated scratch editor and exercises actual pointer
+gestures, Inspector controls, undo, deformed vertex dragging, read-only and Animate restrictions, and save/reload.
+It closes its browser/server and removes its scratch database afterward. Stop an existing dev server first; Next
+development processes share the `.next` directory. CI and release validation run both suites.
+
 ## How a feature flows
 
 Most features touch these layers, in this order:

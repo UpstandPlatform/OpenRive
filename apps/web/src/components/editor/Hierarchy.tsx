@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
+import { toast } from '@/lib/client/toast';
 import { openContextMenu } from './ContextMenu';
 import { objectMenu } from './menus';
 import {
@@ -144,25 +145,29 @@ export function Hierarchy() {
   const onDrop = () => {
     if (!dragId || !drop || dragId === drop.id) return;
     const { id, pos } = drop;
-    s.commit((d) => {
-      for (const ab of d.artboards) {
-        const moving = findObj(ab, dragId);
-        const target = findObj(ab, id);
-        if (!moving || !target || moving.type === 'Artboard') continue;
-        if (isAncestor(ab, dragId, id)) return;
-        if (pos === 'inside') {
-          const first = childrenOf(ab, target.id).find(visibleInTree);
-          reparent(ab, dragId, target.id, first?.id ?? null);
-        } else {
-          const parent = parentIdOf(ab, target) ?? ab.artboard.id;
-          const siblings = childrenOf(ab, parent).filter((c) => c.id !== dragId);
-          const idx = siblings.findIndex((c) => c.id === id);
-          const before = pos === 'before' ? id : siblings.slice(idx + 1).find(visibleInTree)?.id ?? null;
-          if (parentIdOf(ab, moving) === parent) moveBefore(ab, dragId, before, parent);
-          else reparent(ab, dragId, parent, before);
+    try {
+      s.commit((d) => {
+        for (const ab of d.artboards) {
+          const moving = findObj(ab, dragId);
+          const target = findObj(ab, id);
+          if (!moving || !target || moving.type === 'Artboard') continue;
+          if (isAncestor(ab, dragId, id)) return;
+          if (pos === 'inside') {
+            const first = childrenOf(ab, target.id).find(visibleInTree);
+            reparent(ab, dragId, target.id, first?.id ?? null);
+          } else {
+            const parent = parentIdOf(ab, target) ?? ab.artboard.id;
+            const siblings = childrenOf(ab, parent).filter((c) => c.id !== dragId);
+            const idx = siblings.findIndex((c) => c.id === id);
+            const before = pos === 'before' ? id : siblings.slice(idx + 1).find(visibleInTree)?.id ?? null;
+            if (parentIdOf(ab, moving) === parent) moveBefore(ab, dragId, before, parent);
+            else reparent(ab, dragId, parent, before);
+          }
         }
-      }
-    });
+      });
+    } catch (error) {
+      toast((error as Error).message);
+    }
     setDrop(null);
     setDragId(null);
   };

@@ -71,14 +71,16 @@ The local desktop app serves the same `/api/mcp` route on its loopback origin. I
 off by default and is bound to `127.0.0.1`; use the loopback URL shown by the desktop integration when configuring a
 local AI client.
 
-## Tools (30)
+## Tools (42)
 
 | Area | Tools |
 | --- | --- |
 | Projects | `list_projects`, `list_templates`, `create_project`, `get_project`, `import_riv`, `export_riv`, `delete_project`, `inspect_riv` |
 | Design | `add_artboard`, `add_shape`, `add_path`, `add_text`, `add_group`, `set_properties`, `delete_objects` |
 | Animation | `add_timeline`, `add_keyframes` |
-| State machines | `add_state_machine`, `add_state`, `add_transition`, `add_listener` |
+| State machines | `add_state_machine`, `add_state`, `add_blend_state`, `add_transition`, `add_listener`, `add_event` |
+| Rigging | `add_bone`, `set_bone_parent`, `bind_skin`, `set_skin_weights`, `auto_weight_skin`, `smooth_skin_weights`, `paint_skin_weights`, `rebind_skin`, `unbind_skin` |
+| Constraints | `add_distance_constraint` |
 | Data binding | `add_property`, `set_property_value`, `convert_inputs_to_data_binding` (and the deprecated `add_input`) |
 | Theme colors | `define_theme_color`, `use_theme_color`, `set_theme_color_value`, `add_theme`, `switch_theme` |
 

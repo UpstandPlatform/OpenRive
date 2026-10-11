@@ -46,6 +46,7 @@
     "desktop": "bun run --cwd apps/desktop dev",
     "wiki": "bun scripts/build-wiki.mjs",
     "test:mcp": "bun scripts/mcp-smoke.test.ts",
+    "test:browser": "bun scripts/bone-browser.test.ts",
     "rive:status": "bun scripts/rive-sdk.ts status",
     "rive:init": "bun scripts/rive-sdk.ts init",
     "rive:update": "bun scripts/rive-sdk.ts update",
@@ -55,15 +56,16 @@
     "build:desktop": "bun run --cwd apps/desktop build"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@openrive/auth": "workspace:*",
     "@openrive/config": "workspace:*",
-    "@types/bun": "catalog:",
-    "@types/node": "catalog:",
-    "turbo": "^2.10.12",
-    "typescript": "catalog:",
     "@openrive/db": "workspace:*",
     "@openrive/rive": "workspace:*",
     "@openrive/shared": "workspace:*",
-    "@modelcontextprotocol/sdk": "^1.32.1",
-    "@openrive/auth": "workspace:*"
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "playwright-core": "1.64.0",
+    "turbo": "^2.10.12",
+    "typescript": "catalog:"
   }
 }

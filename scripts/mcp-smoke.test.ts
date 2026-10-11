@@ -18,7 +18,7 @@ import { importRiv } from '@openrive/rive/document';
   try {
   const tools = await client.listTools();
   console.log('tools:', tools.tools.length, tools.tools.map((t) => t.name).join(', '));
-  if (tools.tools.length !== 35) throw new Error(`Expected 35 MCP tools, found ${tools.tools.length}`);
+  if (tools.tools.length !== 42) throw new Error(`Expected 42 MCP tools, found ${tools.tools.length}`);
   const call = async (name: string, args: Record<string, unknown>) => {
     const r = (await client.callTool({ name, arguments: args })) as { content: { text: string }[]; isError?: boolean };
     if (r.isError) throw new Error(`${name}: ${r.content[0].text}`);
@@ -31,6 +31,18 @@ import { importRiv } from '@openrive/rive/document';
   const rootBone = JSON.parse(await call('add_bone', { project: p, name: 'Root', x: 80, y: 80, length: 60 }));
   const childBone = JSON.parse(await call('add_bone', { project: p, parent: rootBone.id, name: 'Child', length: 40, rotation: 0.5 }));
   const rigPath = JSON.parse(await call('add_path', { project: p, name: 'Rig path', points: [{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 30 }, { x: 0, y: 30 }] }));
+  await call('bind_skin', { project: p, path: rigPath.pathId, bones: [rootBone.id, childBone.id] });
+  const riggingOutline = JSON.parse(await call('get_project', { project: p }));
+  const rigVertex = riggingOutline.artboards[0].children.find((object: { id: string }) => object.id === rigPath.id)?.children.find((object: { id: string }) => object.id === rigPath.pathId)?.vertices[0]?.id;
+  if (typeof rigVertex !== 'string') throw new Error('MCP did not bind path vertices.');
+  await call('set_skin_weights', { project: p, vertex: rigVertex, influences: [{ index: 1, weight: 0.75 }, { index: 2, weight: 0.25 }], channel: 'point' });
+  await call('auto_weight_skin', { project: p, path: rigPath.pathId });
+  await call('smooth_skin_weights', { project: p, path: rigPath.pathId });
+  await call('paint_skin_weights', { project: p, path: rigPath.pathId, bone: rootBone.id, x: 0, y: 0, radius: 100, strength: 0.5 });
+  await call('set_bone_parent', { project: p, bone: childBone.id });
+  await call('set_bone_parent', { project: p, bone: childBone.id, parent: rootBone.id });
+  await call('rebind_skin', { project: p, path: rigPath.pathId });
+  await call('unbind_skin', { project: p, path: rigPath.pathId });
   await call('bind_skin', { project: p, path: rigPath.pathId, bones: [rootBone.id, childBone.id] });
   await call('use_theme_color', { project: p, object: 'Dot', color: 'Brand' });
   await call('add_text', { project: p, text: 'Made by MCP', x: 250, y: 400, origin: 'center', fontSize: 28, color: '#ffffff' });

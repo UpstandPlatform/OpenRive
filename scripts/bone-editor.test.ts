@@ -1,8 +1,8 @@
 import { strict as assert } from 'node:assert';
-import { addBone } from '@openrive/rive/api';
+import { addBone, addShape } from '@openrive/rive/api';
 import { newDoc } from '@openrive/rive/factory';
 import { apply, buildScene, prop } from '@openrive/rive/scene';
-import { boneCreationFromDrag, boneDragFrame, boneParentPoint, boneRootPositionFromPointer, boneRotationFromPointer, boneTipProps, hitBone } from '../apps/web/src/components/editor/boneEditing';
+import { boneCreationFromDrag, boneCreationStart, boneDragFrame, boneParentPoint, boneRootPositionFromPointer, boneRotationFromPointer, boneTipProps, hitBone } from '../apps/web/src/components/editor/boneEditing';
 
 const close = (actual: number, expected: number, message: string) => assert.ok(Math.abs(actual - expected) < 1e-6, `${message}: expected ${expected}, received ${actual}`);
 const doc = newDoc('Bone editor scenarios');
@@ -83,8 +83,35 @@ close(rootCreation.x, 24, 'created root x');
 close(rootCreation.y, 36, 'created root y');
 close(rootCreation.length, 60, 'created root length');
 close(rootCreation.rotation, Math.PI / 2, 'created root rotation');
+// 15. A root can only start inside the artboard; active-artboard fallback cannot place it off-canvas.
+assert.deepEqual(boneCreationStart(ab, scene, artboardOffset.x + 50, artboardOffset.y + 50, ...toScreen(artboardOffset.x + 50, artboardOffset.y + 50), artboardOffset, toScreen), {
+  x: artboardOffset.x + 50,
+  y: artboardOffset.y + 50,
+});
+assert.equal(boneCreationStart(ab, scene, artboardOffset.x + 510, artboardOffset.y + 50, ...toScreen(artboardOffset.x + 510, artboardOffset.y + 50), artboardOffset, toScreen), null);
+// 16. Bone tips link children whether or not their parent is selected.
+const selectedRootTip = apply(scene.nodes.get(root.id)!.world, prop(root, 'length'), 0);
+const selectedTipStage = [artboardOffset.x + selectedRootTip[0], artboardOffset.y + selectedRootTip[1]] as const;
+const selectedTipScreen = toScreen(...selectedTipStage);
+assert.deepEqual(boneCreationStart(ab, scene, ...selectedTipStage, ...selectedTipScreen, artboardOffset, toScreen, root.id), {
+  parentId: root.id,
+  x: selectedTipStage[0],
+  y: selectedTipStage[1],
+});
+assert.deepEqual(boneCreationStart(ab, scene, artboardOffset.x + 60, artboardOffset.y + 60, ...toScreen(artboardOffset.x + 60, artboardOffset.y + 60), artboardOffset, toScreen, root.id), {
+  x: artboardOffset.x + 60,
+  y: artboardOffset.y + 60,
+});
+const unselectedChildTip = apply(scene.nodes.get(child.id)!.world, prop(child, 'length'), 0);
+const unselectedChildTipStage = [artboardOffset.x + unselectedChildTip[0], artboardOffset.y + unselectedChildTip[1]] as const;
+assert.deepEqual(boneCreationStart(ab, scene, ...unselectedChildTipStage, ...toScreen(...unselectedChildTipStage), artboardOffset, toScreen), {
+  parentId: child.id,
+  x: unselectedChildTipStage[0],
+  y: unselectedChildTipStage[1],
+});
+assert.equal(boneCreationStart(ab, scene, artboardOffset.x + 510, artboardOffset.y + 50, ...toScreen(artboardOffset.x + 510, artboardOffset.y + 50), artboardOffset, toScreen, root.id), null);
 
-// 15. Child creation derives its local direction under rotated, non-uniform parent transforms.
+// 17. Child creation derives its local direction under rotated, non-uniform parent transforms.
 root.props.rotation = 0.4;
 root.props.scaleX = 2;
 root.props.scaleY = 0.5;
@@ -96,12 +123,34 @@ const childCreation = boneCreationFromDrag(ab, scene, root.id, artboardOffset.x 
 close(childCreation.length, Math.hypot(25, 10), 'created child length');
 close(childCreation.rotation, Math.atan2(10, 25), 'created child local rotation');
 
-// 16. Creation rejects an unknown parent instead of producing a detached bone.
+// 18. Creation rejects an unknown parent instead of producing a detached bone.
 assert.throws(() => boneCreationFromDrag(ab, scene, 'missing-parent', 0, 0, 20, 0, artboardOffset), /missing from the scene/);
-// 17. Shaft rotation stays smooth when the pointer crosses the -π/π boundary.
+// 19. Shaft rotation stays smooth when the pointer crosses the -π/π boundary.
 const wrapFrame = { parentInverse: [1, 0, 0, 1, 0, 0] as const, baseX: 0, baseY: 0 };
 const wrapTarget = -Math.PI + 0.01;
 const wrapRotation = boneRotationFromPointer(wrapFrame, Math.cos(wrapTarget), Math.sin(wrapTarget), { x: 0, y: 0 }, Math.PI - 0.01, 0);
 close(wrapRotation, 0.02, 'shaft rotation wraps through the shortest angle');
 assert.ok(overlapping.id, 'overlapping rig fixture is retained for deterministic hit-priority checks');
-console.log('✓ 17 bone editor scenarios: hierarchy transforms, canvas hit-testing, positioning, rotation, tip edits, creation, and edge cases');
+// 21–22. Tip length and angle compensate for the bone's own positive and mirrored scale.
+const scaled = boneTipProps({ ...wrapFrame, scaleX: 2 }, 80, 0, { x: 0, y: 0 }, 0);
+close(scaled.length, 40, 'scaled tip length');
+const mirrored = boneTipProps({ ...wrapFrame, scaleX: -2 }, -80, 0, { x: 0, y: 0 }, 0);
+close(mirrored.length, 40, 'mirrored tip length');
+close(mirrored.rotation, 0, 'mirrored tip angle');
+// 23–24. Grabbing near a handle retains the initial pointer offset, preventing jumps.
+close(boneTipProps({ ...wrapFrame, offsetX: 5, offsetY: -3 }, 75, 3, { x: 0, y: 0 }, 0).length, 80, 'tip grab offset');
+assert.deepEqual(boneRootPositionFromPointer({ ...wrapFrame, offsetX: 5, offsetY: -3 }, 25, 43, { x: 0, y: 0 }), [30, 40]);
+// 25. Animated length overrides drive endpoint picking.
+const only = newDoc('Picking');
+const pickAb = only.artboards[0]!;
+const pickBone = addBone(only, { x: 20, y: 20, length: 50 });
+const pickScene = buildScene(pickAb, new Map([[pickBone.id, { length: 100 }]]));
+assert.deepEqual(hitBone(pickAb, pickScene, 120, 20, { x: 0, y: 0 }, (x, y) => [x, y]), { id: pickBone.id, handle: 'tip' });
+// 26–27. Hidden and locked bones cannot be picked or used as linking targets.
+const pickParent = addShape(only, { kind: 'rectangle', width: 100, height: 100, x: 0, y: 0 });
+pickBone.props.parentId = pickParent.id;
+pickParent.props.drawableFlags = 1;
+assert.equal(hitBone(pickAb, buildScene(pickAb), 70, 20, { x: 0, y: 0 }, (x, y) => [x, y]), null);
+pickParent.props.drawableFlags = 2;
+assert.equal(hitBone(pickAb, buildScene(pickAb), 70, 20, { x: 0, y: 0 }, (x, y) => [x, y]), null);
+console.log('✓ 27 bone editor scenarios: hierarchy, positioning, linking, scaled/mirrored tip edits, handle offsets, animated picking, hidden/locked bones and creation edge cases');

@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.1.3 - 2026-10-11
+
+### Rigging
+
+- Correct skin and tendon bind matrices to match the official Rive runtime; deformed contours, bounds, vertex picking, and cubic handles now share that evaluation.
+- Add canvas weight painting with radius, strength, add/subtract modes, independent handle targets, normalized four-bone influences, and one undo step per stroke.
+- Add bone parent controls, auto weighting, topology-aware mesh smoothing, rebind pose, and unbind with the current contour preserved.
+- Fix scaled and mirrored tip edits, handle grab offsets, child linking from unselected tips, selection beyond artboard bounds, and interrupted gestures.
+- Reject parent changes that would introduce unsupported shear or discard animated root positioning; validate auto weighting before making changes.
+- Safely bake affected skins when deleting bound bones and report invalid skin references or weights in file diagnostics.
+- Expose the rigging operations through the shared API and seven new MCP tools.
+
+### Verification and rendering
+
+- Flush deferred drawing before saving software-rendered PNGs; add an optional local Chromium renderer for embedded images and image meshes.
+- Add 27 focused bone scenarios, 25 real browser canvas and Inspector scenarios, and official-runtime pixel checks for vector and image skinning, scaling, mirroring, rebind, and unbind.
+- Run browser rigging checks in CI and release validation; preserve byte-identical round-trips across the Rive corpus.
+- Keep UI typography on bundled IBM Plex Sans and remove the Inter UI fallback; Inter remains available as an editable project font.
+
 ## 0.1.2 - 2026-10-11
 
 ### Editor

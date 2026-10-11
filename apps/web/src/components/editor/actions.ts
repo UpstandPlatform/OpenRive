@@ -7,6 +7,7 @@ import {
   ClipboardData,
   copyObjects,
   deleteObjects,
+  childrenOf,
   duplicateObjects,
   findArtboard,
   findObj,
@@ -532,6 +533,25 @@ function convertInputs() {
 }
 
 const tool = (t: Tool) => () => st().set('tool', t);
+function paintTarget() {
+  const { s, ab } = getActive();
+  if (!ab || s.mode !== 'design') return null;
+  const candidate = findObj(ab, s.selection[0] ?? s.editPathId ?? '');
+  const owner = candidate && isA(candidate.type, 'Vertex') ? findObj(ab, String(candidate.props.parentId)) : candidate;
+  const paths = owner ? [owner, ...childrenOf(ab, owner.id)] : s.editPathId ? [findObj(ab, s.editPathId)].filter((object): object is CoreObj => !!object) : [];
+  const path = paths.find((object) => childrenOf(ab, object.id).some((child) => child.type === 'Skin'));
+  const skin = path && childrenOf(ab, path.id).find((object) => object.type === 'Skin');
+  const boneId = skin && childrenOf(ab, skin.id).find((object) => object.type === 'Tendon')?.props.boneId;
+  return path && typeof boneId === 'string' ? { path, boneId } : null;
+}
+function activateWeightPaint() {
+  const target = paintTarget();
+  if (!target) return;
+  st().select([target.path.id]);
+  st().set('editPathId', target.path.id);
+  st().set('weightPaint', { ...st().weightPaint, pathId: target.path.id, boneId: target.boneId });
+  st().set('tool', 'weight');
+}
 const zoom = (type: string) => () => window.dispatchEvent(new CustomEvent('editor:zoom', { detail: type }));
 
 // ---------------------------------------------------------------------------
@@ -706,6 +726,7 @@ export const ACTIONS: Action[] = [
   { id: 'tool.text', label: 'Text tool', category: 'Tools', keys: ['T'], edits: true, run: tool('text') },
   { id: 'tool.pen', label: 'Pen tool', category: 'Tools', keys: ['P'], edits: true, run: tool('pen') },
   { id: 'tool.bone', label: 'Bone tool', category: 'Tools', keys: ['B'], edits: true, run: tool('bone') },
+  { id: 'tool.weight', label: 'Paint bone weights', category: 'Tools', keys: ['Shift+B'], edits: true, enabled: () => !!paintTarget(), run: activateWeightPaint },
   { id: 'tool.hand', label: 'Hand tool (or hold Space)', category: 'Tools', keys: ['H'], run: tool('hand') },
 
   // View

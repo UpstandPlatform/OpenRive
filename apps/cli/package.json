@@ -26,6 +26,7 @@
     "@opentui/react": "^0.5.12",
     "@rive-app/canvas-advanced": "^2.44.2",
     "nanoid": "catalog:",
+    "playwright-core": "1.64.0",
     "react": "catalog:",
     "zod": "catalog:"
   },

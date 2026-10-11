@@ -29,8 +29,9 @@ import {
   Braces,
   Package,
   Bone,
+  Paintbrush,
 } from 'lucide-react';
-import { runAction } from './actions';
+import { ACTIONS, isEnabled, runAction } from './actions';
 import { Tool, useEditor } from '@/lib/store/editor';
 import { useCurrentUser } from '@/lib/client/session';
 import { Avatar } from '../Avatar';
@@ -211,6 +212,7 @@ export function TopBar({ onSave, onExport, onExportSource, onExportAnimation, on
       </div>
       {toolBtn('text', <Type size={15} />, 'Text (T)')}
       {toolBtn('bone', <Bone size={15} />, 'Bone (B)')}
+      <button className={`icon-btn w-8 h-8 ${tool === 'weight' ? 'active' : ''}`} aria-label="Paint bone weights (Shift B)" title="Select a bound path to paint bone weights (Shift B)" disabled={!isEnabled(ACTIONS.find((action) => action.id === 'tool.weight')!)} onClick={() => runAction('tool.weight')}><Paintbrush size={15} /></button>
       {toolBtn('pen', <PenTool size={15} />, 'Pen (P)')}
       <button
         className="icon-btn w-8 h-8"

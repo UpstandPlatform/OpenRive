@@ -57,7 +57,7 @@ values only.
 | State machines, inputs, transitions, conditions, pointer listeners | Full editing |
 | Masks (clipping) | Full editing (toolbar action and the inspector's Mask section) |
 | Distance constraints, listener align-target | Via API/templates; preserved in the editor |
-| Bones and basic skinning | Root/child bones, skin binding, and vertex weights are editable; advanced rigging and weight-paint workflows remain limited |
+| Bones and skinning | Root/child bones, parent linking, skin binding, auto/smooth/paint weights, independent cubic handle influences, and pose rebind/unbind are editable; new image mesh topology and IK controls are not authored |
 | Meshes, other constraints, nested artboards, blend states, layouts, data binding, events, audio, scripts | **Preserved** and playable; editing support varies by feature |
 
 ## Not supported

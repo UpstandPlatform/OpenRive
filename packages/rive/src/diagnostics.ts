@@ -2,6 +2,10 @@
 import { assetBytes, fileAssets } from './assets';
 import { exportRiv, importRiv, type CoreObj, type RiveDoc } from './document';
 import { DEFAULT_HEADER } from './riv-format';
+import { childrenOf, findObj } from './ops';
+import { isA } from './schema';
+import { prop } from './scene';
+import { unpackInfluences } from './weights';
 
 export type DiagnosticSeverity = 'error' | 'warning' | 'info';
 export interface FileDiagnostic {
@@ -28,9 +32,7 @@ function walk(objects: CoreObj[], visit: (o: CoreObj) => void) {
 }
 
 const preservedButNotFullyEditable = new Map<string, string>([
-  ['Bone', 'Root and child bones can be authored; broader rigging controls are still limited.'],
-  ['Skin', 'PointsPath skins and vertex weights are editable; mesh skin editing is still limited.'],
-  ['Mesh', 'Mesh data is preserved and playable, but mesh editing is not available yet.'],
+  ['Mesh', 'Existing mesh vertices and bone weights are editable. Creating mesh topology or tracing images is not yet supported.'],
   ['NestedArtboard', 'Nested artboards are preserved and playable, but their editing controls are limited.'],
   ['LayoutComponent', 'Layout data is preserved and playable, but layout editing is not available yet.'],
   ['ViewModel', 'Data binding is preserved; inspect the Data panel to review editable properties.'],
@@ -77,6 +79,23 @@ export function diagnoseDocument(doc: RiveDoc): FileHealthReport {
   });
 
   const assetIds = new Set(fileAssets(doc).map((o) => o.id));
+  for (const ab of doc.artboards) {
+    for (const skin of ab.objects.filter((object) => object.type === 'Skin')) {
+      const path = findObj(ab, String(skin.props.parentId));
+      const tendons = childrenOf(ab, skin.id).filter((object) => object.type === 'Tendon');
+      const location = String(path?.props.name || path?.type || 'Skin');
+      if (!path || (path.type !== 'PointsPath' && path.type !== 'Mesh') || !tendons.length || tendons.length > 255 || tendons.some((tendon) => !isA(findObj(ab, String(tendon.props.boneId))?.type ?? '', 'Bone'))) diagnostics.push({ code: 'invalid-skin-binding', severity: 'error', title: 'Invalid bone skin', message: 'A skin needs a path or mesh and 1–255 tendons referencing bones in the same artboard.', location });
+      for (const vertex of path ? childrenOf(ab, path.id).filter((object) => isA(object.type, 'Vertex')) : []) {
+        const weight = childrenOf(ab, vertex.id).find((object) => isA(object.type, 'Weight'));
+        if (!weight) { diagnostics.push({ code: 'missing-skin-weight', severity: 'warning', title: 'Vertex has no weights', message: 'This vertex will not follow the bound bones. Auto weight can assign its influences after a valid skin is bound.', location }); continue; }
+        for (const prefix of weight.type === 'CubicWeight' ? ['', 'in', 'out'] : ['']) {
+          const influences = unpackInfluences(prop(weight, prefix ? `${prefix}Indices` : 'indices'), prop(weight, prefix ? `${prefix}Values` : 'values'));
+          if (influences.some((item) => item.weight > 0 && item.index > tendons.length)) diagnostics.push({ code: 'invalid-skin-influence', severity: 'error', title: 'Weight references a missing tendon', message: 'A point or cubic handle has an influence outside its skin’s tendon list.', location });
+          if (Math.abs(influences.reduce((sum, item) => sum + item.weight, 0) - 1) > 0.001) diagnostics.push({ code: 'unnormalized-skin-weight', severity: 'warning', title: 'Weights do not total 100%', message: 'This point or handle may shift or collapse. Normalize its influences in the Inspector.', location });
+        }
+      }
+    }
+  }
   const referencedAssets = new Set<string>();
   walk(all, (o) => {
     if (typeof o.props.assetId === 'string' && o.props.assetId) referencedAssets.add(o.props.assetId);

@@ -13,6 +13,7 @@
         "@openrive/shared": "workspace:*",
         "@types/bun": "catalog:",
         "@types/node": "catalog:",
+        "playwright-core": "1.64.0",
         "turbo": "^2.10.12",
         "typescript": "catalog:",
       },
@@ -35,6 +36,7 @@
         "@opentui/react": "^0.5.12",
         "@rive-app/canvas-advanced": "^2.44.2",
         "nanoid": "catalog:",
+        "playwright-core": "1.64.0",
         "react": "catalog:",
         "zod": "catalog:",
       },
@@ -1289,6 +1291,8 @@
     "picomatch": ["picomatch@4.0.7", "", {}, "sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA=="],
 
     "pkce-challenge": ["pkce-challenge@5.0.1", "", {}, "sha512-wQ0b/W4Fr01qtpHlqSqspcj3EhBvimsdh0KlHhH8HRZnMsEa0ea2fTULOXOS9ccQr3om+GcGRk4e+isrZWV8qQ=="],
+
+    "playwright-core": ["playwright-core@1.64.0", "", { "bin": { "playwright-core": "cli.js" } }, "sha512-T9r+MZkTECl2+oUcZ26YgZzTrYidTsIhYYkJix+6iDOymOb1FB2RLLSOxRGnZGv5DStt+aduIVbt+E8WygXYpg=="],
 
     "possible-typed-array-names": ["possible-typed-array-names@1.1.0", "", {}, "sha512-/+5VFTchJDoVj3bhoqi6UeymcD00DAwb1nJwamzPvHEszJ4FpF6SNNbUbOS8yI56qHzdV8eK0qEfOSiodkTdxg=="],
 

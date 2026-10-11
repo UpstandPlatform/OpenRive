@@ -22,6 +22,7 @@ export type Tool =
   | 'text'
   | 'pen'
   | 'bone'
+  | 'weight'
   | 'hand'
   | 'group';
 
@@ -77,6 +78,7 @@ interface EditorState {
   smSelection: SmSelection;
   view: View;
   editPathId: string | null;
+  weightPaint: { pathId: string | null; boneId: string | null; radius: number; strength: number; mode: 'add' | 'subtract'; channel: 'point' | 'in' | 'out' | 'all' };
   timelineHeight: number;
   /** ping-pong playback direction */
   playDir: 1 | -1;
@@ -147,6 +149,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   smSelection: null,
   view: { zoom: 1, panX: 0, panY: 0 },
   editPathId: null,
+  weightPaint: { pathId: null, boneId: null, radius: 50, strength: 0.25, mode: 'add', channel: 'all' },
   timelineHeight: 280,
   playDir: 1,
   editTextId: null,
@@ -168,6 +171,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       savedVersion: 1,
       mode: 'design',
       tool: 'select',
+      weightPaint: { pathId: null, boneId: null, radius: 50, strength: 0.25, mode: 'add', channel: 'all' },
       activeArtboardId: ab?.id ?? null,
       selection: [],
       animationId: ab?.animations[0]?.id ?? null,
@@ -302,7 +306,12 @@ export const useEditor = create<EditorState>((set, get) => ({
     } else {
       set({ selection: ids });
     }
-    if (get().editPathId && !get().selection.includes(get().editPathId!)) set({ editPathId: null });
+    const { doc, editPathId, selection } = get();
+    if (doc && editPathId && !selection.some((id) => {
+      const object = findInDoc(doc, id);
+      const path = findInDoc(doc, editPathId);
+      return id === editPathId || object?.props.parentId === editPathId || path?.props.parentId === id;
+    })) set({ editPathId: null });
   },
   setActiveArtboard(id) {
     const { doc, activeArtboardId } = get();

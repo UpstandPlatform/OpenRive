@@ -439,6 +439,29 @@ tool(
   },
 );
 
+const weightChannel = z.enum(['point', 'in', 'out', 'all']).optional();
+tool('set_skin_weights', 'Set normalized point or independent cubic-handle weights. Tendon indices are 1-based; 0 is unbound.', { project, artboard, vertex: z.string(), influences: z.array(z.object({ index: z.number().int().min(0).max(255), weight: z.number().nonnegative() })).min(1).max(4), channel: weightChannel }, async ({ project: ref, ...input }) => {
+  const { result } = await editAuthorized(ref, (doc) => api.setSkinWeights(doc, input));
+  return { id: result.id, values: result.props.values, indices: result.props.indices };
+});
+for (const [name, description, operation] of [
+  ['auto_weight_skin', 'Assign up to four nearby bone influences per point and cubic handle.', api.autoWeightSkin],
+  ['smooth_skin_weights', 'Smooth weights across adjacent contour vertices.', api.smoothSkinWeights],
+  ['rebind_skin', 'Capture the current posed contour as a new bind pose while retaining weights.', api.rebindSkin],
+  ['unbind_skin', 'Remove a skin while keeping the current posed contour.', api.unbindSkin],
+] as const) tool(name, description, { project, artboard, path: z.string() }, async ({ project: ref, ...input }) => {
+  await editAuthorized(ref, (doc) => operation(doc, input));
+  return { ok: true };
+});
+tool('set_bone_parent', 'Link a bone to a parent tip, or detach to the artboard while preserving its world pose.', { project, artboard, bone: z.string(), parent: z.string().optional() }, async ({ project: ref, ...input }) => {
+  const { result } = await editAuthorized(ref, (doc) => api.setBoneParent(doc, input));
+  return { id: result.id, type: result.type, parent: result.props.parentId };
+});
+tool('paint_skin_weights', 'Paint a normalized bone influence within an artboard-space brush stroke.', { project, artboard, path: z.string(), bone: z.string(), x: z.number(), y: z.number(), fromX: z.number().optional(), fromY: z.number().optional(), radius: z.number().positive(), strength: z.number().min(0).max(1), mode: z.enum(['add', 'subtract']).optional(), channel: weightChannel }, async ({ project: ref, ...input }) => {
+  const { result } = await editAuthorized(ref, (doc) => api.paintSkinWeights(doc, input));
+  return { editedChannels: result };
+});
+
 tool(
   'add_blend_state',
   'Add a 1D blend state driven by a numeric state-machine parameter and a set of timelines with parameter values.',

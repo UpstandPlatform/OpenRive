@@ -36,7 +36,10 @@ jobs:
         run: bun run lint
 
       - name: Tests
-        run: bun run test
+        run: bunx playwright-core install --with-deps chromium && bun run test
+
+      - name: Bone canvas workflows
+        run: bun run test:browser
 
       - name: Validate shipped Rive assets
         run: bun run check:riv

@@ -299,6 +299,39 @@ export function vertexControls(v: CoreObj, ov?: Overrides) {
   }
 }
 
+/** The runtime deforms points into artboard space using the skin's captured path and bone bind matrices. */
+export function vertexWorldMatrix(scene: Scene, vertex: CoreObj, channel: 'point' | 'in' | 'out' = 'point'): Mat {
+  const path = scene.nodes.get(String(vertex.props.parentId));
+  const skin = path?.children.find((child) => child.type === 'Skin');
+  const weight = scene.nodes.get(vertex.id)?.children.find((child) => child.type === 'Weight' || child.type === 'CubicWeight');
+  if (!skin || !weight) return path?.world ?? IDENTITY;
+  const matrix = (object: CoreObj): Mat => ['xx', 'xy', 'yx', 'yy', 'tx', 'ty'].map((name) => prop(object, name, scene.overrides)) as Mat;
+  const tendons = scene.nodes.get(skin.id)?.children.filter((child) => child.type === 'Tendon') ?? [];
+  const prefix = weight.type === 'CubicWeight' && channel !== 'point' ? channel : '';
+  const values = prop<number>(weight, prefix ? `${prefix}Values` : 'values', scene.overrides);
+  const indices = prop<number>(weight, prefix ? `${prefix}Indices` : 'indices', scene.overrides);
+  const blended: Mat = [0, 0, 0, 0, 0, 0];
+  for (let slot = 0; slot < 4; slot++) {
+    const value = ((values >>> (slot * 8)) & 255) / 255;
+    if (!value) continue;
+    const index = (indices >>> (slot * 8)) & 255;
+    const tendon = tendons[index - 1];
+    const bone = tendon && scene.nodes.get(String(tendon.props.boneId));
+    const transform = bone && tendon ? mul(bone.world, invert(matrix(tendon))) : IDENTITY;
+    for (let i = 0; i < 6; i++) blended[i] += transform[i] * value;
+  }
+  return mul(blended, matrix(skin));
+}
+
+/** Deformed vertex controls expressed in current path-local coordinates for overlays, bounds and picking. */
+export function vertexSceneControls(vertex: CoreObj, scene: Scene) {
+  const controls = vertexControls(vertex, scene.overrides);
+  const pathWorld = scene.nodes.get(String(vertex.props.parentId))?.world ?? IDENTITY;
+  const convert = (x: number, y: number, channel: 'point' | 'in' | 'out') => apply(mul(invert(pathWorld), vertexWorldMatrix(scene, vertex, channel)), x, y);
+  const [x, y] = convert(controls.x, controls.y, 'point');
+  return { x, y, in: controls.in ? convert(controls.in[0], controls.in[1], 'in') : null, out: controls.out ? convert(controls.out[0], controls.out[1], 'out') : null };
+}
+
 export function pathGeometry(path: CoreObj, scene: Scene): PathGeom {
   const ov = scene.overrides;
   const t = path.type;
@@ -377,7 +410,7 @@ export function pathGeometry(path: CoreObj, scene: Scene): PathGeom {
   const node = scene.nodes.get(path.id);
   const verts = (node?.children ?? []).filter((c) => isA(c.type, 'PathVertex'));
   if (!verts.length) return { d: '', points: [] };
-  const vs = verts.map((v) => vertexControls(v, ov));
+  const vs = verts.map((v) => vertexSceneControls(v, scene));
   const points: [number, number][] = [];
   let d = `M${fmt(vs[0].x)} ${fmt(vs[0].y)}`;
   points.push([vs[0].x, vs[0].y]);

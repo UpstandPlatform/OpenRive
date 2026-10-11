@@ -75,7 +75,7 @@
   --color-anim: var(--anim);
   --color-danger: var(--danger);
   --color-ok: var(--ok);
-  --font-sans: 'IBM Plex Sans', 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-sans: 'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
 }
 

@@ -1,10 +1,10 @@
 import { ArtboardDoc, CoreObj } from '@openrive/rive/document';
 import { isA } from '@openrive/rive/schema';
-import { apply, invert, Mat, prop, Scene } from '@openrive/rive/scene';
+import { apply, invert, isHidden, isLocked, Mat, prop, Scene } from '@openrive/rive/scene';
 
 export type BoneHandle = 'base' | 'tip' | 'shaft';
 export type BoneHit = { id: string; handle: BoneHandle };
-export type BoneDragFrame = { parentInverse: Mat; baseX: number; baseY: number };
+export type BoneDragFrame = { parentInverse: Mat; baseX: number; baseY: number; scaleX?: number; offsetX?: number; offsetY?: number };
 
 export function boneDragFrame(scene: Scene, bone: CoreObj): BoneDragFrame {
   const node = scene.nodes.get(bone.id);
@@ -13,8 +13,9 @@ export function boneDragFrame(scene: Scene, bone: CoreObj): BoneDragFrame {
   const parentBone = parent?.obj;
   return {
     parentInverse: invert(parent?.world ?? [1, 0, 0, 1, 0, 0]),
-    baseX: bone.type === 'RootBone' ? prop(bone, 'x') : parentBone ? prop(parentBone, 'length') : 0,
-    baseY: bone.type === 'RootBone' ? prop(bone, 'y') : 0,
+    baseX: bone.type === 'RootBone' ? prop(bone, 'x', scene.overrides) : parentBone ? prop(parentBone, 'length', scene.overrides) : 0,
+    baseY: bone.type === 'RootBone' ? prop(bone, 'y', scene.overrides) : 0,
+    scaleX: prop(bone, 'scaleX', scene.overrides),
   };
 }
 
@@ -30,8 +31,9 @@ export function boneTipProps(
   currentRotation: number,
 ) {
   const [x, y] = boneParentPoint(frame, stageX, stageY, artboardOffset);
-  const dx = x - frame.baseX;
-  const dy = y - frame.baseY;
+  const scale = frame.scaleX || 1;
+  const dx = (x + (frame.offsetX ?? 0) - frame.baseX) / scale;
+  const dy = (y + (frame.offsetY ?? 0) - frame.baseY) / scale;
   const length = Math.hypot(dx, dy);
   return { length: Math.max(0.01, length), rotation: length < 0.01 ? currentRotation : Math.atan2(dy, dx) };
 }
@@ -57,7 +59,8 @@ export function boneRootPositionFromPointer(
   stageY: number,
   artboardOffset: { x: number; y: number },
 ) {
-  return boneParentPoint(frame, stageX, stageY, artboardOffset);
+  const [x, y] = boneParentPoint(frame, stageX, stageY, artboardOffset);
+  return [x + (frame.offsetX ?? 0), y + (frame.offsetY ?? 0)] as [number, number];
 }
 
 export function boneCreationFromDrag(
@@ -80,6 +83,39 @@ export function boneCreationFromDrag(
   return { x, y, length: Math.hypot(dx, dy), rotation: Math.atan2(dy, dx) };
 }
 
+/** Resolves whether a bone drag starts a root on the artboard or a child at a bone tip. */
+export function boneCreationStart(
+  ab: ArtboardDoc,
+  scene: Scene,
+  stageX: number,
+  stageY: number,
+  screenX: number,
+  screenY: number,
+  artboardOffset: { x: number; y: number },
+  toScreen: (x: number, y: number) => [number, number],
+  selectedBoneId?: string,
+) {
+  const selectedHit = selectedBoneId
+    ? hitBone(ab, scene, screenX, screenY, artboardOffset, toScreen, selectedBoneId)
+    : null;
+  const tipHit = selectedHit?.handle === 'tip'
+    ? selectedHit
+    : hitBone(ab, scene, screenX, screenY, artboardOffset, toScreen);
+  if (tipHit?.handle === 'tip') {
+    const parentBone = ab.objects.find((object) => object.id === tipHit.id && isA(object.type, 'Bone'));
+    const node = parentBone && scene.nodes.get(parentBone.id);
+    if (parentBone && node) {
+      const [tipX, tipY] = apply(node.world, prop(parentBone, 'length', scene.overrides), 0);
+      return { parentId: parentBone.id, x: tipX + artboardOffset.x, y: tipY + artboardOffset.y };
+    }
+  }
+
+  const x = stageX - artboardOffset.x;
+  const y = stageY - artboardOffset.y;
+  if (x < 0 || y < 0 || x > prop(ab.artboard, 'width') || y > prop(ab.artboard, 'height')) return null;
+  return { x: stageX, y: stageY };
+}
+
 export function hitBone(
   ab: ArtboardDoc,
   scene: Scene,
@@ -89,12 +125,12 @@ export function hitBone(
   toScreen: (x: number, y: number) => [number, number],
   selectedId?: string,
 ): BoneHit | null {
-  const bones = ab.objects.filter((object) => isA(object.type, 'Bone'));
+  const bones = ab.objects.filter((object) => isA(object.type, 'Bone') && !isHidden(scene, object.id) && !isLocked(scene, object.id));
   const endpoints = bones.flatMap((bone) => {
     const node = scene.nodes.get(bone.id);
     if (!node) return [];
     const [baseX, baseY] = apply(node.world, 0, 0);
-    const [tipX, tipY] = apply(node.world, prop(bone, 'length'), 0);
+    const [tipX, tipY] = apply(node.world, prop(bone, 'length', scene.overrides), 0);
     return [{
       id: bone.id,
       root: bone.type === 'RootBone',

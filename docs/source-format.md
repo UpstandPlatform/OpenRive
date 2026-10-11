@@ -47,5 +47,11 @@ that OpenRive can preserve and play but cannot fully edit. `render` uses the loc
 upload the file. GIF and PNG sprite-sheet exports are available from the editor's **Export GIF or sprite sheet**
 dialog; both render locally in the browser.
 
+Vector stills use the built-in software pipeline. Embedded images and image meshes automatically use local Chromium;
+install it once with `bunx playwright-core@1.64.0 install chromium`. Use `--renderer browser` to select that pipeline
+explicitly, or `--browser /path/to/chromium` to use an existing executable. Linux CI can use
+`bunx playwright-core@1.64.0 install --with-deps chromium`. External assets must be embedded before local rendering.
+The browser pipeline serves only the file and bundled runtime on loopback and blocks remote requests.
+
 Source archives are limited to 128 MB compressed, 512 MB unpacked and 10,000 entries. These bounds protect imports
 from unexpectedly large or pathological archives.

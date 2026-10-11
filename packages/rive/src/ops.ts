@@ -1,7 +1,7 @@
 // Structural edit operations on an (immer draft) document.
 import { ArtboardDoc, CoreObj, deepClone, newId, RiveDoc } from './document';
 import { obj } from './factory';
-import { apply, buildScene, compose, invert, Mat, mul, prop } from './scene';
+import { apply, buildScene, compose, invert, Mat, mul, prop, vertexSceneControls } from './scene';
 import { defaultValue, isA, propDef, propDefByKey } from './schema';
 
 export function findArtboard(doc: RiveDoc, id: string | null | undefined): ArtboardDoc | undefined {
@@ -76,11 +76,40 @@ export function insertObjects(ab: ArtboardDoc, objs: CoreObj[], beforeId?: strin
   else ab.objects.splice(index, 0, ...objs);
 }
 
+/** Removes a skin while retaining the currently posed contour, including independent cubic handle weights. */
+export function detachSkin(ab: ArtboardDoc, pathId: string): void {
+  const skin = childrenOf(ab, pathId).find((object) => object.type === 'Skin');
+  if (!skin) return;
+  const scene = buildScene(ab);
+  const pathWorld = scene.nodes.get(pathId)?.world;
+  if (!pathWorld || Math.abs(pathWorld[0] * pathWorld[3] - pathWorld[1] * pathWorld[2]) < 1e-10) throw new Error('Restore a nonzero path scale before removing its skin.');
+  const removed = descendantIds(ab, skin.id);
+  for (const vertex of childrenOf(ab, pathId).filter((object) => isA(object.type, 'Vertex'))) {
+    const controls = vertexSceneControls(vertex, scene);
+    Object.assign(vertex.props, { x: controls.x, y: controls.y });
+    if (controls.in && controls.out) {
+      vertex.type = 'CubicDetachedVertex';
+      const ix = controls.in[0] - controls.x, iy = controls.in[1] - controls.y;
+      const ox = controls.out[0] - controls.x, oy = controls.out[1] - controls.y;
+      for (const key of ['rotation', 'distance']) delete vertex.props[key];
+      Object.assign(vertex.props, { inRotation: Math.atan2(iy, ix), inDistance: Math.hypot(ix, iy), outRotation: Math.atan2(oy, ox), outDistance: Math.hypot(ox, oy) });
+    }
+    for (const weight of childrenOf(ab, vertex.id).filter((object) => object.type === 'Weight' || object.type === 'CubicWeight')) removed.add(weight.id);
+  }
+  ab.objects = ab.objects.filter((object) => !removed.has(object.id));
+  for (const animation of ab.animations) animation.children = (animation.children ?? []).filter((keyed) => !removed.has(String(keyed.props.objectId)));
+}
+
 export function deleteObjects(ab: ArtboardDoc, ids: string[]) {
   const doomed = new Set<string>();
   for (const id of ids) {
     if (id === ab.artboard.id) continue;
     for (const d of descendantIds(ab, id)) doomed.add(d);
+  }
+  // Tendons are runtime dependencies: leaving one pointed at a deleted bone prevents the artboard from loading.
+  for (const skin of ab.objects.filter((object) => object.type === 'Skin')) {
+    if (doomed.has(String(skin.props.parentId))) continue;
+    if (doomed.has(skin.id) || childrenOf(ab, skin.id).some((tendon) => doomed.has(String(tendon.props.boneId)))) detachSkin(ab, String(skin.props.parentId));
   }
   // interpolators referenced only by doomed keyframes are cleaned up by cleanupInterpolators
   ab.objects = ab.objects.filter((o) => !doomed.has(o.id));
@@ -125,15 +154,28 @@ export function decompose(m: Mat) {
 /** Moves an object under a new parent while keeping its world transform. */
 export function reparent(ab: ArtboardDoc, id: string, newParentId: string, beforeId?: string | null) {
   const o = findObj(ab, id);
-  if (!o || o.type === 'Artboard' || isAncestor(ab, id, newParentId)) return;
+  if (!o || o.type === 'Artboard' || id === newParentId || isAncestor(ab, id, newParentId)) return;
+  const target = findObj(ab, newParentId);
+  if (!target) throw new Error('Choose an existing parent in this artboard.');
+  if (isA(o.type, 'Bone') && target.type !== 'Artboard' && !isA(target.type, 'TransformComponent')) throw new Error('A bone requires an artboard, group, or bone parent.');
   const scene = buildScene(ab);
   const world = scene.nodes.get(id)?.world;
   const parentWorld = scene.nodes.get(newParentId)?.world;
+  if (parentWorld && Math.abs(parentWorld[0] * parentWorld[3] - parentWorld[1] * parentWorld[2]) < 1e-10) throw new Error('Choose a parent with nonzero scale.');
+  if (isA(o.type, 'Bone') && world && parentWorld) {
+    const localMatrix = mul(invert(parentWorld), world);
+    const alignment = localMatrix[0] * localMatrix[2] + localMatrix[1] * localMatrix[3];
+    const scale = Math.hypot(localMatrix[0], localMatrix[1]) * Math.hypot(localMatrix[2], localMatrix[3]);
+    if (Math.abs(alignment) > 1e-8 * Math.max(1, scale)) throw new Error('This parent would shear the bone. Use uniform parent scaling before changing its parent.');
+    if (o.type === 'RootBone' && isA(target.type, 'Bone') && ab.animations.some((animation) =>
+      ['x', 'y'].some((key) => isKeyed(animation, o.id, o.type, key)))) throw new Error('Remove root position keyframes before linking this bone to a parent tip.');
+  }
   o.props.parentId = newParentId;
-  if (world && parentWorld && isA(o.type, 'Node')) {
+  if (world && parentWorld && (isA(o.type, 'Node') || isA(o.type, 'Bone'))) {
     const local = decompose(mul(invert(parentWorld), world));
-    o.props.x = local.x;
-    o.props.y = local.y;
+    if (isA(o.type, 'Bone')) o.type = isA(target.type, 'Bone') ? 'Bone' : 'RootBone';
+    if (o.type === 'Bone') { delete o.props.x; delete o.props.y; }
+    else { o.props.x = local.x; o.props.y = local.y; }
     o.props.rotation = local.rotation;
     o.props.scaleX = local.scaleX;
     o.props.scaleY = local.scaleY;

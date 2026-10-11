@@ -25,6 +25,8 @@ import {
   sampleAnimation,
   Scene,
   vertexControls,
+  vertexSceneControls,
+  vertexWorldMatrix,
 } from '@openrive/rive/scene';
 import { isA } from '@openrive/rive/schema';
 import { duplicateObjects, findArtboard, findObj, insertObjects, isAncestor, parentIdOf } from '@openrive/rive/ops';
@@ -41,8 +43,9 @@ import { cancelViewTween, tweenView } from '@/lib/viewTween';
 import { importSvgMarkup } from '@/lib/client/svgImport';
 import { hasClipboard, runAction } from './actions';
 import { toast } from '@/lib/client/toast';
-import { addBone } from '@openrive/rive/api';
-import { boneCreationFromDrag, boneDragFrame, boneParentPoint, boneRootPositionFromPointer, boneRotationFromPointer, boneTipProps, hitBone } from './boneEditing';
+import { addBone, paintSkinWeights } from '@openrive/rive/api';
+import { unpackInfluences } from '@openrive/rive/weights';
+import { boneCreationFromDrag, boneCreationStart, boneDragFrame, boneParentPoint, boneRootPositionFromPointer, boneRotationFromPointer, boneTipProps, hitBone } from './boneEditing';
 
 type Handle = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 
@@ -82,9 +85,10 @@ type Drag =
     }
   | { kind: 'resizeArtboard'; abId: string; handle: Handle; x: number; y: number; w: number; h: number; sx: number; sy: number }
   | { kind: 'rotate'; abId: string; id: string; cx: number; cy: number; a0: number; rot0: number }
-  | { kind: 'boneTip'; abId: string; id: string; parentInverse: Mat; baseX: number; baseY: number }
+  | { kind: 'boneTip'; abId: string; id: string; rotation: number; parentInverse: Mat; baseX: number; baseY: number; scaleX?: number; offsetX?: number; offsetY?: number }
   | { kind: 'boneBase'; abId: string; id: string; frame: ReturnType<typeof boneDragFrame> }
   | { kind: 'boneRotate'; abId: string; id: string; frame: ReturnType<typeof boneDragFrame>; pointerAngle: number; rotation: number }
+  | { kind: 'weight'; abId: string; x: number; y: number }
   | {
       kind: 'create';
       tool: ShapeKind | 'artboard' | 'bone';
@@ -102,7 +106,7 @@ type Drag =
   /** dragging a guide out of a ruler (or an existing one); `orig` is where an existing guide started */
   | { kind: 'guide'; axis: 'x' | 'y'; abId: string; pos: number; orig: number | null }
   | { kind: 'penHandle'; index: number }
-  | { kind: 'vertex'; abId: string; id: string; which: 'pt' | 'in' | 'out'; inv: Mat };
+  | { kind: 'vertex'; abId: string; id: string; which: 'pt' | 'in' | 'out'; inv: Mat; offsetX: number; offsetY: number };
 
 /** mid grey, so grid lines stay visible on both light and dark artboards */
 const GRID_COLOR = '#8a8a99';
@@ -122,6 +126,16 @@ const HANDLE_CURSORS: Record<Handle, string> = {
   se: 'nwse-resize',
 };
 
+function weightColor(vertex: CoreObj, ab: ArtboardDoc, boneId: string | null, channel: 'point' | 'in' | 'out' = 'point') {
+  const skin = ab.objects.find((object) => object.type === 'Skin' && object.props.parentId === vertex.props.parentId);
+  const tendons = skin ? ab.objects.filter((object) => object.type === 'Tendon' && object.props.parentId === skin.id) : [];
+  const index = tendons.findIndex((tendon) => tendon.props.boneId === boneId) + 1;
+  const weight = ab.objects.find((object) => object.props.parentId === vertex.id && (object.type === 'Weight' || object.type === 'CubicWeight'));
+  const prefix = weight?.type === 'CubicWeight' && channel !== 'point' ? channel : '';
+  const share = weight && index ? unpackInfluences(Number(weight.props[prefix ? `${prefix}Indices` : 'indices']), Number(weight.props[prefix ? `${prefix}Values` : 'values'])).filter((item) => item.index === index).reduce((sum, item) => sum + item.weight, 0) : 0;
+  return `hsl(${220 - share * 190} 90% 60%)`;
+}
+
 export function Stage() {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -135,6 +149,9 @@ export function Stage() {
   const [guides, setGuides] = useState<Guide[]>([]);
   /** small readout next to the pointer: size while creating/resizing, angle while rotating */
   const [badge, setBadge] = useState<{ x: number; y: number; text: string } | null>(null);
+  const pointerId = useRef<number | null>(null);
+  const [brushCursor, setBrushCursor] = useState<[number, number] | null>(null);
+  const weightPaint = useEditor((state) => state.weightPaint);
 
   const doc = useEditor((s) => s.doc);
   const view = useEditor((s) => s.view);
@@ -581,7 +598,9 @@ export function Stage() {
   // ---- pointer handling ---------------------------------------------------
   const onPointerDown = (e: React.PointerEvent) => {
     if (!doc) return;
-    (e.target as Element).setPointerCapture?.(e.pointerId);
+    if (pointerId.current !== null || (e.button !== 0 && e.button !== 1)) return;
+    pointerId.current = e.pointerId;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
     cancelViewTween();
     const [cx, cy] = clientPoint(e);
     const [sx, sy] = toStage(cx, cy);
@@ -649,21 +668,28 @@ export function Stage() {
       s.set('tool', 'select');
       return;
     }
+    if (tool === 'weight') {
+      if (mode !== 'design' || !activeAb || !weightPaint.pathId || !weightPaint.boneId) { toast('Select a bound path in Design mode to paint weights.'); return; }
+      const p = abPos(activeAb);
+      s.beginGesture();
+      try {
+        s.commit((draft) => { paintSkinWeights(draft, { ...weightPaint, artboard: activeAb.id, path: weightPaint.pathId!, bone: weightPaint.boneId!, x: sx - p.x, y: sy - p.y, mode: e.altKey ? 'subtract' : weightPaint.mode }); }, true);
+        setDrag({ kind: 'weight', abId: activeAb.id, x: sx - p.x, y: sy - p.y });
+      } catch (error) { s.endGesture(); toast((error as Error).message); }
+      return;
+    }
     if (tool === 'bone') {
       const ab = artboardAt(sx, sy) ?? activeAb;
       if (!ab) return;
-      s.setActiveArtboard(ab.id);
       const selectedBone = s.selection.length === 1 ? findObj(ab, s.selection[0]) : undefined;
-      if (selectedBone && isA(selectedBone.type, 'Bone')) {
-        const boneScene = buildScene(ab).nodes.get(selectedBone.id);
-        if (boneScene) {
-          const p = abPos(ab);
-          const [tipX, tipY] = apply(boneScene.world, prop(selectedBone, 'length'), 0);
-          startCreate('bone', ab, tipX + p.x, tipY + p.y, e, selectedBone.id, false);
-          return;
-        }
+      const p = abPos(ab);
+      const boneStart = boneCreationStart(ab, scenes.get(ab.id) ?? buildScene(ab), sx, sy, cx, cy, p, toScreen, selectedBone?.id);
+      if (!boneStart) {
+        toast('Start a bone inside the artboard or drag from a bone tip.');
+        return;
       }
-      startCreate('bone', ab, sx, sy, e);
+      s.setActiveArtboard(ab.id);
+      startCreate('bone', ab, boneStart.x, boneStart.y, e, boneStart.parentId, false);
       return;
     }
     if (tool === 'pen') {
@@ -696,7 +722,15 @@ export function Stage() {
         const pathNode = activeScene.nodes.get(editPathId);
         if (pathNode) {
           s.beginGesture();
-          setDrag({ kind: 'vertex', abId: activeAb.id, id, which, inv: invert(pathNode.world) });
+          const vertex = findObj(activeAb, id)!;
+          const world = vertexWorldMatrix(activeScene, vertex, which === 'pt' ? 'point' : which);
+          if (Math.abs(world[0] * world[3] - world[1] * world[2]) < 1e-10) { s.endGesture(); toast('This point is collapsed by its bone transforms. Restore a nonzero scale before moving it.'); return; }
+          const inv = invert(world);
+          const p = abPos(activeAb);
+          const grabbed = apply(inv, sx - p.x, sy - p.y);
+          const controls = vertexControls(vertex, activeScene.overrides);
+          const point = which === 'pt' ? [controls.x, controls.y] : controls[which]!;
+          setDrag({ kind: 'vertex', abId: activeAb.id, id, which, inv, offsetX: point[0] - grabbed[0], offsetY: point[1] - grabbed[1] });
           return;
         }
       }
@@ -804,7 +838,7 @@ export function Stage() {
     }
 
     // select / move
-    const ab = artboardAt(sx, sy);
+    const ab = artboardAt(sx, sy) ?? (activeAb && activeScene && hitBone(activeAb, activeScene, cx, cy, abPos(activeAb), toScreen, s.selection[0]) ? activeAb : undefined);
     if (!ab) {
       s.select([]);
       setDrag({ kind: 'marquee', abId: activeArtboardId ?? '', x0: sx, y0: sy, x1: sx, y1: sy, additive: e.shiftKey });
@@ -817,21 +851,28 @@ export function Stage() {
       ? hitBone(ab, scene, cx, cy, p, toScreen, s.selection[0])
       : null;
     if (boneHit) {
+      const bone = findObj(ab, boneHit.id)!;
+      const parent = scene.nodes.get(String(bone.props.parentId))?.world;
+      if (!parent || Math.abs(parent[0] * parent[3] - parent[1] * parent[2]) < 1e-10 || (boneHit.handle === 'tip' && Math.abs(prop(bone, 'scaleX', scene.overrides)) < 1e-10)) { toast('Restore a nonzero bone and parent scale before dragging this handle.'); return; }
       s.set('selectionContext', null);
       s.select([boneHit.id]);
       if (boneHit.handle !== 'shaft' && !readOnly) {
         const bone = findObj(ab, boneHit.id)!;
         const frame = boneDragFrame(scene, bone);
+        const grabbed = boneParentPoint(frame, sx, sy, p);
         s.beginGesture();
-        if (boneHit.handle === 'tip') setDrag({ kind: 'boneTip', abId: ab.id, id: bone.id, ...frame });
-        else setDrag({ kind: 'boneBase', abId: ab.id, id: bone.id, frame });
+        if (boneHit.handle === 'tip') {
+          const tip = apply(scene.nodes.get(bone.id)!.world, prop(bone, 'length', scene.overrides), 0);
+          const localTip = apply(frame.parentInverse, ...tip);
+          setDrag({ kind: 'boneTip', abId: ab.id, id: bone.id, rotation: prop(bone, 'rotation', scene.overrides), ...frame, offsetX: localTip[0] - grabbed[0], offsetY: localTip[1] - grabbed[1] });
+        } else setDrag({ kind: 'boneBase', abId: ab.id, id: bone.id, frame: { ...frame, offsetX: frame.baseX - grabbed[0], offsetY: frame.baseY - grabbed[1] } });
       } else if (boneHit.handle === 'shaft' && !readOnly) {
         const bone = findObj(ab, boneHit.id)!;
         const frame = boneDragFrame(scene, bone);
         const [localX, localY] = boneParentPoint(frame, sx, sy, p);
         const pointerAngle = Math.atan2(localY - frame.baseY, localX - frame.baseX);
         s.beginGesture();
-        setDrag({ kind: 'boneRotate', abId: ab.id, id: bone.id, frame, pointerAngle, rotation: prop(bone, 'rotation') });
+        setDrag({ kind: 'boneRotate', abId: ab.id, id: bone.id, frame, pointerAngle, rotation: prop(bone, 'rotation', scene.overrides) });
       } else {
         beginMove(ab, scene, [boneHit.id], sx, sy);
       }
@@ -956,9 +997,11 @@ export function Stage() {
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
+    if (pointerId.current !== null && pointerId.current !== e.pointerId) return;
     const [cx, cy] = clientPoint(e);
     const [sx, sy] = toStage(cx, cy);
     const s = useEditor.getState();
+    if (tool === 'weight') setBrushCursor([cx, cy]);
     if (previewing && activeAb) {
       const p = abPos(activeAb);
       engine.current?.pointer('move', sx - p.x, sy - p.y);
@@ -1001,12 +1044,21 @@ export function Stage() {
       return;
     }
     switch (drag.kind) {
+      case 'weight': {
+        const ab = findArtboard(doc!, drag.abId);
+        if (!ab || !weightPaint.pathId || !weightPaint.boneId) break;
+        const p = abPos(ab), x = sx - p.x, y = sy - p.y;
+        try { s.commit((draft) => { paintSkinWeights(draft, { ...weightPaint, artboard: ab.id, path: weightPaint.pathId!, bone: weightPaint.boneId!, x, y, fromX: drag.x, fromY: drag.y, mode: e.altKey ? 'subtract' : weightPaint.mode }); }, true); }
+        catch (error) { s.endGesture(); setDrag(null); toast((error as Error).message); break; }
+        setDrag({ ...drag, x, y });
+        break;
+      }
       case 'boneTip': {
         const ab = findArtboard(doc!, drag.abId);
         const bone = ab && findObj(ab, drag.id);
         if (!ab || !bone) break;
         const p = abPos(ab);
-        s.setProps(drag.id, boneTipProps(drag, sx, sy, p, prop(bone, 'rotation')), true);
+        s.setProps(drag.id, boneTipProps(drag, sx, sy, p, drag.rotation), true);
         break;
       }
       case 'boneBase': {
@@ -1227,7 +1279,8 @@ export function Stage() {
       case 'vertex': {
         const ab = findArtboard(doc!, drag.abId)!;
         const p = abPos(ab);
-        const [lx, ly] = apply(drag.inv, sx - p.x, sy - p.y);
+        const grabbed = apply(drag.inv, sx - p.x, sy - p.y);
+        const lx = grabbed[0] + drag.offsetX, ly = grabbed[1] + drag.offsetY;
         const v = findObj(ab, drag.id);
         if (!v) break;
         if (drag.which === 'pt') {
@@ -1251,6 +1304,8 @@ export function Stage() {
   };
 
   const onPointerUp = (e: React.PointerEvent) => {
+    if (pointerId.current !== e.pointerId) return;
+    pointerId.current = null;
     const s = useEditor.getState();
     const [cx, cy] = clientPoint(e);
     const [sx, sy] = toStage(cx, cy);
@@ -1319,7 +1374,7 @@ export function Stage() {
         const ab = findArtboard(doc, drag.abId)!;
         const p = abPos(ab);
         const boneTransform = boneCreationFromDrag(ab, buildScene(ab), parentId, drag.x0, drag.y0, drag.x1, drag.y1, p);
-        if (boneTransform.length < 1) {
+        if (Math.hypot(drag.x1 - drag.x0, drag.y1 - drag.y0) * view.zoom < 1 || boneTransform.length < 0.01) {
           toast('Drag at least one pixel to create a bone.');
         } else {
           let createdId = '';
@@ -1327,8 +1382,8 @@ export function Stage() {
             const bone = addBone(d, {
               artboard: drag.abId!,
               ...(parentId ? { parent: parentId } : {}),
-              x: Math.round(boneTransform.x),
-              y: Math.round(boneTransform.y),
+              x: round2(boneTransform.x),
+              y: round2(boneTransform.y),
               length: round2(boneTransform.length),
               rotation: boneTransform.rotation,
             });
@@ -1373,7 +1428,9 @@ export function Stage() {
     setBadge(null);
   };
 
-  const onPointerCancel = () => {
+  const onPointerCancel = (e?: React.PointerEvent) => {
+    if (e && pointerId.current !== e.pointerId) return;
+    pointerId.current = null;
     if (!drag) return;
     if (drag.kind !== 'pan' && drag.kind !== 'marquee' && drag.kind !== 'create') cancelDrag();
     else {
@@ -1382,6 +1439,12 @@ export function Stage() {
       setBadge(null);
     }
   };
+
+  useEffect(() => {
+    const cancel = () => { if (pointerId.current !== null) onPointerCancel(); setSpaceDown(false); };
+    window.addEventListener('blur', cancel);
+    return () => window.removeEventListener('blur', cancel);
+  });
 
   const onContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -1611,10 +1674,11 @@ export function Stage() {
   if (!previewing && activeAb && activeScene) {
     const artboardOffset = abPos(activeAb);
     for (const bone of activeAb.objects.filter((object) => isA(object.type, 'Bone'))) {
+      if (isHidden(activeScene, bone.id)) continue;
       const boneScene = activeScene.nodes.get(bone.id);
       if (!boneScene) continue;
       const [baseX, baseY] = apply(boneScene.world, 0, 0);
-      const [tipX, tipY] = apply(boneScene.world, prop(bone, 'length'), 0);
+      const [tipX, tipY] = apply(boneScene.world, prop(bone, 'length', activeScene.overrides), 0);
       const [x1, y1] = toScreen(baseX + artboardOffset.x, baseY + artboardOffset.y);
       const [x2, y2] = toScreen(tipX + artboardOffset.x, tipY + artboardOffset.y);
       const selected = selection.includes(bone.id);
@@ -1699,8 +1763,8 @@ export function Stage() {
           return toScreen(ax + p.x, ay + p.y);
         };
         overlay.push(...pathOutline(activeScene, activeAb, editPathId, '#ffcf33', 'edit', 1.5));
-        for (const v of pathNode.children.filter((c) => isA(c.type, 'PathVertex'))) {
-          const vc = vertexControls(v, activeScene.overrides);
+        for (const v of pathNode.children.filter((c) => isA(c.type, 'Vertex'))) {
+          const vc = vertexSceneControls(v, activeScene);
           const [vx, vy] = toS(vc.x, vc.y);
           for (const which of ['in', 'out'] as const) {
             const cp = vc[which];
@@ -1709,7 +1773,7 @@ export function Stage() {
             overlay.push(
               <g key={`${v.id}-${which}`}>
                 <line x1={vx} y1={vy} x2={hx} y2={hy} stroke="#ffcf33" strokeWidth={1} />
-                <circle data-vertex={v.id} data-which={which} cx={hx} cy={hy} r={4} fill="#1a1a1a" stroke="#ffcf33" />
+                <circle data-vertex={v.id} data-which={which} cx={hx} cy={hy} r={4} fill={tool === 'weight' ? weightColor(v, activeAb, weightPaint.boneId, which) : '#1a1a1a'} stroke="#ffcf33" />
               </g>,
             );
           }
@@ -1722,7 +1786,7 @@ export function Stage() {
               y={vy - 4}
               width={8}
               height={8}
-              fill={selection.includes(v.id) ? '#ffcf33' : '#fff'}
+              fill={tool === 'weight' ? weightColor(v, activeAb, weightPaint.boneId) : selection.includes(v.id) ? '#ffcf33' : '#fff'}
               stroke="#ffcf33"
               style={{ cursor: 'move' }}
             />,
@@ -1779,6 +1843,8 @@ export function Stage() {
       );
     }
   }
+
+  if (tool === 'weight' && brushCursor) overlay.push(<g key="weight-brush" pointerEvents="none" fill="none" stroke={weightPaint.mode === 'subtract' ? '#ff8c85' : '#76c8ff'}><circle cx={brushCursor[0]} cy={brushCursor[1]} r={weightPaint.radius * view.zoom} strokeDasharray="4 3" /><circle cx={brushCursor[0]} cy={brushCursor[1]} r={2} /></g>);
   if (pen && doc) {
     const ab = findArtboard(doc, pen.abId);
     if (ab) {
@@ -1911,7 +1977,9 @@ export function Stage() {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
+      onLostPointerCapture={(e) => { if (pointerId.current === e.pointerId) onPointerCancel(); }}
       onPointerLeave={() => {
+        setBrushCursor(null);
         if (previewing && activeAb) engine.current?.pointer('exit', -1, -1);
         useEditor.getState().set('hoverId', null);
       }}
@@ -2171,7 +2239,7 @@ function InlineTextEditor({
         height: Math.max(fontSize * 1.3, box.h * scale + fontSize * 0.4),
         fontSize,
         lineHeight: 1.21,
-        fontFamily: 'Inter, sans-serif',
+        fontFamily: 'var(--font-sans)',
         padding: 0,
         transformOrigin: 'top left',
         transform: `rotate(${Math.atan2(node.world[1], node.world[0])}rad)`,

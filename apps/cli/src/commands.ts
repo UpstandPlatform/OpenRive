@@ -4,6 +4,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createCanvas, ImageData, Path2D } from '@napi-rs/canvas';
 import initRive from '@rive-app/canvas-advanced';
+import { renderInBrowser } from './browser-render';
+import { assetBytes, fileAssets } from '@openrive/rive/assets';
 import { authEnabled, createAccount, deleteAccountAndTransferProjects, listAccounts, passwordProblem, updateAccount } from '@openrive/auth';
 import { deleteLocalUserAndTransferProjects, importLegacyDataDir } from '@openrive/db';
 import { outline } from '@openrive/rive/api';
@@ -341,6 +343,20 @@ export async function render(args: string[], opts: Options) {
   const width = Math.max(1, Math.round(Number(abDoc.artboard.props.width) * scale));
   const height = Math.max(1, Math.round(Number(abDoc.artboard.props.height) * scale));
   if (width * height > 64_000_000) throw new StoreError('Output exceeds the 64-million-pixel safety limit');
+  const output = args[1] ?? `${safeFileName(String(abDoc.artboard.props.name || path.basename(args[0]).replace(/\.(riv|oriv)$/i, '')))}.png`;
+  if (opts.renderer !== undefined && opts.renderer !== 'browser' && opts.renderer !== 'software') throw new StoreError('--renderer must be browser or software');
+  if (opts.browser !== undefined && (typeof opts.browser !== 'string' || !opts.browser.trim())) throw new StoreError('--browser requires a Chromium executable path');
+  const needsBrowser = doc.top.some((asset) => asset.type === 'ImageAsset') || doc.artboards.some((ab) => ab.objects.some((object) => object.type === 'Mesh' || object.type === 'Feather'));
+  if (needsBrowser && opts.renderer === 'software') throw new StoreError('This file contains images, meshes, or feathering that require --renderer browser.');
+  for (const asset of fileAssets(doc)) {
+    if (!assetBytes(asset) && doc.artboards.some((ab) => ab.objects.some((object) => object.props.assetId === asset.id))) throw new StoreError(`Embed asset "${String(asset.props.name || asset.type)}" before rendering locally.`);
+  }
+  if (needsBrowser || opts.renderer === 'browser' || opts.browser) {
+    const png = await renderInBrowser(exportRiv(doc), { width, height, artboardIndex, animationIndex, time, scale, executablePath: typeof opts.browser === 'string' ? opts.browser : undefined });
+    writeFileSync(output, png);
+    console.log(`Rendered ${output} (${width}×${height}, local browser)`);
+    return;
+  }
   const runtimeDir = path.dirname(fileURLToPath(import.meta.resolve('@rive-app/canvas-advanced')));
   if (typeof globalThis.ImageData === 'undefined') Object.defineProperty(globalThis, 'ImageData', { value: ImageData });
   if (typeof globalThis.Path2D === 'undefined') Object.defineProperty(globalThis, 'Path2D', { value: Path2D });
@@ -362,7 +378,8 @@ export async function render(args: string[], opts: Options) {
     (renderer as unknown as { transform: (...values: number[]) => void }).transform(scale, 0, 0, scale, 0, 0);
     artboard.draw(renderer);
     renderer.restore();
-    const output = args[1] ?? `${safeFileName(String(abDoc.artboard.props.name || path.basename(args[0]).replace(/\.(riv|oriv)$/i, '')))}.png`;
+    // The canvas runtime queues drawing commands until the animation frame resolves.
+    rive.resolveAnimationFrame();
     writeFileSync(output, canvas.toBuffer('image/png'));
     console.log(`Rendered ${output} (${width}×${height})`);
   } finally {

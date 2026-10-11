@@ -3,8 +3,9 @@
 // so humans and AI agents build files through the same code as the editor.
 import { ArtboardDoc, CoreObj, RiveDoc } from './document';
 import { newAnimation, newArtboard, newLayer, newParametricShape, newPenShape, obj, PenPoint, ShapeKind, solidFill, solidStroke } from './factory';
-import { childrenOf, EASE_PRESETS, findObj, insertObjects, isAnimatable, parentIdOf, setInterpolation, upsertKeyframe } from './ops';
-import { artboardPos, buildScene, invert, prop } from './scene';
+import { childrenOf, detachSkin, EASE_PRESETS, findObj, insertObjects, isAncestor, isAnimatable, parentIdOf, reparent, setInterpolation, upsertKeyframe } from './ops';
+import { apply, artboardPos, buildScene, Mat, prop, vertexControls, vertexWorldMatrix } from './scene';
+import { adjustInfluence, Influence, packInfluences, pointSegmentDistance, unpackInfluences } from './weights';
 import {
   artboardViewModel,
   addProperty,
@@ -20,6 +21,7 @@ import {
   setPropertyValue,
 } from './databind';
 import { isA, propDef, propDefByKey } from './schema';
+import { BinaryReader } from './binary';
 import { ensureFontAsset, newTextObjects, textRuns } from './text';
 import { addSwatch, applyTheme, bindColor, ensureEditorMeta, swatchColor } from './theme';
 
@@ -211,7 +213,7 @@ export function addBone(
   return created;
 }
 
-/** Binds every vertex on a mesh/path to a set of bones using bind-pose inverse transforms. */
+/** Captures path and bone bind transforms in the format expected by Rive runtimes. */
 export function addSkin(doc: RiveDoc, input: { artboard?: string; path: string; bones: string[] }): CoreObj {
   const ab = getArtboard(doc, input.artboard);
   const path = getObject(doc, input.path, ab.id).o;
@@ -222,16 +224,19 @@ export function addSkin(doc: RiveDoc, input: { artboard?: string; path: string; 
   if (!bones.length || bones.some((bone) => !isA(bone.type, 'Bone'))) throw new ApiError('Choose one or more bones to bind to the path.');
   if (new Set(bones.map((bone) => bone.id)).size !== bones.length) throw new ApiError('Choose each bone only once when binding a skin.');
   const scene = buildScene(ab);
-  const skin = obj('Skin', { name: 'Skin', parentId: path.id });
+  const bindProps = (matrix: Mat) => {
+    if (!matrix.every(Number.isFinite) || Math.abs(matrix[0] * matrix[3] - matrix[1] * matrix[2]) < 1e-10) throw new ApiError('Binding requires nonzero path and bone scales.');
+    return { xx: matrix[0], xy: matrix[1], yx: matrix[2], yy: matrix[3], tx: matrix[4], ty: matrix[5] };
+  };
+  const skin = obj('Skin', { name: 'Skin', parentId: path.id, ...bindProps(scene.nodes.get(path.id)!.world) });
   const tendons = bones.map((bone) => {
     const node = scene.nodes.get(bone.id);
     if (!node) throw new ApiError(`Could not resolve the bind transform for bone "${displayObjectName(bone)}".`);
-    const inverse = invert(node.world);
     return obj('Tendon', {
       name: `${displayObjectName(bone)} tendon`,
       parentId: skin.id,
       boneId: bone.id,
-      xx: inverse[0], xy: inverse[1], yx: inverse[2], yy: inverse[3], tx: inverse[4], ty: inverse[5],
+      ...bindProps(node.world),
     });
   });
   const vertices = childrenOf(ab, path.id).filter((child) => isA(child.type, 'Vertex'));
@@ -245,13 +250,172 @@ export function addSkin(doc: RiveDoc, input: { artboard?: string; path: string; 
     }),
   );
   ab.objects.push(skin, ...tendons, ...weights);
+  autoWeightSkin(doc, { artboard: ab.id, path: path.id });
   return skin;
+}
+
+export type WeightChannel = 'point' | 'in' | 'out' | 'all';
+
+function skinParts(doc: RiveDoc, artboard: string | undefined, pathRef: string) {
+  const { ab, o: path } = getObject(doc, pathRef, artboard);
+  const skin = childrenOf(ab, path.id).find((object) => object.type === 'Skin');
+  if (!skin) throw new ApiError('Bind this path to bones before editing weights.');
+  const tendons = childrenOf(ab, skin.id).filter((object) => object.type === 'Tendon');
+  return { ab, path, skin, tendons };
+}
+
+function weightChannels(weight: CoreObj, channel: WeightChannel) {
+  if (!['point', 'in', 'out', 'all'].includes(channel)) throw new ApiError('Choose point, in, out, or all weight channels.');
+  if (weight.type !== 'CubicWeight' && (channel === 'in' || channel === 'out')) throw new ApiError('Only cubic vertices have handle weights.');
+  return channel === 'all' ? (weight.type === 'CubicWeight' ? ['point', 'in', 'out'] as const : ['point'] as const) : [channel];
+}
+
+function readWeights(weight: CoreObj, channel: string) {
+  const prefix = channel === 'point' ? '' : channel;
+  return unpackInfluences(Number(weight.props[prefix ? `${prefix}Indices` : 'indices'] ?? 0), Number(weight.props[prefix ? `${prefix}Values` : 'values'] ?? 0));
+}
+
+function writeWeights(weight: CoreObj, channel: string, influences: Influence[]) {
+  const packed = packInfluences(influences);
+  const prefix = channel === 'point' ? '' : channel;
+  weight.props[prefix ? `${prefix}Indices` : 'indices'] = packed.indices;
+  weight.props[prefix ? `${prefix}Values` : 'values'] = packed.values;
+}
+
+/** Edits independently weighted points or handles through the shared editing API. */
+export function setSkinWeights(doc: RiveDoc, input: { artboard?: string; vertex: string; influences: Influence[]; channel?: WeightChannel }) {
+  const { ab, o: vertex } = getObject(doc, input.vertex, input.artboard);
+  const { tendons } = skinParts(doc, ab.id, String(vertex.props.parentId));
+  const weight = childrenOf(ab, vertex.id).find((object) => object.type === 'Weight' || object.type === 'CubicWeight');
+  if (!weight) throw new ApiError('This vertex has no skin weight.');
+  if (input.influences.some((item) => item.index > tendons.length)) throw new ApiError('Choose an influence from this skin.');
+  const channels = weightChannels(weight, input.channel ?? 'all');
+  packInfluences(input.influences); // validate before changing any channel
+  for (const channel of channels) writeWeights(weight, channel, input.influences);
+  return weight;
+}
+
+/** Assigns the four nearest bone segments with smoothly normalized inverse-distance weights. */
+export function autoWeightSkin(doc: RiveDoc, input: { artboard?: string; path: string }) {
+  const { ab, path, tendons } = skinParts(doc, input.artboard, input.path);
+  if (!tendons.length || tendons.some((tendon) => !isA(findObj(ab, String(tendon.props.boneId))?.type ?? '', 'Bone'))) throw new ApiError('This skin requires existing bones before auto weighting.');
+  for (const vertex of childrenOf(ab, path.id).filter((object) => isA(object.type, 'Vertex'))) {
+    if (!childrenOf(ab, vertex.id).some((object) => isA(object.type, 'Weight'))) ab.objects.push(obj(isA(vertex.type, 'CubicVertex') ? 'CubicWeight' : 'Weight', { parentId: vertex.id, indices: 0, values: 255, ...(isA(vertex.type, 'CubicVertex') ? { inIndices: 0, outIndices: 0, inValues: 255, outValues: 255 } : {}) }));
+  }
+  const scene = buildScene(ab);
+  const segments = tendons.map((tendon, index) => {
+    const bone = findObj(ab, String(tendon.props.boneId));
+    const world = bone && scene.nodes.get(bone.id)?.world;
+    if (!bone || !world) throw new ApiError('This skin references a missing bone.');
+    return { index: index + 1, base: apply(world, 0, 0), tip: apply(world, prop(bone, 'length'), 0) };
+  });
+  if (!segments.length) throw new ApiError('A skin needs at least one bone.');
+  for (const vertex of childrenOf(ab, path.id).filter((object) => isA(object.type, 'Vertex'))) {
+    const controls = vertexControls(vertex);
+    const weight = childrenOf(ab, vertex.id).find((object) => object.type === 'Weight' || object.type === 'CubicWeight');
+    if (!weight) continue;
+    for (const channel of weightChannels(weight, 'all')) {
+      const point = channel === 'point' ? [controls.x, controls.y] : controls[channel as 'in' | 'out'] ?? [controls.x, controls.y];
+      const world = apply(vertexWorldMatrix(scene, vertex, channel as 'point' | 'in' | 'out'), point[0], point[1]);
+      const distances = segments.map((segment) => ({ index: segment.index, distance: pointSegmentDistance(...world, segment.base, segment.tip) })).sort((a, b) => a.distance - b.distance).slice(0, 4);
+      const coincident = distances.filter((item) => item.distance < 0.001);
+      writeWeights(weight, channel, (coincident.length ? coincident : distances).map((item) => ({ index: item.index, weight: coincident.length ? 1 : 1 / Math.max(0.001, item.distance) ** 2 })));
+    }
+  }
+}
+
+export function smoothSkinWeights(doc: RiveDoc, input: { artboard?: string; path: string }) {
+  const { ab, path } = skinParts(doc, input.artboard, input.path);
+  const vertices = childrenOf(ab, path.id).filter((object) => isA(object.type, 'Vertex'));
+  const weights = vertices.map((vertex) => childrenOf(ab, vertex.id).find((object) => object.type === 'Weight' || object.type === 'CubicWeight'));
+  const original = weights.map((weight) => weight ? { point: readWeights(weight, 'point'), in: readWeights(weight, weight.type === 'CubicWeight' ? 'in' : 'point'), out: readWeights(weight, weight.type === 'CubicWeight' ? 'out' : 'point') } : null);
+  const adjacency = vertices.map((_, index) => new Set([index]));
+  if (path.type === 'Mesh') {
+    const bytes = path.props.triangleIndexBytes;
+    if (!(bytes instanceof Uint8Array)) throw new ApiError('Mesh smoothing requires triangle topology.');
+    const reader = new BinaryReader(bytes);
+    while (!reader.isEOF) {
+      const triangle = [reader.readVarUint(), reader.readVarUint(), reader.readVarUint()];
+      if (triangle.some((index) => !Number.isInteger(index) || index >= vertices.length)) throw new ApiError('This mesh contains invalid triangle indices.');
+      for (const index of triangle) for (const neighbor of triangle) adjacency[index].add(neighbor);
+    }
+  }
+  weights.forEach((weight, index) => {
+    if (!weight) return;
+    const neighbors = path.type === 'Mesh' ? [...adjacency[index]] : [index - 1, index, index + 1].map((i) => prop<boolean>(path, 'isClosed') ? (i + weights.length) % weights.length : Math.max(0, Math.min(weights.length - 1, i)));
+    for (const channel of weightChannels(weight, 'all')) writeWeights(weight, channel, neighbors.flatMap((i) => original[i]?.[channel as 'point' | 'in' | 'out'] ?? []));
+  });
+}
+
+/** A swept brush edits each touched point once per input sample, with radial falloff. Coordinates are artboard-space. */
+export function paintSkinWeights(doc: RiveDoc, input: { artboard?: string; path: string; bone: string; x: number; y: number; fromX?: number; fromY?: number; radius: number; strength: number; mode?: 'add' | 'subtract'; channel?: WeightChannel }) {
+  if (input.mode && input.mode !== 'add' && input.mode !== 'subtract') throw new ApiError('Choose add or subtract brush mode.');
+  if (![input.x, input.y, input.fromX ?? input.x, input.fromY ?? input.y, input.radius, input.strength].every(Number.isFinite) || input.radius <= 0 || input.strength < 0 || input.strength > 1) throw new ApiError('Use a positive brush radius and strength between 0 and 1.');
+  const { ab, path, tendons } = skinParts(doc, input.artboard, input.path);
+  const bone = getObject(doc, input.bone, ab.id).o;
+  const index = tendons.findIndex((tendon) => tendon.props.boneId === bone.id) + 1;
+  if (!index) throw new ApiError('Choose a bone bound to this path.');
+  const scene = buildScene(ab);
+  weightChannels({ type: 'CubicWeight' } as CoreObj, input.channel ?? 'all');
+  let changed = 0;
+  for (const vertex of childrenOf(ab, path.id).filter((object) => isA(object.type, 'Vertex'))) {
+    const weight = childrenOf(ab, vertex.id).find((object) => object.type === 'Weight' || object.type === 'CubicWeight');
+    if (!weight) continue;
+    const controls = vertexControls(vertex);
+    if (weight.type !== 'CubicWeight' && (input.channel === 'in' || input.channel === 'out')) continue;
+    for (const channel of weightChannels(weight, input.channel ?? 'all')) {
+      const point = channel === 'point' ? [controls.x, controls.y] : controls[channel as 'in' | 'out'];
+      if (!point) continue;
+      const world = apply(vertexWorldMatrix(scene, vertex, channel as 'point' | 'in' | 'out'), point[0], point[1]);
+      const distance = pointSegmentDistance(...world, [input.fromX ?? input.x, input.fromY ?? input.y], [input.x, input.y]);
+      if (distance >= input.radius) continue;
+      const influences = readWeights(weight, channel);
+      const before = influences.filter((item) => item.index === index).reduce((sum, item) => sum + item.weight, 0);
+      const delta = input.strength * (1 - distance / input.radius) * (input.mode === 'subtract' ? -1 : 1);
+      writeWeights(weight, channel, adjustInfluence(influences, index, before + delta));
+      changed++;
+    }
+  }
+  return changed;
+}
+
+export function unbindSkin(doc: RiveDoc, input: { artboard?: string; path: string }) {
+  const { ab, path } = skinParts(doc, input.artboard, input.path);
+  detachSkin(ab, path.id);
+}
+
+export function rebindSkin(doc: RiveDoc, input: { artboard?: string; path: string }) {
+  const { ab, path, tendons } = skinParts(doc, input.artboard, input.path);
+  const bones = tendons.map((tendon) => String(tendon.props.boneId));
+  const scene = buildScene(ab);
+  for (const id of [path.id, ...bones]) {
+    const matrix = scene.nodes.get(id)?.world;
+    if (!matrix || !matrix.every(Number.isFinite) || Math.abs(matrix[0] * matrix[3] - matrix[1] * matrix[2]) < 1e-10) throw new ApiError('Rebinding requires existing bones and nonzero path and bone scales.');
+  }
+  const saved = childrenOf(ab, path.id).map((vertex) => ({ id: vertex.id, weight: childrenOf(ab, vertex.id).find((object) => object.type === 'Weight' || object.type === 'CubicWeight')?.props }));
+  detachSkin(ab, path.id);
+  addSkin(doc, { artboard: ab.id, path: path.id, bones });
+  for (const entry of saved) {
+    if (!entry.weight) continue;
+    const weight = childrenOf(ab, entry.id).find((object) => object.type === 'Weight' || object.type === 'CubicWeight');
+    if (weight) for (const key of ['indices', 'values', 'inIndices', 'inValues', 'outIndices', 'outValues']) if (key in entry.weight) weight.props[key] = entry.weight[key];
+  }
+}
+
+export function setBoneParent(doc: RiveDoc, input: { artboard?: string; bone: string; parent?: string }) {
+  const { ab, o: bone } = getObject(doc, input.bone, input.artboard);
+  if (!isA(bone.type, 'Bone')) throw new ApiError('Choose a bone to link.');
+  const parent = input.parent ? getObject(doc, input.parent, ab.id).o : ab.artboard;
+  if (parent.id === bone.id || isAncestor(ab, bone.id, parent.id)) throw new ApiError('A bone cannot be linked to itself or its descendants.');
+  if (input.parent && !isA(parent.type, 'Bone')) throw new ApiError('Choose a parent bone or detach to the artboard.');
+  reparent(ab, bone.id, parent.id);
+  return bone;
 }
 
 /** Changes a path vertex shape while keeping any attached skin weights valid. */
 export function convertVertexType(doc: RiveDoc, input: { artboard?: string; vertex: string; type: 'StraightVertex' | 'CubicMirroredVertex' | 'CubicAsymmetricVertex' | 'CubicDetachedVertex' }): CoreObj {
   const { ab, o: vertex } = getObject(doc, input.vertex, input.artboard);
-  if (!isA(vertex.type, 'Vertex')) throw new ApiError('Only path vertices can be converted.');
+  if (!isA(vertex.type, 'PathVertex')) throw new ApiError('Only path vertices can be converted.');
   const x = prop(vertex, 'x');
   const y = prop(vertex, 'y');
   const base = { parentId: vertex.props.parentId, x, y, ...(vertex.props.name ? { name: vertex.props.name } : {}) };
@@ -857,14 +1021,17 @@ export function outline(doc: RiveDoc) {
   const describe = (ab: ArtboardDoc, o: CoreObj): Record<string, unknown> => {
     const d: Record<string, unknown> = { id: o.id, type: o.type };
     if (o.props.name) d.name = o.props.name;
-    if (isA(o.type, 'Node') && o.type !== 'Artboard') {
-      d.x = round(prop(o, 'x'));
-      d.y = round(prop(o, 'y'));
+    if ((isA(o.type, 'Node') || isA(o.type, 'Bone')) && o.type !== 'Artboard') {
+      if (isA(o.type, 'Node') || o.type === 'RootBone') {
+        d.x = round(prop(o, 'x'));
+        d.y = round(prop(o, 'y'));
+      }
       const r = prop(o, 'rotation');
       if (r) d.rotationDegrees = round((r * 180) / Math.PI);
       if (prop(o, 'scaleX') !== 1 || prop(o, 'scaleY') !== 1) d.scale = [round(prop(o, 'scaleX')), round(prop(o, 'scaleY'))];
       if (prop(o, 'opacity') !== 1) d.opacity = round(prop(o, 'opacity'));
     }
+    if (isA(o.type, 'Bone')) d.length = round(prop(o, 'length'));
     if (isA(o.type, 'ParametricPath')) {
       d.width = round(prop(o, 'width'));
       d.height = round(prop(o, 'height'));
@@ -876,6 +1043,15 @@ export function outline(doc: RiveDoc) {
       if (s) d.stroke = formatColor(prop(s, 'colorValue'));
     }
     if (o.type === 'Text') d.text = textRuns(ab, o.id).map((r) => r.props.text).join('');
+    if (o.type === 'PointsPath' || o.type === 'Mesh') {
+      const skin = childrenOf(ab, o.id).find((object) => object.type === 'Skin');
+      const tendons = skin ? childrenOf(ab, skin.id).filter((object) => object.type === 'Tendon') : [];
+      if (skin) d.skin = { id: skin.id, bones: tendons.map((tendon, index) => ({ index: index + 1, boneId: tendon.props.boneId })) };
+      d.vertices = childrenOf(ab, o.id).filter((object) => isA(object.type, 'Vertex')).map((vertex) => {
+        const weight = childrenOf(ab, vertex.id).find((object) => isA(object.type, 'Weight'));
+        return { id: vertex.id, type: vertex.type, x: prop(vertex, 'x'), y: prop(vertex, 'y'), ...(weight ? { influences: readWeights(weight, 'point'), ...(weight.type === 'CubicWeight' ? { inInfluences: readWeights(weight, 'in'), outInfluences: readWeights(weight, 'out') } : {}) } : {}) };
+      });
+    }
     const constraints = ab.objects.filter((item) => isA(item.type, 'Constraint') && item.props.parentId === o.id);
     if (constraints.length) d.constraints = constraints.map((constraint) => ({
       id: constraint.id,
@@ -885,7 +1061,7 @@ export function outline(doc: RiveDoc) {
       mode: constraint.type === 'DistanceConstraint' ? ['closer', 'further', 'exact'][Number(constraint.props.modeValue ?? 0)] : undefined,
       strength: constraint.props.strength,
     }));
-    const kids = childrenOf(ab, o.id).filter((c) => isA(c.type, 'Node') || c.type === 'Text');
+    const kids = childrenOf(ab, o.id).filter((c) => isA(c.type, 'Node') || isA(c.type, 'Bone') || c.type === 'Mesh' || c.type === 'Text');
     if (kids.length) d.children = kids.map((c) => describe(ab, c));
     return d;
   };
@@ -902,7 +1078,7 @@ export function outline(doc: RiveDoc) {
         properties: ab.objects.filter((field) => field.props.parentId === event.id && isA(field.type, 'CustomProperty')).map((field) => ({ name: field.props.name, type: field.type.replace('CustomProperty', '').toLowerCase(), value: field.props.propertyValue })),
       })),
       children: childrenOf(ab, ab.artboard.id)
-        .filter((c) => isA(c.type, 'Node') || c.type === 'Text')
+        .filter((c) => isA(c.type, 'Node') || isA(c.type, 'Bone') || c.type === 'Text')
         .map((c) => describe(ab, c)),
       timelines: ab.animations.map((a) => {
         const keyed: string[] = [];
