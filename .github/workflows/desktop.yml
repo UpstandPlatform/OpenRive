@@ -36,6 +36,9 @@ on:
         description: Create the release as a draft
         type: boolean
         default: false
+      release_version:
+        description: Build and attach assets to an existing version (for example 0.1.0)
+        type: string
 
 permissions:
   contents: write
@@ -61,12 +64,21 @@ jobs:
         id: pick
         env:
           BUMP: ${{ inputs.bump || 'patch' }}
+          REQUESTED_VERSION: ${{ inputs.release_version || '' }}
         run: |
           set -euo pipefail
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             # a pushed tag is the version
             tag="${GITHUB_REF_NAME}"
             version="${tag#v}"
+            release=true
+          elif [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ -n "${REQUESTED_VERSION}" ]; then
+            version="${REQUESTED_VERSION#v}"
+            if [[ ! "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9_.-]+)?$ ]]; then
+              echo "Invalid release version: ${REQUESTED_VERSION}" >&2
+              exit 1
+            fi
+            tag="v${version}"
             release=true
           elif [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ "${BUMP}" != "none" ]; then
             latest="$(git tag -l 'v[0-9]*' --sort=-v:refname | head -n1)"
@@ -195,8 +207,16 @@ jobs:
       - name: List what will be published
         run: ls -lh artifacts
 
+      - name: Attach desktop assets to the selected existing release
+        if: inputs.release_version != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: gh release upload "${TAG}" artifacts/* --repo "${GITHUB_REPOSITORY}" --clobber
+
       - name: Publish the release
         uses: softprops/action-gh-release@v2
+        if: inputs.release_version == ''
         with:
           tag_name: ${{ needs.version.outputs.tag }}
           name: OpenRive ${{ needs.version.outputs.version }}

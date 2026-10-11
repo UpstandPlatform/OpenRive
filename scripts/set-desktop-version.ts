@@ -6,6 +6,7 @@
 // stamps it here, so installers carry the same version as the GitHub release
 // without a version-bump commit in the repository.
 import path from 'node:path';
+import { stampVersion } from './desktop-version';
 
 const version = process.argv[2];
 if (!version || !/^\d+\.\d+\.\d+(-[\w.]+)?$/.test(version)) {
@@ -15,18 +16,20 @@ if (!version || !/^\d+\.\d+\.\d+(-[\w.]+)?$/.test(version)) {
 
 const root = path.resolve(import.meta.dir, '..');
 const files = [
-  { file: path.join(root, 'apps', 'desktop', 'electrobun.config.ts'), pattern: /(\n\s*version:\s*)'[^']*'/, replace: `$1'${version}'` },
-  { file: path.join(root, 'apps', 'desktop', 'package.json'), pattern: /("version":\s*)"[^"]*"/, replace: `$1"${version}"` },
-  { file: path.join(root, 'package.json'), pattern: /("version":\s*)"[^"]*"/, replace: `$1"${version}"` },
+  { file: path.join(root, 'apps', 'desktop', 'electrobun.config.ts'), pattern: /(\bversion:\s*)(')[^']*\2/ },
+  { file: path.join(root, 'apps', 'desktop', 'package.json'), pattern: /(\"version\":\s*)(\")[^\"]*\2/ },
+  { file: path.join(root, 'package.json'), pattern: /(\"version\":\s*)(\")[^\"]*\2/ },
 ];
 
-for (const { file, pattern, replace } of files) {
+for (const { file, pattern } of files) {
   const before = await Bun.file(file).text();
-  const after = before.replace(pattern, replace);
-  if (before === after) {
-    console.error(`Could not stamp the version in ${path.relative(root, file)}`);
+  let after: string;
+  try {
+    after = stampVersion(before, pattern, version, path.relative(root, file));
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
     process.exit(1);
   }
-  await Bun.write(file, after);
+  if (after !== before) await Bun.write(file, after);
   console.log(`${path.relative(root, file)} → ${version}`);
 }
