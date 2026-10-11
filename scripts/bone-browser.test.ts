@@ -3,7 +3,6 @@ import { strict as assert } from 'node:assert';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { newDoc } from '@openrive/rive/factory';
 import { addBone, addPath, addSkin } from '@openrive/rive/api';
@@ -24,9 +23,12 @@ const port = portProbe.port!;
 portProbe.stop(true);
 const origin = `http://127.0.0.1:${port}`;
 const server = Bun.spawn(
-  [process.execPath, fileURLToPath(import.meta.resolve('next/dist/bin/next')), 'dev', '--port', String(port), '--hostname', '127.0.0.1'],
+  // Use the app's normal script so Next selects its supported Node runtime.
+  // Forcing its CLI through Bun bypasses Turbopack's external-package require hooks on Linux.
+  [process.execPath, 'run', 'dev', '--port', String(port), '--hostname', '127.0.0.1'],
   {
     cwd: path.resolve(import.meta.dir, '../apps/web'),
+    detached: process.platform !== 'win32',
     env: {
       ...process.env,
       DATABASE_URL: '',
@@ -246,7 +248,15 @@ try {
   console.log(`Passed ${scenarios} real browser rigging scenarios.`);
 } finally {
   await browser?.close();
-  server.kill();
+  // Next's launcher forks its server; terminate the entire scratch process tree.
+  if (server.exitCode === null) {
+    if (process.platform === 'win32') {
+      const shutdown = Bun.spawn(['taskkill', '/PID', String(server.pid), '/T', '/F'], { stdout: 'ignore', stderr: 'ignore' });
+      await shutdown.exited;
+    } else {
+      try { process.kill(-server.pid, 'SIGTERM'); } catch { server.kill(); }
+    }
+  }
   await server.exited;
   rmSync(scratch, { recursive: true, force: true });
 }
