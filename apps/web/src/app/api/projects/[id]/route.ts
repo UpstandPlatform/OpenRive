@@ -35,6 +35,9 @@ export const PUT = handler(async (request: Request, ctx: RouteContext<'/api/proj
   const parsed = await body(request, updateProjectSchema, MAX_PROJECT_JSON_BODY_BYTES);
   if (parsed.error) return parsed.error;
   const { riv, ownerId, sharedWith, expectedUpdatedAt, ...patch } = parsed.data;
+  if (existing.organizationId && (ownerId !== undefined || sharedWith !== undefined)) {
+    return fail('Manage workspace access from Workspace settings; workspace projects cannot be shared outside their workspace', 400);
+  }
   if (ownerId !== undefined || sharedWith !== undefined) {
     if (ownerId !== undefined && !canTransferProject(guard.user)) return fail('Only an administrator may transfer ownership', 403);
     const managed = requireProjectManager(guard.user, existing);

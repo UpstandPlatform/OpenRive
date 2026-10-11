@@ -51,6 +51,10 @@ const envSchema = z.object({
   OPENRIVE_AUTH_SECRET: z.string().min(32, 'must be at least 32 characters').optional(),
   /** comma-separated origins allowed to call the authentication endpoints */
   OPENRIVE_TRUSTED_ORIGINS: z.string().optional(),
+  /** SMTP transport URL for invitations and account verification (smtp:// or smtps://). */
+  OPENRIVE_SMTP_URL: z.string().url().optional(),
+  /** Verified sender address used by authentication mail. */
+  OPENRIVE_EMAIL_FROM: z.string().email().optional(),
   /** who may use the sign-up page: anyone, only the first (administrator) account, or nobody */
   OPENRIVE_SIGNUP: z.enum(['open', 'first', 'off']).default('first'),
   /** Cloud defaults to stateless MCP so requests can reach any replica. */
@@ -74,6 +78,8 @@ function read(): Env {
     OPENRIVE_AUTH_SECRET: optional(source.OPENRIVE_AUTH_SECRET),
     OPENRIVE_DB_SSL_CA: optional(source.OPENRIVE_DB_SSL_CA),
     OPENRIVE_TRUSTED_ORIGINS: optional(source.OPENRIVE_TRUSTED_ORIGINS),
+    OPENRIVE_SMTP_URL: optional(source.OPENRIVE_SMTP_URL),
+    OPENRIVE_EMAIL_FROM: optional(source.OPENRIVE_EMAIL_FROM),
     OPENRIVE_REDIS_URL: optional(source.OPENRIVE_REDIS_URL),
     OPENRIVE_STORAGE_ENDPOINT: optional(source.OPENRIVE_STORAGE_ENDPOINT),
     OPENRIVE_STORAGE_BUCKET: optional(source.OPENRIVE_STORAGE_BUCKET),
@@ -88,6 +94,14 @@ function read(): Env {
   const data = parsed.data;
   const edition = data.OPENRIVE_EDITION ?? (data.DATABASE_URL ? 'self_hosted' : 'local');
   const errors: string[] = [];
+
+  if (!!data.OPENRIVE_SMTP_URL !== !!data.OPENRIVE_EMAIL_FROM) {
+    errors.push('OPENRIVE_SMTP_URL and OPENRIVE_EMAIL_FROM must be configured together');
+  }
+  if (data.OPENRIVE_SMTP_URL) {
+    const protocol = new URL(data.OPENRIVE_SMTP_URL).protocol;
+    if (!['smtp:', 'smtps:'].includes(protocol)) errors.push('OPENRIVE_SMTP_URL must use smtp:// or smtps://');
+  }
 
   if (edition === 'cloud') {
     if (!data.DATABASE_URL) errors.push('DATABASE_URL is required for the cloud edition');

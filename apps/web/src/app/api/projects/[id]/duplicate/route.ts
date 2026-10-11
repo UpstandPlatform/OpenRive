@@ -11,6 +11,7 @@ export const POST = handler(async (request: Request, ctx: RouteContext<'/api/pro
   const guard = await requireUser();
   if (guard.error) return guard.error;
   if (!canCreateProjects(guard.user)) return fail('Viewers cannot create files', 403);
+  if (guard.user.role !== 'admin' && guard.user.activeOrganizationRole === 'viewer') return fail('Viewers cannot create files in this workspace', 403);
   const source = await getProjectMeta(id);
   if (!source) return notFound();
   if (!canSeeProject(guard.user, source)) return notFound();

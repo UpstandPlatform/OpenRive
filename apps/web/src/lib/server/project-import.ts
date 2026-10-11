@@ -24,7 +24,7 @@ function stats(doc: ReturnType<typeof importRiv>) {
  * together. Keeping this transaction at the web boundary means browser,
  * self-hosted, cloud, and desktop imports all use the same storage path.
  */
-export async function importProjectBytes(name: string, ownerId: string, bytes: Uint8Array) {
+export async function importProjectBytes(name: string, ownerId: string, bytes: Uint8Array, organizationId?: string) {
   if (!bytes.length) throw new InvalidRivError('The uploaded .riv file is empty');
   if (bytes.byteLength > MAX_RIV_BYTES) throw new InvalidRivError('The .riv file is larger than the 100 MB upload limit');
   let doc: ReturnType<typeof importRiv>;
@@ -37,6 +37,7 @@ export async function importProjectBytes(name: string, ownerId: string, bytes: U
   const meta = await createProject({
     name: name.trim().slice(0, 200) || 'Untitled',
     ownerId,
+    organizationId,
     doc: stringifyDoc(doc),
     ...stats(doc),
     riv: cloudEdition() ? undefined : riv,

@@ -13,6 +13,7 @@ const KEY = 'openrive:user';
 
 export interface Account extends User {
   email: string | null;
+  emailVerified: boolean;
   disabled: boolean;
   lastLoginAt: number | null;
   hasPassword: boolean;
@@ -116,12 +117,17 @@ export function canEdit(user: User | null, project: ProjectMeta | null | undefin
   if (!user || !project) return false;
   if (user.role === 'viewer') return false;
   if (user.role === 'admin') return true;
+  if (project.organizationId) {
+    return user.activeOrganizationId === project.organizationId && ['owner', 'admin', 'editor'].includes(user.activeOrganizationRole ?? '');
+  }
   return project.ownerId === user.id || !!project.sharedWith?.includes(user.id);
 }
 
 export function canSee(user: User | null, project: ProjectMeta): boolean {
   if (!user) return false;
-  if (user.role === 'admin' || user.role === 'viewer') return true;
+  if (user.role === 'admin') return true;
+  if (project.organizationId) return user.activeOrganizationId === project.organizationId && !!user.activeOrganizationRole;
+  if (user.role === 'viewer') return true;
   return project.ownerId === user.id || !!project.sharedWith?.includes(user.id);
 }
 

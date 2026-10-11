@@ -1,5 +1,5 @@
 import { deleteAccountAndTransferProjects, getAccount, listAccounts, revokeUserSessions, updateAccount } from '@openrive/auth';
-import { listProjects } from '@openrive/db';
+import { listOwnedOrganizationIds, listProjects } from '@openrive/db';
 import { adminUpdateUserSchema } from '@openrive/shared';
 import { requireAdmin } from '@/lib/server/auth';
 import { routeId } from '@/lib/server/route';
@@ -45,6 +45,9 @@ export const DELETE = handler(async (request: Request, ctx: RouteContext<'/api/a
   const activeAdmins = accounts.filter((a) => a.role === 'admin' && !a.disabled);
   if (target.role === 'admin' && !target.disabled && activeAdmins.length === 1) {
     return fail('Cannot delete the last administrator');
+  }
+  if ((await listOwnedOrganizationIds(id)).length) {
+    return fail('Transfer ownership of every workspace before deleting this account', 409);
   }
 
   // the removed account's files move to another user, so nothing is orphaned

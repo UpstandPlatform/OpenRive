@@ -7,6 +7,7 @@ import { parseDoc } from '@openrive/shared/serialize';
 import { canEdit, useCurrentUser, useSession } from '@/lib/client/session';
 import { useEditor } from '@/lib/store/editor';
 import type { ProjectMeta } from '@openrive/shared';
+import { recordProjectOpen } from '@/lib/client/projectActivity';
 
 export default function EditorPage({ params }: PageProps<'/editor/[id]'>) {
   const { id } = use(params);
@@ -31,6 +32,7 @@ export default function EditorPage({ params }: PageProps<'/editor/[id]'>) {
         if (cancelled) return;
         setKnownUpdatedAt(meta.updatedAt);
         useEditor.getState().load(meta.id, meta.name, doc, !canEdit(user, meta));
+        recordProjectOpen(user.id, meta.id);
         setReady(true);
       } catch (e) {
         setError((e as Error).message);

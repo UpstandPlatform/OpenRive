@@ -13,7 +13,7 @@ import {
   SESSION_COOKIE,
   type Account,
 } from '@openrive/auth';
-import { listUsers } from '@openrive/db';
+import { getOrganizationMemberRole, listUsers } from '@openrive/db';
 import type { ProjectMeta } from '@openrive/shared';
 import { headers as nextHeaders } from 'next/headers';
 import { fail } from './route';
@@ -43,12 +43,16 @@ export async function currentUserFromHeaders(requestHeaders: Headers): Promise<A
     });
     if (!result.valid || !result.key) return null;
     const account = await getAccount(result.key.referenceId);
-    return account && !account.disabled ? account : null;
+    if (!account || account.disabled) return null;
+    const organizationId = requestHeaders.get('x-openrive-organization-id');
+    if (!organizationId) return account;
+    const role = await getOrganizationMemberRole(organizationId, account.id);
+    return role ? { ...account, activeOrganizationId: organizationId, activeOrganizationRole: role as Account['activeOrganizationRole'] } : account;
   }
   if (authEnabled()) return sessionUser(requestHeaders);
   const users = await listUsers();
   const local = users.find((u) => u.role === 'admin') ?? users[0];
-  return local ? { ...local, email: null, disabled: false, lastLoginAt: null, hasPassword: false } : null;
+  return local ? { ...local, email: null, emailVerified: false, disabled: false, lastLoginAt: null, hasPassword: false } : null;
 }
 
 export type Guard<T> = { user: Account; error?: never } | { user?: never; error: Response } | T;

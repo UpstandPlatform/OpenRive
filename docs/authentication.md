@@ -18,7 +18,8 @@ OPENRIVE_AUTH=off    # never require sign-in (single user on a trusted machine)
 
 Cloud deployments always require authentication; `OPENRIVE_AUTH=off` is rejected by startup configuration.
 
-Accounts are handled by [Better Auth](https://better-auth.com): email and password, no external provider.
+Accounts are handled by [Better Auth](https://better-auth.com): email and password, no external provider. On shared
+servers, workspaces use Better Auth's organization plugin and global account administration uses its admin plugin.
 
 ## The first account
 
@@ -26,8 +27,31 @@ Open the server in a browser. With nobody registered yet, OpenRive sends you to 
 administrator account: a name, an email and a password of at least 8 characters. The first account to exist becomes
 the **administrator** and is signed in straight away; everyone who signs up later is an **editor**.
 
-**Nothing is emailed and nothing is verified.** The address is only what you sign in with, so it can be
-`ada@example.test` on a private server. OpenRive sends no mail at all.
+By default, the address is only used to sign in and no mail is sent. To enable verification emails and workspace
+invitations, configure both `OPENRIVE_SMTP_URL` and `OPENRIVE_EMAIL_FROM`. OpenRive requires verified email ownership
+before an invite recipient can join a workspace. SMTP transport errors do not leave a pending invitation behind.
+CLI and MCP clients can select a workspace per request with the
+`X-OpenRive-Organization-Id` header. OpenRive validates membership and role on
+every request; the header never grants access by itself.
+
+## Workspaces and members
+
+Open **Workspaces** from the top bar on a sign-in-enabled server. Create a workspace, select which one receives new
+files, and manage its members and invitations. Existing projects remain personal; workspace projects are visible only
+to members of that workspace (and global administrators). Select **Personal** to create private projects again.
+
+Workspace roles are independent of global account roles:
+
+| Workspace role | Can |
+| --- | --- |
+| **Owner** | Manage members, assign administrators, rename the workspace, and transfer ownership |
+| **Administrator** | Invite members and manage editor/viewer access |
+| **Editor** | Create and edit workspace projects |
+| **Viewer** | Open and preview workspace projects |
+
+Invitations expire after seven days. Invitees must sign in with the invited email address and verify ownership of that
+address. Workspace ownership must be transferred before its owner account can be deleted. Workspace deletion is
+disabled so deleting a workspace cannot accidentally turn its projects into personal files.
 
 ## Who may sign up
 
@@ -101,6 +125,7 @@ scrypt.
 | `accounts` | how an account signs in — one `credential` row per password |
 | `sessions` | who is signed in, from which browser and until when |
 | `verifications` | short-lived tokens; empty unless something asks for one |
+| `organization`, `member`, `invitation` | workspaces, membership and pending invitations |
 | `rate_limit` | Better Auth request-rate windows when Redis is not configured |
 
 One row per person in `users`, whether they sign in or are just a name a local, login-free run attributes files to.

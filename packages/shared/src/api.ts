@@ -28,6 +28,8 @@ export const createProjectSchema = projectStatsSchema.extend({
   doc: docString,
   riv: base64,
   thumbnail,
+  /** Set by the active authenticated workspace. */
+  organizationId: z.string().min(1).optional(),
 });
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 

@@ -19,6 +19,7 @@ export const POST = handler(async (request: Request) => {
   const guard = await requireUser();
   if (guard.error) return guard.error;
   if (!canCreateProjects(guard.user)) return fail('Viewers cannot create files', 403);
+  if (guard.user.role !== 'admin' && guard.user.activeOrganizationRole === 'viewer') return fail('Viewers cannot create files in this workspace', 403);
   const { data, error } = await body(request, createProjectSchema, MAX_PROJECT_JSON_BODY_BYTES);
   if (error) return error;
   const bytes = data.riv ? fromBase64(data.riv) : undefined;
@@ -32,6 +33,7 @@ export const POST = handler(async (request: Request) => {
     artboards: data.artboards,
     animations: data.animations,
     stateMachines: data.stateMachines,
+    organizationId: guard.user.activeOrganizationId,
   });
   if (cloudEdition() && bytes) {
     let key: string | undefined;

@@ -15,6 +15,7 @@ export const POST = handler(async (request: Request) => {
   const guard = await requireUser();
   if (guard.error) return guard.error;
   if (!canCreateProjects(guard.user)) return fail('Viewers cannot create files', 403);
+  if (guard.user.role !== 'admin' && guard.user.activeOrganizationRole === 'viewer') return fail('Viewers cannot import files into this workspace', 403);
 
   let form: FormData;
   try {
@@ -35,7 +36,7 @@ export const POST = handler(async (request: Request) => {
   const name = typeof requestedName === 'string' && requestedName.trim() ? requestedName : filename.replace(/\.riv$/i, '');
   const bytes = new Uint8Array(await file.arrayBuffer());
   try {
-    return json(await importProjectBytes(name, guard.user.id, bytes), 201);
+    return json(await importProjectBytes(name, guard.user.id, bytes, guard.user.activeOrganizationId), 201);
   } catch (error) {
     if (error instanceof InvalidRivError) return fail(error.message, 400);
     throw error;

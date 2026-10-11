@@ -6,8 +6,11 @@
       {
         "rule": "overused-font",
         "value": "inter",
-        "createdAt": "2026-10-11T09:20:55.205Z",
-        "reason": "Inter remains only for Rive text editing and embedded text compatibility; editor UI now uses IBM Plex Sans."
+        "files": [
+          "apps/web/src/app/globals.css"
+        ],
+        "createdAt": "2026-10-11T10:34:01.019Z",
+        "reason": "Bundled Inter is required for editable Rive text objects; OpenRive interface typography uses bundled IBM Plex Sans."
       }
     ]
   }

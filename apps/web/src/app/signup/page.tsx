@@ -3,11 +3,12 @@
 // the administrator; after that OPENRIVE_SIGNUP decides whether this page is
 // open to everyone or account creation belongs to an administrator.
 //
-// There is no email to confirm: the address is only what you sign in with.
+// Email confirmation is optional for accounts; workspace invitations require
+// a verified address when SMTP delivery is configured.
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { AuthCard, AuthField, AuthLink } from '@/components/AuthCard';
-import { authClient, authError } from '@/lib/client/auth';
+import { authClient, authError, postAuthPath } from '@/lib/client/auth';
 import { useSession } from '@/lib/client/session';
 
 export default function SignUpPage() {
@@ -25,7 +26,7 @@ export default function SignUpPage() {
   }, [loaded, refresh]);
 
   useEffect(() => {
-    if (loaded && (!authEnabled || account)) router.replace('/');
+    if (loaded && (!authEnabled || account)) router.replace(postAuthPath());
   }, [loaded, authEnabled, account, router]);
 
   const submit = async (e: React.FormEvent) => {
@@ -41,7 +42,7 @@ export default function SignUpPage() {
       return;
     }
     await refresh();
-    router.replace('/');
+    router.replace(postAuthPath());
   };
 
   if (loaded && authEnabled && !canSignUp) {
@@ -89,7 +90,7 @@ export default function SignUpPage() {
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         placeholder="ada@example.com"
-        hint="Only used to sign in — nothing is sent to it."
+        hint="Used to sign in. If this server has email configured, a verification link may be sent."
       />
       <AuthField
         label="Password"

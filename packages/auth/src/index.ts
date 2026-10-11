@@ -4,11 +4,12 @@
 // default) and on when OpenRive is self-hosted against a PostgreSQL server.
 // OPENRIVE_AUTH=on|off overrides that.
 //
-// The accounts themselves are Better Auth's: email and password, no mail to
-// verify, no external provider. Better Auth stores them in OpenRive's own
+// The accounts themselves are Better Auth's: email and password, optional
+// email verification and invitations when SMTP is configured. Better Auth stores them in OpenRive's own
 // tables through the Drizzle adapter (see packages/db/src/schema.ts), so an
 // account and the person a file belongs to are the same row.
 import { betterAuth } from 'better-auth';
+import { admin, createAccessControl, organization } from 'better-auth/plugins';
 import { apiKey } from '@better-auth/api-key';
 import { APIError } from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
@@ -19,9 +20,28 @@ import { authRequired, env } from '@openrive/shared/env';
 import type { ProjectMeta, Role, User } from '@openrive/shared';
 import { and, eq, gt, isNotNull, lt } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
+import nodemailer, { type Transporter } from 'nodemailer';
 import { isLegacyHash, verifyLegacyPassword } from './legacy';
 
 export const CREDENTIAL = 'credential';
+
+const organizationAccess = createAccessControl({
+  organization: ['update', 'delete'],
+  member: ['create', 'update', 'delete'],
+  invitation: ['create', 'cancel'],
+  team: ['create', 'update', 'delete'],
+  ac: ['create', 'read', 'update', 'delete'],
+});
+const ownerRole = organizationAccess.newRole({ organization: ['update', 'delete'], member: ['create', 'update', 'delete'], invitation: ['create', 'cancel'], team: [], ac: ['read'] });
+const workspaceAdminRole = organizationAccess.newRole({ organization: ['update'], member: ['create', 'update', 'delete'], invitation: ['create', 'cancel'], team: [], ac: ['read'] });
+const workspaceEditorRole = organizationAccess.newRole({ organization: [], member: [], invitation: [], team: [], ac: ['read'] });
+const workspaceViewerRole = organizationAccess.newRole({ organization: [], member: [], invitation: [], team: [], ac: ['read'] });
+
+// Keep account mutations on OpenRive's guarded admin routes. Better Auth's
+// plugin exposes read and session-revoke endpoints only.
+const accountAdminAccess = createAccessControl({ user: ['list', 'get'], session: ['list', 'revoke'] });
+const accountAdminRole = accountAdminAccess.newRole({ user: ['list', 'get'], session: ['list', 'revoke'] });
+const accountUserRole = accountAdminAccess.newRole({ user: [], session: [] });
 
 /** Is a sign-in required for this deployment? */
 export const authEnabled = authRequired;
@@ -88,6 +108,30 @@ function trustedOrigins() {
   return configured?.length ? configured : [env().OPENRIVE_URL];
 }
 
+const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
+
+function validateOrganizationFields(organization: { name?: string; slug?: string }) {
+  if (organization.name !== undefined && (!organization.name.trim() || organization.name.trim().length > 80 || /[\u0000-\u001f\u007f]/.test(organization.name))) {
+    throw new APIError('BAD_REQUEST', { message: 'Workspace names must contain 1 to 80 characters' });
+  }
+  if (organization.slug !== undefined && (organization.slug.length > 80 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(organization.slug))) {
+    throw new APIError('BAD_REQUEST', { message: 'Workspace slugs must use lowercase letters, numbers, and single hyphens' });
+  }
+}
+
+let mailTransport: Transporter | null = null;
+function sendAuthEmail(to: string, subject: string, text: string, html: string) {
+  const settings = env();
+  if (!settings.OPENRIVE_SMTP_URL || !settings.OPENRIVE_EMAIL_FROM) {
+    throw new APIError('SERVICE_UNAVAILABLE', { message: 'Email is not configured on this OpenRive server' });
+  }
+  mailTransport ??= nodemailer.createTransport({
+    url: settings.OPENRIVE_SMTP_URL,
+    requireTLS: settings.OPENRIVE_SMTP_URL.startsWith('smtp://'),
+  });
+  return mailTransport.sendMail({ from: settings.OPENRIVE_EMAIL_FROM, to, subject, text, html });
+}
+
 async function build() {
   const conn = await db();
   const settings = env();
@@ -115,11 +159,13 @@ async function build() {
         verification: schema.verifications,
         rateLimit: schema.rateLimit,
         apikey: schema.apiKeys,
+        organization: schema.organizations,
+        member: schema.members,
+        invitation: schema.invitations,
       },
     }),
     emailAndPassword: {
       enabled: true,
-      // self-hosted OpenRive sends no mail, so there is nothing to verify
       requireEmailVerification: false,
       autoSignIn: true,
       minPasswordLength: 8,
@@ -130,6 +176,22 @@ async function build() {
         verify: ({ hash, password }) => (isLegacyHash(hash) ? verifyLegacyPassword(password, hash) : verifyScrypt({ hash, password })),
       },
     },
+    emailVerification: settings.OPENRIVE_SMTP_URL
+      ? {
+          sendOnSignUp: true,
+          autoSignInAfterVerification: true,
+          sendVerificationEmail: async ({ user, url }) => {
+            const safeName = escapeHtml(user.name);
+            const safeUrl = escapeHtml(url);
+            await sendAuthEmail(
+              user.email,
+              'Verify your OpenRive email address',
+              `Hi ${user.name}, verify your email address to finish setting up OpenRive: ${url}`,
+              `<p>Hi ${safeName},</p><p>Verify your email address to finish setting up OpenRive.</p><p><a href="${safeUrl}">Verify email</a></p>`,
+            );
+          },
+        }
+      : undefined,
     session: {
       expiresIn: settings.OPENRIVE_SESSION_DAYS * 24 * 60 * 60,
       updateAge: 24 * 60 * 60,
@@ -200,7 +262,7 @@ async function build() {
           // a disabled account keeps its files but cannot sign in again
           before: async (session) => {
             const [user] = await conn.select().from(schema.users).where(eq(schema.users.id, session.userId)).limit(1);
-            if (!user || user.disabled) return false;
+            if (!user || user.disabled || user.banned) return false;
             await conn.update(schema.users).set({ lastLoginAt: new Date() }).where(eq(schema.users.id, user.id));
           },
         },
@@ -213,6 +275,87 @@ async function build() {
       trustedProxyHeaders: true,
     },
     plugins: [
+      organization({
+        ac: organizationAccess,
+        roles: { owner: ownerRole, admin: workspaceAdminRole, editor: workspaceEditorRole, viewer: workspaceViewerRole },
+        creatorRole: 'owner',
+        organizationLimit: 20,
+        membershipLimit: 1000,
+        invitationExpiresIn: 7 * 24 * 60 * 60,
+        cancelPendingInvitationsOnReInvite: true,
+        requireEmailVerificationOnInvitation: true,
+        disableOrganizationDeletion: true,
+        allowUserToCreateOrganization: (user) => authRequired() && user.role !== 'viewer',
+        organizationHooks: {
+          beforeCreateOrganization: async ({ organization }) => {
+            validateOrganizationFields(organization);
+          },
+          beforeUpdateOrganization: async ({ organization }) => {
+            validateOrganizationFields(organization);
+          },
+          beforeAddMember: async ({ member }) => {
+            if (member.role === 'owner') {
+              const [existingMembership] = await conn.select({ id: schema.members.id }).from(schema.members)
+                .where(eq(schema.members.organizationId, member.organizationId)).limit(1);
+              if (!existingMembership) return;
+            }
+            if (!['editor', 'viewer'].includes(member.role)) {
+              throw new APIError('FORBIDDEN', { message: 'Add members as editors or viewers; administrators must be invited by the workspace owner' });
+            }
+          },
+          beforeCreateInvitation: async ({ invitation, inviter }) => {
+            if (!settings.OPENRIVE_SMTP_URL || !settings.OPENRIVE_EMAIL_FROM) {
+              throw new APIError('SERVICE_UNAVAILABLE', { message: 'Configure SMTP email delivery before inviting workspace members' });
+            }
+            if (!['admin', 'editor', 'viewer'].includes(invitation.role)) {
+              throw new APIError('BAD_REQUEST', { message: 'Choose an allowed workspace role' });
+            }
+            if (invitation.role === 'admin') {
+              const [membership] = await conn.select({ role: schema.members.role }).from(schema.members)
+                .where(and(eq(schema.members.organizationId, invitation.organizationId), eq(schema.members.userId, inviter.id))).limit(1);
+              if (membership?.role !== 'owner') throw new APIError('FORBIDDEN', { message: 'Only a workspace owner can invite an administrator' });
+            }
+          },
+          beforeRemoveMember: async ({ member }) => {
+            if (member.role.split(',').includes('owner')) throw new APIError('FORBIDDEN', { message: 'Transfer workspace ownership before removing its owner' });
+          },
+          beforeUpdateMemberRole: async ({ member, newRole }) => {
+            if (!['editor', 'viewer'].includes(newRole)) throw new APIError('FORBIDDEN', { message: 'Use Workspace settings to assign administrator access' });
+            if (member.role.split(',').includes('owner')) throw new APIError('FORBIDDEN', { message: 'Transfer workspace ownership through the owner account before changing this role' });
+          },
+          beforeAcceptInvitation: async ({ invitation, user }) => {
+            if (!user.emailVerified) throw new APIError('FORBIDDEN', { message: 'Verify your email address before accepting this invitation' });
+            if (user.email?.trim().toLowerCase() !== invitation.email.trim().toLowerCase()) {
+              throw new APIError('FORBIDDEN', { message: 'Sign in with the email address this invitation was sent to' });
+            }
+          },
+        },
+        sendInvitationEmail: async ({ id, email, organization: invitedOrganization, inviter }) => {
+          const url = new URL('/invite', settings.OPENRIVE_URL);
+          url.searchParams.set('id', id);
+          const orgName = escapeHtml(invitedOrganization.name);
+          const inviterName = escapeHtml(inviter.user.name);
+          try {
+            await sendAuthEmail(
+              email,
+              `Invitation to join ${invitedOrganization.name} on OpenRive`,
+              `${inviter.user.name} invited you to join ${invitedOrganization.name} on OpenRive. Accept the invitation: ${url.href}`,
+              `<p>${inviterName} invited you to join <strong>${orgName}</strong> on OpenRive.</p><p><a href="${escapeHtml(url.href)}">Review invitation</a></p><p>This invitation expires in seven days. If you were not expecting it, you can ignore this email.</p>`,
+            );
+          } catch {
+            // Better Auth persists before invoking the mail callback. Remove a
+            // new invite if delivery fails, so the UI cannot imply it was sent.
+            await conn.delete(schema.invitations).where(eq(schema.invitations.id, id));
+            throw new APIError('SERVICE_UNAVAILABLE', { message: 'Could not deliver the invitation email. Check the server mail configuration and try again.' });
+          }
+        },
+      }),
+      admin({
+        defaultRole: 'editor',
+        adminRoles: ['admin'],
+        ac: accountAdminAccess,
+        roles: { admin: accountAdminRole, editor: accountUserRole, viewer: accountUserRole },
+      }),
       apiKey({
         configId: 'mcp',
         defaultPrefix: 'openrive_mcp_',
@@ -246,10 +389,13 @@ export const SESSION_COOKIE = 'openrive.session_token';
 
 export interface Account extends User {
   email: string | null;
+  emailVerified: boolean;
   disabled: boolean;
   lastLoginAt: number | null;
   /** whether a password has been set (never the hash itself) */
   hasPassword: boolean;
+  activeOrganizationId?: string;
+  activeOrganizationRole?: 'owner' | 'admin' | 'editor' | 'viewer';
 }
 
 const toAccount = (row: schema.UserRow, hasPassword: boolean): Account => ({
@@ -259,7 +405,8 @@ const toAccount = (row: schema.UserRow, hasPassword: boolean): Account => ({
   role: row.role,
   createdAt: row.createdAt.getTime(),
   email: row.email,
-  disabled: row.disabled,
+  emailVerified: row.emailVerified,
+  disabled: row.disabled || row.banned,
   lastLoginAt: row.lastLoginAt?.getTime() ?? null,
   hasPassword,
 });
@@ -301,7 +448,23 @@ export async function sessionUser(headers: Headers): Promise<Account | null> {
   const session = await instance.api.getSession({ headers }).catch(() => null);
   if (!session?.user) return null;
   const account = await getAccount(session.user.id);
-  return account && !account.disabled ? account : null;
+  if (!account || account.disabled) return null;
+  const organizationId = headers.get('x-openrive-organization-id') || session.session.activeOrganizationId;
+  if (!organizationId) return account;
+  return accountInOrganization(account, organizationId);
+}
+
+/** Resolves a requested workspace from the database; the header itself grants no authority. */
+async function accountInOrganization(account: Account, organizationId: string): Promise<Account> {
+  const conn = await db();
+  const [membership] = await conn
+    .select({ role: schema.members.role })
+    .from(schema.members)
+    .where(and(eq(schema.members.organizationId, organizationId), eq(schema.members.userId, account.id)))
+    .limit(1);
+  return membership
+    ? { ...account, activeOrganizationId: organizationId, activeOrganizationRole: membership.role as Account['activeOrganizationRole'] }
+    : account;
 }
 
 export interface NewAccount {
@@ -479,19 +642,30 @@ export async function purgeExpiredSessions() {
 // Permissions (enforced on the server, not only in the interface)
 
 export function canSeeProject(user: Account | User, project: ProjectMeta): boolean {
-  if (user.role === 'admin' || user.role === 'viewer') return true;
+  if (user.role === 'admin') return true;
+  if (project.organizationId) {
+    return user.activeOrganizationId === project.organizationId && !!user.activeOrganizationRole;
+  }
+  if (user.role === 'viewer') return true;
   return project.ownerId === user.id || !!project.sharedWith?.includes(user.id);
 }
 
 export function canEditProject(user: Account | User, project: ProjectMeta): boolean {
   if (user.role === 'viewer') return false;
   if (user.role === 'admin') return true;
+  if (project.organizationId) {
+    return user.activeOrganizationId === project.organizationId && ['owner', 'admin', 'editor'].includes(user.activeOrganizationRole ?? '');
+  }
   return project.ownerId === user.id || !!project.sharedWith?.includes(user.id);
 }
 
 /** Sharing, ownership and deletion are more privileged than editing content. */
 export function canManageProject(user: Account | User, project: ProjectMeta): boolean {
-  return user.role === 'admin' || project.ownerId === user.id;
+  if (user.role === 'admin') return true;
+  if (project.organizationId) {
+    return user.activeOrganizationId === project.organizationId && ['owner', 'admin'].includes(user.activeOrganizationRole ?? '');
+  }
+  return project.ownerId === user.id;
 }
 
 export function canTransferProject(user: Account | User): boolean {

@@ -11,6 +11,9 @@ export const userSchema = z.object({
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Expected a #rrggbb color'),
   role: roleSchema,
   createdAt: z.number().int().nonnegative(),
+  activeOrganizationId: z.string().min(1).optional(),
+  activeOrganizationRole: z.enum(['owner', 'admin', 'editor', 'viewer']).optional(),
+  emailVerified: z.boolean().optional(),
 });
 export type User = z.infer<typeof userSchema>;
 
@@ -26,6 +29,7 @@ export const projectMetaSchema = z.object({
   animations: z.number().int().nonnegative().optional(),
   stateMachines: z.number().int().nonnegative().optional(),
   sharedWith: z.array(z.string()).optional(),
+  organizationId: z.string().min(1).optional(),
 });
 export type ProjectMeta = z.infer<typeof projectMetaSchema>;
 

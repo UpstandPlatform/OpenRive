@@ -4,7 +4,7 @@ import { idSchema, type ProjectMeta, type User } from '@openrive/shared';
 import { and, asc, desc, eq, notInArray, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from './client';
-import { projects, settings, users, type ProjectRow, type UserRow } from './schema';
+import { members, projects, settings, users, type ProjectRow, type UserRow } from './schema';
 
 const toMeta = (row: ProjectRow): ProjectMeta => ({
   id: row.id,
@@ -17,6 +17,7 @@ const toMeta = (row: ProjectRow): ProjectMeta => ({
   ...(row.animations != null ? { animations: row.animations } : {}),
   ...(row.stateMachines != null ? { stateMachines: row.stateMachines } : {}),
   ...(row.sharedWith?.length ? { sharedWith: row.sharedWith } : {}),
+  ...(row.organizationId ? { organizationId: row.organizationId } : {}),
 });
 
 export const safeId = (id: string) => idSchema.parse(id);
@@ -128,6 +129,7 @@ export interface CreateProject {
   artboards?: number;
   animations?: number;
   stateMachines?: number;
+  organizationId?: string;
 }
 
 export async function createProject(input: CreateProject): Promise<ProjectMeta> {
@@ -148,6 +150,7 @@ export async function createProject(input: CreateProject): Promise<ProjectMeta> 
       artboards: input.artboards,
       animations: input.animations,
       stateMachines: input.stateMachines,
+      organizationId: input.organizationId,
     })
     .returning();
   return toMeta(row!);
@@ -172,6 +175,72 @@ export async function updateProject(id: string, patch: UpdateProject, options: {
     .where(and(...where))
     .returning();
   return row ? toMeta(row) : null;
+}
+
+/** Workspace membership role used to derive server-side project permissions. */
+export async function getOrganizationMemberRole(organizationId: string, userId: string): Promise<string | null> {
+  const conn = await db();
+  const [member] = await conn.select({ role: members.role }).from(members)
+    .where(and(eq(members.organizationId, organizationId), eq(members.userId, userId))).limit(1);
+  return member?.role ?? null;
+}
+
+/** Organization owners must transfer ownership before their account can be removed. */
+export async function listOwnedOrganizationIds(userId: string): Promise<string[]> {
+  const conn = await db();
+  const rows = await conn.select({ organizationId: members.organizationId }).from(members)
+    .where(and(eq(members.userId, userId), eq(members.role, 'owner')));
+  return rows.map((row) => row.organizationId);
+}
+
+/** Transfer the single owner role atomically, preserving one owner at every commit. */
+export async function transferOrganizationOwnership(organizationId: string, fromUserId: string, toUserId: string): Promise<boolean> {
+  const conn = await db();
+  try {
+    return await conn.transaction(async (tx) => {
+      const [target] = await tx.select({ id: members.id }).from(members)
+        .where(and(eq(members.organizationId, organizationId), eq(members.userId, toUserId))).limit(1);
+      const [owner] = await tx.select({ id: members.id }).from(members)
+        .where(and(eq(members.organizationId, organizationId), eq(members.userId, fromUserId), eq(members.role, 'owner'))).limit(1);
+      if (!target || !owner || fromUserId === toUserId) return false;
+      // Conditional update is the compare-and-swap guard against two owners
+      // transferring simultaneously from the same owner row.
+      const demoted = await tx.update(members).set({ role: 'admin' })
+        .where(and(eq(members.id, owner.id), eq(members.role, 'owner'))).returning();
+      if (!demoted.length) return false;
+      const promoted = await tx.update(members).set({ role: 'owner' })
+        .where(and(eq(members.id, target.id), eq(members.organizationId, organizationId), sql`${members.role} <> 'owner'`))
+        .returning();
+      if (!promoted.length) throw new Error('The target membership changed during ownership transfer');
+      return true;
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'The target membership changed during ownership transfer') return false;
+    throw error;
+  }
+}
+
+export type OrganizationMemberRoleUpdate = 'updated' | 'forbidden' | 'missing';
+
+/** Authorizes and applies a role change in one transaction to prevent role-change races. */
+export async function updateOrganizationMemberRole(
+  organizationId: string,
+  actorId: string,
+  userId: string,
+  role: 'admin' | 'editor' | 'viewer',
+): Promise<OrganizationMemberRoleUpdate> {
+  const conn = await db();
+  return conn.transaction(async (tx) => {
+    const [actor] = await tx.select({ role: members.role }).from(members)
+      .where(and(eq(members.organizationId, organizationId), eq(members.userId, actorId)))
+      .for('update').limit(1);
+    if (!actor || !['owner', 'admin'].includes(actor.role)) return 'forbidden';
+    if (role === 'admin' && actor.role !== 'owner') return 'forbidden';
+    const updated = await tx.update(members).set({ role })
+      .where(and(eq(members.organizationId, organizationId), eq(members.userId, userId), sql`${members.role} <> 'owner'`))
+      .returning();
+    return updated.length ? 'updated' : 'missing';
+  });
 }
 
 /** Creates one local user without replacing a concurrently edited user list. */

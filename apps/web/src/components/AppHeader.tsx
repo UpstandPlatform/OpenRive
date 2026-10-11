@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { Bot, Check, ChevronDown, LogOut, Shield, Users } from 'lucide-react';
+import { Bot, Building2, Check, ChevronDown, LogOut, Shield, Users } from 'lucide-react';
 import { useCurrentUser, useSession } from '@/lib/client/session';
 import { ROLE_INFO } from '@openrive/shared';
 import { Avatar } from './Avatar';
@@ -79,6 +79,7 @@ export function UserSwitcher() {
               <Users size={14} /> Manage users
             </Link>
           )}
+          {authEnabled && <Link href="/settings/workspaces" className="menu-item" onClick={() => setOpen(false)}><Building2 size={14} /> Workspaces &amp; members</Link>}
           <Link href="/settings/integrations" className="menu-item" onClick={() => setOpen(false)}>
             <Bot size={14} /> AI &amp; API integrations
           </Link>
@@ -113,6 +114,7 @@ export function AppHeader() {
       <nav className="app-header-nav flex items-center gap-1">
         {tab('/', 'Files')}
         {user?.role === 'admin' ? tab('/admin', 'Admin', true) : null}
+        {authEnabled ? tab('/settings/workspaces', 'Workspaces', true) : null}
         {!authEnabled && tab('/users', 'Users', true)}
         <Link
           href="/settings/integrations"

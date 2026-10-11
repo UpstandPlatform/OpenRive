@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 - 2026-10-11
 
 ### Editor
 
@@ -14,5 +14,12 @@
 
 - Add MCP tools for named events, 1D blend states, and distance constraints; project inspection now includes those elements.
 - Update MCP and transitive dependencies, including the MCP SDK security update.
+
+### Accounts and collaboration
+
+- Add private workspaces with owner, administrator, editor, and viewer roles.
+- Invite verified email addresses, manage membership, and transfer workspace ownership safely.
+- Scope projects and API-key access to the selected workspace; configure SMTP to enable invitations and verification emails.
+- Add workspace project filters and navigation, plus responsive member management.
 
 See the [data binding guide](docs/data-binding.md), [user guide](docs/user-guide.md), and [MCP guide](docs/mcp.md) for details.

@@ -1,11 +1,10 @@
 'use client';
-// Signing in to a self-hosted OpenRive: an email and a password, nothing to
-// verify by mail. Accounts are created on /signup (the first one runs the
+// Signing in to a self-hosted OpenRive: an email and a password. Accounts are created on /signup (the first one runs the
 // server) or by an administrator.
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { AuthCard, AuthField, AuthLink } from '@/components/AuthCard';
-import { authClient, authError } from '@/lib/client/auth';
+import { authClient, authError, postAuthPath } from '@/lib/client/auth';
 import { useSession } from '@/lib/client/session';
 
 export default function LoginPage() {
@@ -22,7 +21,7 @@ export default function LoginPage() {
 
   // already signed in, or this server does not use sign-in at all
   useEffect(() => {
-    if (loaded && (!authEnabled || account)) router.replace('/');
+    if (loaded && (!authEnabled || account)) router.replace(postAuthPath());
   }, [loaded, authEnabled, account, router]);
 
   const submit = async (e: React.FormEvent) => {
@@ -37,7 +36,7 @@ export default function LoginPage() {
       return;
     }
     await refresh();
-    router.replace('/');
+    router.replace(postAuthPath());
   };
 
   return (

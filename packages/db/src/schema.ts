@@ -1,6 +1,6 @@
 // Drizzle schema. PostgreSQL everywhere: a server via DATABASE_URL, or the
 // embedded PGlite build of PostgreSQL for a local run with no setup.
-import { bigint, boolean, index, integer, jsonb, pgTable, text, timestamp, customType } from 'drizzle-orm/pg-core';
+import { bigint, boolean, index, integer, jsonb, pgTable, text, timestamp, customType, uniqueIndex } from 'drizzle-orm/pg-core';
 
 /** bytea mapped to Uint8Array (the exported .riv file). */
 const bytes = customType<{ data: Uint8Array; driverData: Buffer }>({
@@ -37,6 +37,10 @@ export const users = pgTable('users', {
   position: integer('position').notNull().default(0),
   /** a disabled account keeps its files but cannot sign in */
   disabled: boolean('disabled').notNull().default(false),
+  /** Better Auth admin plugin ban state; kept separate from legacy manual disable. */
+  banned: boolean('banned').notNull().default(false),
+  banReason: text('ban_reason'),
+  banExpires: timestamp('ban_expires', { withTimezone: true }),
   lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
 });
 
@@ -53,7 +57,45 @@ export const sessions = pgTable('sessions', {
   ipAddress: text('ip_address'),
   /** short description of the browser, shown in the admin dashboard */
   userAgent: text('user_agent'),
+  activeOrganizationId: text('active_organization_id'),
+  impersonatedBy: text('impersonated_by'),
 });
+
+/** Better Auth organization plugin tables. */
+export const organizations = pgTable('organization', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  slug: text('slug').notNull().unique(),
+  logo: text('logo'),
+  metadata: jsonb('metadata').$type<Record<string, unknown>>(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }),
+});
+
+export const members = pgTable('member', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  role: text('role').notNull().default('member'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex('member_organization_user_unique').on(table.organizationId, table.userId),
+  index('member_user_id_idx').on(table.userId),
+]);
+
+export const invitations = pgTable('invitation', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  email: text('email').notNull(),
+  role: text('role').notNull(),
+  status: text('status').notNull().default('pending'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  inviterId: text('inviter_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+}, (table) => [
+  index('invitation_organization_id_idx').on(table.organizationId),
+  index('invitation_email_idx').on(table.email),
+]);
 
 /** How an account signs in. OpenRive only creates 'credential' rows (a password). */
 export const accounts = pgTable('accounts', {
@@ -134,6 +176,8 @@ export const projects = pgTable('projects', {
   animations: integer('animations'),
   stateMachines: integer('state_machines'),
   sharedWith: jsonb('shared_with').$type<string[]>(),
+  /** Workspace projects are visible to members of this organization only. */
+  organizationId: text('organization_id').references(() => organizations.id, { onDelete: 'set null' }),
   /** editor document (JSON with base64 byte fields) */
   doc: text('doc'),
   /** exported Rive file */

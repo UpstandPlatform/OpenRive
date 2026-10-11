@@ -18,11 +18,13 @@
     "better-auth": "1.7.6",
     "drizzle-orm": "catalog:",
     "nanoid": "catalog:",
+    "nodemailer": "^10.1.0",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@openrive/config": "workspace:*",
     "@types/node": "catalog:",
+    "@types/nodemailer": "^8.0.2",
     "typescript": "catalog:"
   }
 }

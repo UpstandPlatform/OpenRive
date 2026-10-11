@@ -72,5 +72,36 @@ export const migrations: EmbeddedMigration[] = [
       "CREATE INDEX \"apikey_reference_id_idx\" ON \"apikey\" USING btree (\"reference_id\");",
       "CREATE INDEX \"apikey_key_idx\" ON \"apikey\" USING btree (\"key\");"
     ]
+  },
+  {
+    "tag": "0006_organic_robin_chapel",
+    "hash": "eff97604d04cd570aa9e8d10d1457d0f17593e7e2dd3c40e41da1ffffd942d71",
+    "statements": [
+      "CREATE TABLE \"invitation\" (\n\t\"id\" text PRIMARY KEY NOT NULL,\n\t\"organization_id\" text NOT NULL,\n\t\"email\" text NOT NULL,\n\t\"role\" text NOT NULL,\n\t\"status\" text DEFAULT 'pending' NOT NULL,\n\t\"expires_at\" timestamp with time zone,\n\t\"created_at\" timestamp with time zone DEFAULT now() NOT NULL,\n\t\"inviter_id\" text NOT NULL\n);",
+      "CREATE TABLE \"member\" (\n\t\"id\" text PRIMARY KEY NOT NULL,\n\t\"organization_id\" text NOT NULL,\n\t\"user_id\" text NOT NULL,\n\t\"role\" text DEFAULT 'member' NOT NULL,\n\t\"created_at\" timestamp with time zone DEFAULT now() NOT NULL\n);",
+      "CREATE TABLE \"organization\" (\n\t\"id\" text PRIMARY KEY NOT NULL,\n\t\"name\" text NOT NULL,\n\t\"slug\" text NOT NULL,\n\t\"logo\" text,\n\t\"created_at\" timestamp with time zone DEFAULT now() NOT NULL,\n\t\"updated_at\" timestamp with time zone,\n\tCONSTRAINT \"organization_slug_unique\" UNIQUE(\"slug\")\n);",
+      "ALTER TABLE \"projects\" ADD COLUMN \"organization_id\" text;",
+      "ALTER TABLE \"sessions\" ADD COLUMN \"active_organization_id\" text;",
+      "ALTER TABLE \"sessions\" ADD COLUMN \"impersonated_by\" text;",
+      "ALTER TABLE \"users\" ADD COLUMN \"banned\" boolean DEFAULT false NOT NULL;",
+      "ALTER TABLE \"users\" ADD COLUMN \"ban_reason\" text;",
+      "ALTER TABLE \"users\" ADD COLUMN \"ban_expires\" timestamp with time zone;",
+      "ALTER TABLE \"invitation\" ADD CONSTRAINT \"invitation_organization_id_organization_id_fk\" FOREIGN KEY (\"organization_id\") REFERENCES \"public\".\"organization\"(\"id\") ON DELETE cascade ON UPDATE no action;",
+      "ALTER TABLE \"invitation\" ADD CONSTRAINT \"invitation_inviter_id_users_id_fk\" FOREIGN KEY (\"inviter_id\") REFERENCES \"public\".\"users\"(\"id\") ON DELETE cascade ON UPDATE no action;",
+      "ALTER TABLE \"member\" ADD CONSTRAINT \"member_organization_id_organization_id_fk\" FOREIGN KEY (\"organization_id\") REFERENCES \"public\".\"organization\"(\"id\") ON DELETE cascade ON UPDATE no action;",
+      "ALTER TABLE \"member\" ADD CONSTRAINT \"member_user_id_users_id_fk\" FOREIGN KEY (\"user_id\") REFERENCES \"public\".\"users\"(\"id\") ON DELETE cascade ON UPDATE no action;",
+      "CREATE INDEX \"invitation_organization_id_idx\" ON \"invitation\" USING btree (\"organization_id\");",
+      "CREATE INDEX \"invitation_email_idx\" ON \"invitation\" USING btree (\"email\");",
+      "CREATE UNIQUE INDEX \"member_organization_user_unique\" ON \"member\" USING btree (\"organization_id\",\"user_id\");",
+      "CREATE INDEX \"member_user_id_idx\" ON \"member\" USING btree (\"user_id\");",
+      "ALTER TABLE \"projects\" ADD CONSTRAINT \"projects_organization_id_organization_id_fk\" FOREIGN KEY (\"organization_id\") REFERENCES \"public\".\"organization\"(\"id\") ON DELETE set null ON UPDATE no action;"
+    ]
+  },
+  {
+    "tag": "0007_legal_liz_osborn",
+    "hash": "d5e57e5f3a1a067f40aac1a435b1e806dbf89ebde3bd5b20e1a9ec5737b1a85e",
+    "statements": [
+      "ALTER TABLE \"organization\" ADD COLUMN \"metadata\" jsonb;"
+    ]
   }
 ];

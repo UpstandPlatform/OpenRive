@@ -15,11 +15,11 @@ process.env.OPENRIVE_AUTH = 'on';
 process.env.OPENRIVE_SIGNUP = 'open';
 delete process.env.DATABASE_URL;
 
-const { resetEnv } = await import('@openrive/shared/env');
+const { env, resetEnv } = await import('@openrive/shared/env');
 resetEnv();
 
 const auth = await import('@openrive/auth');
-const { closeDatabase, db, schema } = await import('@openrive/db');
+const { closeDatabase, createProject, db, getOrganizationMemberRole, schema, transferOrganizationOwnership, updateOrganizationMemberRole } = await import('@openrive/db');
 const { eq } = await import('drizzle-orm');
 
 let failures = 0;
@@ -29,6 +29,7 @@ const check = (ok: boolean, what: string) => {
 };
 
 const api = async () => (await auth.auth()).api;
+const conn = await db();
 
 /** Signs in through the endpoint and returns the cookie header a browser would send. */
 async function signIn(email: string, password: string): Promise<Headers | null> {
@@ -75,11 +76,87 @@ try {
   check(!(await auth.sessionUser(new Headers({ cookie: 'openrive.session_token=nonsense' }))), 'an unknown session does not');
   check((await auth.getAccount(admin.id))?.lastLoginAt !== null, 'signing in records the time');
 
+  // --- Better Auth workspaces ---------------------------------------------
+  const invalidWorkspace = await (await api()).createOrganization({
+    body: { name: '   ', slug: 'invalid-workspace' },
+    headers: session!,
+    asResponse: true,
+  }).catch(() => null);
+  check(!invalidWorkspace?.ok, 'workspace names are validated at the server boundary');
+  const orgResponse = await (await api()).createOrganization({
+    body: { name: 'Animation Team', slug: 'animation-team' },
+    headers: session!,
+    asResponse: true,
+  });
+  const organization = orgResponse.ok ? await orgResponse.json() as { id: string } : null;
+  check(!!organization?.id, 'the Better Auth organization plugin creates a workspace');
+  const activeOwner = await auth.sessionUser(session!);
+  check(activeOwner?.activeOrganizationId === organization?.id && activeOwner.activeOrganizationRole === 'owner', 'the creator gets owner access in the active workspace');
+
+  const member = (await auth.listAccounts()).find((account) => account.email === 'eve@example.com')!;
+  const cannotAddOwner = await (await api()).addMember({ body: { userId: member.id, organizationId: organization!.id, role: 'owner' }, headers: session!, asResponse: true }).catch(() => null);
+  const cannotAddAdmin = await (await api()).addMember({ body: { userId: member.id, organizationId: organization!.id, role: 'admin' }, headers: session!, asResponse: true }).catch(() => null);
+  check(!cannotAddOwner?.ok && !cannotAddAdmin?.ok, 'workspace owners cannot be minted and administrators must be invited');
+  const added = await (await api()).addMember({ body: { userId: member.id, organizationId: organization!.id, role: 'editor' } }).catch(() => null);
+  check(!!added, 'a trusted server action can add a member with a workspace role');
+  const colleague = await auth.createAccount({ name: 'Lin', email: 'lin@example.com', role: 'editor' });
+  const addedColleague = await (await api()).addMember({ body: { userId: colleague.id, organizationId: organization!.id, role: 'editor' } }).catch(() => null);
+  check(!!addedColleague, 'a workspace can contain multiple regular members');
+  const memberSession = await signIn('eve@example.com', 'second-account-pw');
+  const activeResponse = await (await api()).setActiveOrganization({ body: { organizationId: organization!.id }, headers: memberSession!, asResponse: true }).catch(() => null);
+  check(!!activeResponse?.ok, 'a workspace member can select their active workspace');
+  const activeMember = await auth.sessionUser(memberSession!);
+  check(activeMember?.activeOrganizationRole === 'editor', 'the active session resolves the persisted workspace role');
+
+  const workspaceProject = await createProject({ name: 'Team file', ownerId: admin.id, organizationId: organization!.id, doc: '{}', riv: new Uint8Array([1]) });
+  check(auth.canSeeProject(activeMember!, workspaceProject), 'workspace editors can see workspace projects');
+  check(auth.canEditProject(activeMember!, workspaceProject), 'workspace editors can edit workspace projects');
+  check(!auth.canManageProject(activeMember!, workspaceProject), 'workspace editors cannot manage project access');
+  check(!auth.canSeeProject(member, workspaceProject), 'an inactive workspace session cannot read workspace files');
+
+  const noMailInvite = await (await api()).createInvitation({
+    body: { email: 'new-member@example.com', role: 'editor', organizationId: organization!.id },
+    headers: session!,
+    asResponse: true,
+  }).catch(() => null);
+  check(!noMailInvite?.ok, 'invitation creation fails clearly when SMTP is not configured');
+  check((await conn.$count(schema.invitations)) === 0, 'failed invitation delivery leaves no pending invitation behind');
+
+  check((await updateOrganizationMemberRole(organization!.id, admin.id, member.id, 'viewer')) === 'updated', 'a workspace owner can change a member role safely');
+  check((await updateOrganizationMemberRole(organization!.id, member.id, admin.id, 'editor')) === 'forbidden', 'workspace members cannot change roles through the database access path');
+  const viewerSession = await auth.sessionUser(memberSession!);
+  check(viewerSession?.activeOrganizationRole === 'viewer', 'role changes are reflected in the active session');
+  check(!auth.canEditProject(viewerSession!, workspaceProject), 'workspace viewers cannot edit workspace projects');
+  check(auth.canSeeProject(viewerSession!, workspaceProject), 'workspace viewers can view workspace projects');
+  check((await updateOrganizationMemberRole(organization!.id, admin.id, admin.id, 'editor')) === 'missing', 'the owner cannot be demoted through the member-role helper');
+  check(await transferOrganizationOwnership(organization!.id, admin.id, member.id), 'workspace ownership can be transferred atomically');
+  check((await getOrganizationMemberRole(organization!.id, admin.id)) === 'admin' && (await getOrganizationMemberRole(organization!.id, member.id)) === 'owner', 'ownership transfer retains an owner and demotes the previous owner');
+  check((await updateOrganizationMemberRole(organization!.id, admin.id, colleague.id, 'admin')) === 'forbidden', 'workspace administrators cannot grant administrator access');
+  const concurrentTransfers = await Promise.all([
+    transferOrganizationOwnership(organization!.id, member.id, admin.id),
+    transferOrganizationOwnership(organization!.id, member.id, colleague.id),
+  ]);
+  const ownerCount = (await conn.select().from(schema.members).where(eq(schema.members.organizationId, organization!.id)))
+    .filter((row) => row.role === 'owner').length;
+  check(concurrentTransfers.filter(Boolean).length === 1 && ownerCount === 1, 'concurrent transfers cannot create multiple workspace owners');
+
+  const editorAdminApi = await (await api()).listUsers({ query: { limit: 10 }, headers: memberSession!, asResponse: true }).catch(() => null);
+  const adminApi = await (await api()).listUsers({ query: { limit: 10 }, headers: session!, asResponse: true }).catch(() => null);
+  check(!editorAdminApi?.ok && !!adminApi?.ok, 'Better Auth admin plugin endpoints remain unavailable to non-admin accounts');
+
+  await conn.insert(schema.invitations).values({
+    id: 'verified-email-required', organizationId: organization!.id, email: member.email!, role: 'editor', status: 'pending',
+    expiresAt: new Date(Date.now() + 60_000), createdAt: new Date(), inviterId: admin.id,
+  });
+  const unverifiedDetails = await (await api()).getInvitation({ query: { id: 'verified-email-required' }, headers: memberSession!, asResponse: true }).catch(() => null);
+  const unverifiedAccept = await (await api()).acceptInvitation({ body: { invitationId: 'verified-email-required' }, headers: memberSession!, asResponse: true }).catch(() => null);
+  check(!unverifiedDetails?.ok && !unverifiedAccept?.ok, 'unverified users cannot inspect or accept invitations by ID');
+  check((await conn.select().from(schema.invitations).where(eq(schema.invitations.id, 'verified-email-required')))[0]?.status === 'pending', 'a refused invitation acceptance remains pending');
+
   // --- passwords from the version before Better Auth -----------------------
   // pbkdf2$sha512$210000$<salt>$<hash> for 'legacy-password', as the first
   // release of sign-in stored it
   const legacy = await auth.createAccount({ name: 'Alan', email: 'alan@example.com', role: 'editor' });
-  const conn = await db();
   await conn.insert(schema.accounts).values({
     id: 'legacy-account',
     userId: legacy.id,
@@ -112,6 +189,22 @@ try {
   check(!(refused instanceof Response && refused.ok), 'OPENRIVE_SIGNUP=off refuses the sign-up page');
   check(!(await auth.listAccounts()).some((a) => a.email === 'mallory@example.com'), 'and no account is left behind');
   process.env.OPENRIVE_SIGNUP = 'open';
+  resetEnv();
+
+  // --- optional mail configuration ----------------------------------------
+  const savedSmtpUrl = process.env.OPENRIVE_SMTP_URL;
+  const savedEmailFrom = process.env.OPENRIVE_EMAIL_FROM;
+  process.env.OPENRIVE_SMTP_URL = 'smtp://127.0.0.1:1025';
+  delete process.env.OPENRIVE_EMAIL_FROM;
+  resetEnv();
+  let incompleteMailConfigRejected = false;
+  try { env(); } catch { incompleteMailConfigRejected = true; }
+  check(incompleteMailConfigRejected, 'SMTP and sender settings must be configured together');
+  process.env.OPENRIVE_EMAIL_FROM = 'noreply@example.test';
+  resetEnv();
+  check(env().OPENRIVE_SMTP_URL === 'smtp://127.0.0.1:1025', 'a paired SMTP transport and sender pass configuration validation');
+  if (savedSmtpUrl === undefined) delete process.env.OPENRIVE_SMTP_URL; else process.env.OPENRIVE_SMTP_URL = savedSmtpUrl;
+  if (savedEmailFrom === undefined) delete process.env.OPENRIVE_EMAIL_FROM; else process.env.OPENRIVE_EMAIL_FROM = savedEmailFrom;
   resetEnv();
 
   // --- permissions ---------------------------------------------------------
