@@ -9,6 +9,7 @@
         "@openrive/auth": "workspace:*",
         "@openrive/config": "workspace:*",
         "@openrive/db": "workspace:*",
+        "@openrive/lottie": "workspace:*",
         "@openrive/rive": "workspace:*",
         "@openrive/shared": "workspace:*",
         "@types/bun": "catalog:",
@@ -29,6 +30,7 @@
         "@napi-rs/canvas": "^1.0.11",
         "@openrive/auth": "workspace:*",
         "@openrive/db": "workspace:*",
+        "@openrive/lottie": "workspace:*",
         "@openrive/rive": "workspace:*",
         "@openrive/shared": "workspace:*",
         "@openrive/storage": "workspace:*",
@@ -65,6 +67,7 @@
         "@openrive/auth": "workspace:*",
         "@openrive/cli": "workspace:*",
         "@openrive/db": "workspace:*",
+        "@openrive/lottie": "workspace:*",
         "@openrive/rive": "workspace:*",
         "@openrive/shared": "workspace:*",
         "@openrive/storage": "workspace:*",
@@ -134,6 +137,19 @@
         "@types/node": "catalog:",
         "@types/pg": "catalog:",
         "drizzle-kit": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/lottie": {
+      "name": "@openrive/lottie",
+      "version": "0.1.0",
+      "dependencies": {
+        "@openrive/rive": "workspace:*",
+        "fflate": "^0.8.3",
+      },
+      "devDependencies": {
+        "@openrive/config": "workspace:*",
+        "@types/node": "catalog:",
         "typescript": "catalog:",
       },
     },
@@ -541,6 +557,8 @@
     "@openrive/db": ["@openrive/db@workspace:packages/db"],
 
     "@openrive/desktop": ["@openrive/desktop@workspace:apps/desktop"],
+
+    "@openrive/lottie": ["@openrive/lottie@workspace:packages/lottie"],
 
     "@openrive/redis": ["@openrive/redis@workspace:packages/redis"],
 

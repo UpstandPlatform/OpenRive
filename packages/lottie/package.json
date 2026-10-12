@@ -1,0 +1,21 @@
+{
+  "name": "@openrive/lottie",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@openrive/rive": "workspace:*",
+    "fflate": "^0.8.3"
+  },
+  "devDependencies": {
+    "@openrive/config": "workspace:*",
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  }
+}

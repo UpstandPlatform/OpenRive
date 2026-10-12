@@ -19,6 +19,7 @@
     "@napi-rs/canvas": "^1.0.11",
     "@openrive/auth": "workspace:*",
     "@openrive/db": "workspace:*",
+    "@openrive/lottie": "workspace:*",
     "@openrive/rive": "workspace:*",
     "@openrive/shared": "workspace:*",
     "@openrive/storage": "workspace:*",

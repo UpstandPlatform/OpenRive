@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.6 - 2026-10-12
+
+### Import
+
+- Import supported Lottie JSON and Telegram TGS animations as editable Rive documents in the web app and CLI.
+- Add a reusable converter package with bounded input parsing, animated vector properties, and explicit errors for unsupported content.
+- Exercise real LottieFiles JSON and Telegram TGS fixtures in local and release validation.
+
 ## 0.1.5 - 2026-10-12
 
 ### Accounts and email

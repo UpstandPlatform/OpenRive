@@ -1,10 +1,12 @@
 // Project access for the CLI, the TUI and the MCP server. Talks to the database
 // through @openrive/db, so it works with or without the web app running.
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import * as storage from '@openrive/db';
 import { exportRiv, importRiv, type RiveDoc } from '@openrive/rive/document';
+import { convertLottie, MAX_LOTTIE_INPUT_BYTES, MAX_TGS_COMPRESSED_BYTES } from '@openrive/lottie';
 import { EXAMPLES, getExample } from '@openrive/rive/examples';
+import { importSource, isOpenRiveSource } from '@openrive/rive/source';
 import { getTemplate, TEMPLATES } from '@openrive/rive/templates';
 import { isAdministratorRole, MAX_RIV_BYTES, type ProjectMeta } from '@openrive/shared';
 import { env } from '@openrive/shared/env';
@@ -169,6 +171,18 @@ export async function createProject(name: string, template = 'blank', ownerId?: 
 }
 
 export async function importFile(file: string, name?: string, ownerId?: string, organizationId?: string) {
+  const extension = path.extname(file).toLowerCase();
+  if (extension === '.json' || extension === '.tgs') {
+    const maxBytes = extension === '.tgs' ? MAX_TGS_COMPRESSED_BYTES : MAX_LOTTIE_INPUT_BYTES;
+    if (statSync(file).size > maxBytes) throw new StoreError(`${path.basename(file)} exceeds the ${Math.round(maxBytes / (1024 * 1024))} MB import limit`);
+    const { doc } = convertLottie(new Uint8Array(readFileSync(file)), path.basename(file));
+    return importDoc(doc, name ?? path.basename(file, extension), ownerId, organizationId);
+  }
+  if (extension === '.oriv') {
+    const bytes = new Uint8Array(readFileSync(file));
+    if (!isOpenRiveSource(bytes)) throw new StoreError(`${path.basename(file)} is not a valid OpenRive source archive`);
+    return importDoc(importSource(bytes), name ?? path.basename(file, extension), ownerId, organizationId);
+  }
   return importBytes(new Uint8Array(readFileSync(file)), name ?? path.basename(file).replace(/\.riv$/i, ''), ownerId, organizationId);
 }
 
@@ -187,7 +201,14 @@ export async function importBytes(bytes: Uint8Array, name?: string, ownerId?: st
 }
 
 /** Imports an already-decoded editable document using the same storage path for every edition. */
-export async function importDoc(doc: RiveDoc, name = 'Untitled', ownerId?: string) {
+export async function importDoc(doc: RiveDoc, name = 'Untitled', ownerId?: string, organizationId?: string) {
   const riv = exportRiv(doc);
-  return createStoredProject({ name, ownerId: ownerId ?? (await defaultOwner()), doc: stringifyDoc(doc), ...stats(doc) }, riv);
+  if (riv.byteLength > MAX_RIV_BYTES) throw new StoreError('The converted .riv file is larger than the 100 MB upload limit');
+  return createStoredProject({
+    name,
+    ownerId: ownerId ?? (await defaultOwner()),
+    ...(organizationId ? { organizationId } : {}),
+    doc: stringifyDoc(doc),
+    ...stats(doc),
+  }, riv);
 }

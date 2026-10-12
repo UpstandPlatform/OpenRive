@@ -20,7 +20,7 @@ Projects
   list                                             List projects
   new <name> [--template <id>]                     Create a project (see: templates)
   templates                                        List starter templates and example files
-  import <file.riv...> [--name <name>]             Import .riv files as projects
+  import <file...> [--name <name>]                Import .riv, .oriv, Lottie .json, or .tgs files as projects
   export <project> [out.riv]                       Export a project to a .riv file
   render <project|file.riv> [out.png]              Render a still frame (images/meshes use local Chromium)
        [--renderer browser|software] [--browser <executable>]

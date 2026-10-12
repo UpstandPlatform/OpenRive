@@ -10,6 +10,7 @@ import { createProjectFromDoc, importRivFile } from '@/lib/client/projects';
 import { NewFileDialog, TemplateGallery } from '@/components/TemplateGallery';
 import type { RiveDoc } from '@openrive/rive/document';
 import { importSource, isOpenRiveSource } from '@openrive/rive/source';
+import { convertLottie, MAX_LOTTIE_INPUT_BYTES, MAX_TGS_COMPRESSED_BYTES } from '@openrive/lottie';
 import { canAccessProject, canCreateProject, type ProjectMeta } from '@openrive/shared';
 import { Modal } from '@openrive/ui';
 import { getProjectActivity, setProjectFavorite } from '@/lib/client/projectActivity';
@@ -121,11 +122,19 @@ export default function Dashboard() {
           if (firstOwnFile && !onboardingMarked) { markOnboardingPending(); onboardingMarked = true; }
           continue;
         }
+        if (/\.(json|tgs)$/i.test(f.name)) {
+          const maxBytes = f.name.toLowerCase().endsWith('.tgs') ? MAX_TGS_COMPRESSED_BYTES : MAX_LOTTIE_INPUT_BYTES;
+          if (f.size > maxBytes) throw new Error(`${f.name} exceeds the ${Math.round(maxBytes / (1024 * 1024))} MB import limit`);
+          const converted = convertLottie(new Uint8Array(await f.arrayBuffer()), f.name);
+          last = await createProjectFromDoc(f.name.replace(/\.(json|tgs)$/i, ''), user.id, converted.doc);
+          if (firstOwnFile && !onboardingMarked) { markOnboardingPending(); onboardingMarked = true; }
+          continue;
+        }
         if (!f.name.toLowerCase().endsWith('.riv')) {
           throw new Error(
             f.name.toLowerCase().endsWith('.rev')
               ? '.rev files are Rive’s private editor backup format and cannot be opened outside rive.app. Export a .riv from Rive and import that.'
-            : `${f.name} is not a .riv or .oriv file`,
+            : `${f.name} is not a .riv, .oriv, Lottie .json, or Telegram .tgs file`,
           );
         }
         last = await importRivFile(f);
@@ -201,7 +210,7 @@ export default function Dashboard() {
           <input
             ref={fileInput}
             type="file"
-            accept=".riv,.oriv"
+            accept=".riv,.oriv,.json,.tgs"
             multiple
             className="hidden"
             onChange={(e) => e.target.files && importFiles(e.target.files)}
@@ -243,7 +252,7 @@ export default function Dashboard() {
               >
                 <Plus size={28} />
                 <span className="font-medium">New file</span>
-                <span className="text-t2 text-[11px]">or drop .riv and .oriv files anywhere</span>
+                <span className="text-t2 text-[11px]">or drop .riv, .oriv, .json, and .tgs files anywhere</span>
               </button>
             )}
             {visible.map((p) => {
@@ -366,7 +375,7 @@ export default function Dashboard() {
 
       {dragOver && (
         <div className="fixed inset-0 z-50 bg-[#57a5e0]/10 border-2 border-dashed border-accent flex items-center justify-center pointer-events-none">
-          <div className="text-[16px] font-medium bg-bg2 px-5 py-3 rounded-lg">Drop .riv or .oriv files to import</div>
+          <div className="text-[16px] font-medium bg-bg2 px-5 py-3 rounded-lg">Drop .riv, .oriv, .json, or .tgs files to import</div>
         </div>
       )}
       {busy && (

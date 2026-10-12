@@ -1,6 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { gzipSync } from 'fflate';
 import { newDoc } from '@openrive/rive/factory';
 import { exportRiv } from '@openrive/rive/document';
 
@@ -11,7 +12,36 @@ const rivPath = path.join(temp, 'fixture.riv');
 const sourcePath = path.join(temp, 'fixture.oriv');
 const sourceDir = path.join(temp, 'fixture-source');
 const pngPath = path.join(temp, 'fixture.png');
+const lottieJsonPath = path.join(temp, 'fixture.json');
+const lottieTgsPath = path.join(temp, 'fixture.tgs');
 writeFileSync(rivPath, exportRiv(newDoc('CLI fixture')));
+const lottieFixture = {
+  v: '5.7.4',
+  fr: 30,
+  ip: 0,
+  op: 30,
+  w: 128,
+  h: 128,
+  layers: [{
+    ddd: 0,
+    ind: 1,
+    ty: 4,
+    nm: 'Shape Layer',
+    sr: 1,
+    ks: { o: { a: 0, k: 100 }, r: { a: 0, k: 0 }, p: { a: 0, k: [64, 64] }, a: { a: 0, k: [0, 0] }, s: { a: 0, k: [100, 100] } },
+    ip: 0,
+    op: 30,
+    st: 0,
+    shapes: [
+      { ty: 'rc', nm: 'Rectangle', p: { a: 0, k: [0, 0] }, s: { a: 0, k: [48, 48] }, r: { a: 0, k: 0 } },
+      { ty: 'fl', nm: 'Fill', c: { a: 0, k: [0.2, 0.6, 1, 1] }, o: { a: 0, k: 100 }, r: 1 },
+      { ty: 'tr', p: { a: 0, k: [0, 0] }, a: { a: 0, k: [0, 0] }, s: { a: 0, k: [100, 100] }, r: { a: 0, k: 0 }, o: { a: 0, k: 100 } },
+    ],
+  }],
+};
+const lottieBytes = new TextEncoder().encode(JSON.stringify(lottieFixture));
+writeFileSync(lottieJsonPath, lottieBytes);
+writeFileSync(lottieTgsPath, gzipSync(lottieBytes));
 
 function run(...args: string[]) {
   const result = Bun.spawnSync([process.execPath, 'apps/cli/src/index.ts', ...args], {
@@ -58,7 +88,33 @@ try {
   if (!run('info', sourceDir, '--json').includes('CLI fixture')) throw new Error('CLI inspect did not read source folder');
   const folderImport = run('source', 'import', sourceDir, 'Imported folder fixture');
   if (!folderImport.includes('Imported folder fixture')) throw new Error('CLI source folder import did not create a project');
-  console.log('CLI diagnose, inspect, render, editable source export/import passed');
+  const jsonImport = run('import', lottieJsonPath, '--name', 'Imported JSON fixture');
+  if (!jsonImport.includes('Imported JSON fixture')) throw new Error('CLI Lottie JSON import did not create a project');
+  const tgsImport = run('import', lottieTgsPath, '--name', 'Imported TGS fixture');
+  if (!tgsImport.includes('Imported TGS fixture')) throw new Error('CLI Telegram TGS import did not create a project');
+  const previousDataDir = process.env.OPENRIVE_DATA_DIR;
+  const previousEdition = process.env.OPENRIVE_EDITION;
+  process.env.OPENRIVE_DATA_DIR = dataDir;
+  process.env.OPENRIVE_EDITION = 'local';
+  const [{ closeDatabase, db, schema }, { importFile }] = await Promise.all([
+    import('@openrive/db'),
+    import('../apps/cli/src/project-store'),
+  ]);
+  try {
+    const connection = await db();
+    await connection.insert(schema.organizations).values({ id: 'cli-workflow-workspace', name: 'CLI workflow', slug: 'cli-workflow' });
+    const workspaceImport = await importFile(lottieJsonPath, 'Workspace JSON fixture', undefined, 'cli-workflow-workspace');
+    if (workspaceImport.organizationId !== 'cli-workflow-workspace') {
+      throw new Error('CLI Lottie JSON import did not preserve the selected workspace');
+    }
+  } finally {
+    await closeDatabase();
+    if (previousDataDir === undefined) delete process.env.OPENRIVE_DATA_DIR;
+    else process.env.OPENRIVE_DATA_DIR = previousDataDir;
+    if (previousEdition === undefined) delete process.env.OPENRIVE_EDITION;
+    else process.env.OPENRIVE_EDITION = previousEdition;
+  }
+  console.log('CLI diagnose, inspect, render, editable source export/import, Lottie JSON and TGS imports, and workspace import passed');
 } finally {
   rmSync(temp, { recursive: true, force: true });
 }

@@ -16,6 +16,7 @@
     "@openrive/auth": "workspace:*",
     "@openrive/cli": "workspace:*",
     "@openrive/db": "workspace:*",
+    "@openrive/lottie": "workspace:*",
     "@openrive/rive": "workspace:*",
     "@openrive/shared": "workspace:*",
     "@openrive/storage": "workspace:*",

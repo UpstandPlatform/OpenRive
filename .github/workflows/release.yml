@@ -38,6 +38,9 @@ jobs:
       - name: Tests
         run: bunx playwright-core install --with-deps chromium && bun run test
 
+      - name: Lottie JSON and TGS corpus
+        run: bash scripts/test-lottie-corpus-ci.sh
+
       - name: Bone canvas workflows
         run: bun run test:browser
 
