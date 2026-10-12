@@ -11,6 +11,8 @@ const names = [
   'OPENRIVE_STORAGE_BUCKET',
   'OPENRIVE_STORAGE_ACCESS_KEY_ID',
   'OPENRIVE_STORAGE_SECRET_ACCESS_KEY',
+  'RESEND_API_KEY',
+  'OPENRIVE_EMAIL_FROM',
   'OPENRIVE_ALLOW_INSECURE_INTERNAL_SERVICES',
   'NODE_ENV',
 ] as const;
@@ -41,6 +43,8 @@ try {
   process.env.OPENRIVE_STORAGE_BUCKET = 'openrive';
   process.env.OPENRIVE_STORAGE_ACCESS_KEY_ID = 'openrive';
   process.env.OPENRIVE_STORAGE_SECRET_ACCESS_KEY = 'a-secret';
+  process.env.RESEND_API_KEY = 're_test_key';
+  process.env.OPENRIVE_EMAIL_FROM = 'noreply@example.com';
   process.env.NODE_ENV = 'production';
   resetEnv();
   let insecureRejected = false;
