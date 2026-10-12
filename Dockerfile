@@ -18,6 +18,7 @@ COPY apps/desktop/package.json apps/desktop/
 COPY packages/auth/package.json packages/auth/
 COPY packages/config/package.json packages/config/
 COPY packages/db/package.json packages/db/
+COPY packages/lottie/package.json packages/lottie/
 COPY packages/rive/package.json packages/rive/
 COPY packages/redis/package.json packages/redis/
 COPY packages/storage/package.json packages/storage/
