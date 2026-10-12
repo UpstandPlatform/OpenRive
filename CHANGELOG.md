@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.5 - 2026-10-12
+
+### Accounts and email
+
+- Keep the email verification page accessible before sign-in so unverified cloud accounts can request and complete verification.
+
 ## 0.1.4 - 2026-10-12
 
 ### Accounts and email
