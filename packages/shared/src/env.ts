@@ -53,6 +53,8 @@ const envSchema = z.object({
   OPENRIVE_TRUSTED_ORIGINS: z.string().optional(),
   /** SMTP transport URL for invitations and account verification (smtp:// or smtps://). */
   OPENRIVE_SMTP_URL: z.string().url().optional(),
+  /** Resend API key for cloud account verification and workspace invitations. */
+  RESEND_API_KEY: z.string().trim().min(1).optional(),
   /** Verified sender address used by authentication mail. */
   OPENRIVE_EMAIL_FROM: z.string().email().optional(),
   /** who may use the sign-up page: anyone, only the first (administrator) account, or nobody */
@@ -79,6 +81,7 @@ function read(): Env {
     OPENRIVE_DB_SSL_CA: optional(source.OPENRIVE_DB_SSL_CA),
     OPENRIVE_TRUSTED_ORIGINS: optional(source.OPENRIVE_TRUSTED_ORIGINS),
     OPENRIVE_SMTP_URL: optional(source.OPENRIVE_SMTP_URL),
+    RESEND_API_KEY: optional(source.RESEND_API_KEY),
     OPENRIVE_EMAIL_FROM: optional(source.OPENRIVE_EMAIL_FROM),
     OPENRIVE_REDIS_URL: optional(source.OPENRIVE_REDIS_URL),
     OPENRIVE_STORAGE_ENDPOINT: optional(source.OPENRIVE_STORAGE_ENDPOINT),
@@ -95,18 +98,24 @@ function read(): Env {
   const edition = data.OPENRIVE_EDITION ?? (data.DATABASE_URL ? 'self_hosted' : 'local');
   const errors: string[] = [];
 
-  if (!!data.OPENRIVE_SMTP_URL !== !!data.OPENRIVE_EMAIL_FROM) {
-    errors.push('OPENRIVE_SMTP_URL and OPENRIVE_EMAIL_FROM must be configured together');
+  if (data.OPENRIVE_SMTP_URL && !data.OPENRIVE_EMAIL_FROM) errors.push('OPENRIVE_EMAIL_FROM is required with OPENRIVE_SMTP_URL');
+  if (data.OPENRIVE_EMAIL_FROM && !data.OPENRIVE_SMTP_URL && !data.RESEND_API_KEY) {
+    errors.push('OPENRIVE_EMAIL_FROM requires OPENRIVE_SMTP_URL or RESEND_API_KEY');
   }
   if (data.OPENRIVE_SMTP_URL) {
     const protocol = new URL(data.OPENRIVE_SMTP_URL).protocol;
     if (!['smtp:', 'smtps:'].includes(protocol)) errors.push('OPENRIVE_SMTP_URL must use smtp:// or smtps://');
+  }
+  if (data.RESEND_API_KEY && !data.OPENRIVE_EMAIL_FROM) {
+    errors.push('OPENRIVE_EMAIL_FROM is required when RESEND_API_KEY is configured');
   }
 
   if (edition === 'cloud') {
     if (!data.DATABASE_URL) errors.push('DATABASE_URL is required for the cloud edition');
     if (!data.OPENRIVE_REDIS_URL) errors.push('OPENRIVE_REDIS_URL is required for the cloud edition');
     if (!data.OPENRIVE_AUTH_SECRET) errors.push('OPENRIVE_AUTH_SECRET is required for the cloud edition');
+    if (!data.RESEND_API_KEY) errors.push('RESEND_API_KEY is required for the cloud edition');
+    if (!data.OPENRIVE_EMAIL_FROM) errors.push('OPENRIVE_EMAIL_FROM is required for the cloud edition');
     if (data.OPENRIVE_AUTH === 'off') errors.push('OPENRIVE_AUTH=off is not allowed for the cloud edition');
     if (!data.OPENRIVE_STORAGE_ENDPOINT) errors.push('OPENRIVE_STORAGE_ENDPOINT is required for the cloud edition');
     if (!data.OPENRIVE_STORAGE_BUCKET) errors.push('OPENRIVE_STORAGE_BUCKET is required for the cloud edition');

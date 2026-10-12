@@ -24,6 +24,7 @@ interface SessionState {
   /** the signed-in account when sign-in is on */
   account: Account | null;
   authEnabled: boolean;
+  emailVerificationRequired: boolean;
   needsSetup: boolean;
   /** whether the sign-up page takes new accounts */
   canSignUp: boolean;
@@ -38,6 +39,7 @@ export const useSession = create<SessionState>((set, get) => ({
   users: [],
   account: null,
   authEnabled: false,
+  emailVerificationRequired: false,
   needsSetup: false,
   canSignUp: false,
   currentId: null,
@@ -45,8 +47,9 @@ export const useSession = create<SessionState>((set, get) => ({
   async refresh() {
     const session = (await fetch('/api/session', { cache: 'no-store' })
       .then((r) => r.json())
-      .catch(() => ({ authEnabled: false, needsSetup: false, canSignUp: false, user: null }))) as {
+      .catch(() => ({ authEnabled: false, emailVerificationRequired: false, needsSetup: false, canSignUp: false, user: null }))) as {
       authEnabled: boolean;
+      emailVerificationRequired: boolean;
       needsSetup: boolean;
       canSignUp: boolean;
       user: Account | null;
@@ -57,6 +60,7 @@ export const useSession = create<SessionState>((set, get) => ({
         users: [],
         account: null,
         authEnabled: true,
+        emailVerificationRequired: session.emailVerificationRequired,
         needsSetup: session.needsSetup,
         canSignUp: session.canSignUp,
         currentId: null,
@@ -70,7 +74,7 @@ export const useSession = create<SessionState>((set, get) => ({
       .catch(() => []);
 
     if (session.authEnabled && session.user) {
-      set({ users, account: session.user, authEnabled: true, needsSetup: false, canSignUp: session.canSignUp, currentId: session.user.id, loaded: true });
+      set({ users, account: session.user, authEnabled: true, emailVerificationRequired: session.emailVerificationRequired, needsSetup: false, canSignUp: session.canSignUp, currentId: session.user.id, loaded: true });
       return;
     }
 
@@ -82,7 +86,7 @@ export const useSession = create<SessionState>((set, get) => ({
       currentId = null;
     }
     if (!currentId || !users.some((u) => u.id === currentId)) currentId = users[0]?.id ?? null;
-    set({ users, account: null, authEnabled: false, needsSetup: false, canSignUp: false, currentId, loaded: true });
+    set({ users, account: null, authEnabled: false, emailVerificationRequired: false, needsSetup: false, canSignUp: false, currentId, loaded: true });
     if (currentId) get().switchUser(currentId);
   },
   switchUser(id) {

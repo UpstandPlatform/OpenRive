@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.4 - 2026-10-12
+
+### Accounts and email
+
+- Require verified email ownership before cloud users can access OpenRive, including through existing sessions and MCP/API keys.
+- Send branded verification and workspace invitation emails through Resend; add a page for requesting another verification link.
+- Require `RESEND_API_KEY` and a verified `OPENRIVE_EMAIL_FROM` sender in cloud deployments.
+
 ## 0.1.3 - 2026-10-11
 
 ### Rigging

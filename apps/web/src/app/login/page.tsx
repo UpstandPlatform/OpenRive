@@ -9,7 +9,7 @@ import { useSession } from '@/lib/client/session';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { authEnabled, canSignUp, account, refresh, loaded } = useSession();
+  const { authEnabled, emailVerificationRequired, canSignUp, account, refresh, loaded } = useSession();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -30,6 +30,10 @@ export default function LoginPage() {
     setBusy(true);
     const { error: failure } = await authClient.signIn.email({ email: email.trim(), password });
     if (failure) {
+      if (emailVerificationRequired && failure.code === 'EMAIL_NOT_VERIFIED') {
+        router.replace(`/verify-email?email=${encodeURIComponent(email.trim())}`);
+        return;
+      }
       // the same message either way, so it never reveals which accounts exist
       setError(authError(failure, 'That email or password is not right'));
       setBusy(false);

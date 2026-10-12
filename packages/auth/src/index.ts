@@ -4,8 +4,8 @@
 // default) and on when OpenRive is self-hosted against a PostgreSQL server.
 // OPENRIVE_AUTH=on|off overrides that.
 //
-// The accounts themselves are Better Auth's: email and password, optional
-// email verification and invitations when SMTP is configured. Better Auth stores them in OpenRive's own
+// The accounts themselves are Better Auth's: email and password, with email
+// verification and invitations when delivery is configured. Better Auth stores them in OpenRive's own
 // tables through the Drizzle adapter (see packages/db/src/schema.ts), so an
 // account and the person a file belongs to are the same row.
 import { betterAuth } from 'better-auth';
@@ -75,6 +75,9 @@ const accountUserRole = accountAdminAccess.newRole({ user: [], session: [] });
 
 /** Is a sign-in required for this deployment? */
 export const authEnabled = authRequired;
+
+/** Cloud accounts must prove control of their address before using OpenRive. */
+export const emailVerificationRequired = () => env().OPENRIVE_EDITION === 'cloud';
 
 /** Who may create an account from the sign-up page. */
 export const signupMode = () => env().OPENRIVE_SIGNUP;
@@ -152,15 +155,55 @@ function validateOrganizationFields(organization: { name?: string; slug?: string
 let mailTransport: Transporter | null = null;
 function sendAuthEmail(to: string, subject: string, text: string, html: string) {
   const settings = env();
-  if (!settings.OPENRIVE_SMTP_URL || !settings.OPENRIVE_EMAIL_FROM) {
+  if (!settings.OPENRIVE_EMAIL_FROM || (!settings.RESEND_API_KEY && !settings.OPENRIVE_SMTP_URL)) {
     throw new APIError('SERVICE_UNAVAILABLE', { message: 'Email is not configured on this OpenRive server' });
   }
+  if (settings.RESEND_API_KEY) {
+    return fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      signal: AbortSignal.timeout(10_000),
+      headers: {
+        Authorization: `Bearer ${settings.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ from: settings.OPENRIVE_EMAIL_FROM, to: [to], subject, text, html }),
+    }).then(async (response) => {
+      if (!response.ok) {
+        const details = await response.text().catch(() => '');
+        console.error('Resend email delivery failed', { status: response.status, details: details.slice(0, 300) });
+        throw new Error('Resend email delivery failed');
+      }
+    });
+  }
   mailTransport ??= nodemailer.createTransport({
-    url: settings.OPENRIVE_SMTP_URL,
-    requireTLS: settings.OPENRIVE_SMTP_URL.startsWith('smtp://'),
+    url: settings.OPENRIVE_SMTP_URL!,
+    requireTLS: settings.OPENRIVE_SMTP_URL!.startsWith('smtp://'),
   });
   return mailTransport.sendMail({ from: settings.OPENRIVE_EMAIL_FROM, to, subject, text, html });
 }
+
+const verificationEmailHtml = (name: string, url: string) => {
+  const safeName = escapeHtml(name);
+  const safeUrl = escapeHtml(url);
+  return `<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+  <body style="margin:0;background:#f4f3f8;color:#191820;font-family:Arial,Helvetica,sans-serif">
+    <div style="max-width:560px;margin:40px auto;padding:0 16px">
+      <div style="padding:24px 28px;background:#17151f;border-radius:16px 16px 0 0;color:#fff;font-size:20px;font-weight:700;letter-spacing:-.3px">OpenRive</div>
+      <div style="padding:36px 32px;background:#fff;border:1px solid #e8e6ee;border-top:0;border-radius:0 0 16px 16px">
+        <p style="margin:0 0 18px;font-size:16px">Hi ${safeName},</p>
+        <h1 style="margin:0 0 14px;font-size:24px;line-height:1.25;letter-spacing:-.5px">Verify your email address</h1>
+        <p style="margin:0 0 26px;color:#625f6d;font-size:15px;line-height:1.6">Confirm this address to finish setting up your OpenRive account and access your cloud workspace.</p>
+        <p style="margin:0 0 28px"><a href="${safeUrl}" style="display:inline-block;padding:13px 20px;border-radius:9px;background:#7857ff;color:#fff;text-decoration:none;font-size:14px;font-weight:700">Verify email address</a></p>
+        <p style="margin:0 0 10px;color:#777481;font-size:12px;line-height:1.5">This link expires in 24 hours. If you did not create an OpenRive account, you can ignore this message.</p>
+        <p style="margin:0;color:#777481;font-size:12px;line-height:1.5;word-break:break-all">Button not working? Copy this link:<br>${safeUrl}</p>
+      </div>
+      <p style="margin:18px 8px 0;color:#888592;text-align:center;font-size:11px">OpenRive · Create and edit Rive files</p>
+    </div>
+  </body>
+</html>`;
+};
 
 async function build() {
   const conn = await db();
@@ -196,7 +239,7 @@ async function build() {
     }),
     emailAndPassword: {
       enabled: true,
-      requireEmailVerification: false,
+      requireEmailVerification: settings.OPENRIVE_EDITION === 'cloud',
       autoSignIn: true,
       minPasswordLength: 8,
       maxPasswordLength: 200,
@@ -206,18 +249,18 @@ async function build() {
         verify: ({ hash, password }) => (isLegacyHash(hash) ? verifyLegacyPassword(password, hash) : verifyScrypt({ hash, password })),
       },
     },
-    emailVerification: settings.OPENRIVE_SMTP_URL
+    emailVerification: settings.RESEND_API_KEY || settings.OPENRIVE_SMTP_URL
       ? {
+          expiresIn: 60 * 60 * 24,
           sendOnSignUp: true,
+          sendOnSignIn: true,
           autoSignInAfterVerification: true,
           sendVerificationEmail: async ({ user, url }) => {
-            const safeName = escapeHtml(user.name);
-            const safeUrl = escapeHtml(url);
             await sendAuthEmail(
               user.email,
               'Verify your OpenRive email address',
-              `Hi ${user.name}, verify your email address to finish setting up OpenRive: ${url}`,
-              `<p>Hi ${safeName},</p><p>Verify your email address to finish setting up OpenRive.</p><p><a href="${safeUrl}">Verify email</a></p>`,
+              `Hi ${user.name},\n\nVerify your email address to finish setting up OpenRive and access your cloud workspace. This link expires in 24 hours.\n\n${url}\n\nIf you did not create an OpenRive account, you can ignore this message.`,
+              verificationEmailHtml(user.name, url),
             );
           },
         }
@@ -334,8 +377,8 @@ async function build() {
             }
           },
           beforeCreateInvitation: async ({ invitation, inviter }) => {
-            if (!settings.OPENRIVE_SMTP_URL || !settings.OPENRIVE_EMAIL_FROM) {
-              throw new APIError('SERVICE_UNAVAILABLE', { message: 'Configure SMTP email delivery before inviting workspace members' });
+            if (!(settings.RESEND_API_KEY || settings.OPENRIVE_SMTP_URL) || !settings.OPENRIVE_EMAIL_FROM) {
+              throw new APIError('SERVICE_UNAVAILABLE', { message: 'Configure email delivery before inviting workspace members' });
             }
             if (!['admin', 'editor', 'viewer'].includes(invitation.role)) {
               throw new APIError('BAD_REQUEST', { message: 'Choose an allowed workspace role' });
@@ -414,6 +457,15 @@ export function auth(): Promise<Auth> {
 /** Cookie holding the session token, for anything that has to look at it directly. */
 export const SESSION_COOKIE = 'openrive.session_token';
 
+/** Send a verification message for an account created outside the sign-up endpoint. */
+async function sendAccountVerification(email: string): Promise<void> {
+  const settings = env();
+  const result = await (await auth()).api.sendVerificationEmail({
+    body: { email, callbackURL: new URL('/', settings.OPENRIVE_URL).href },
+  });
+  if (!result.status) throw new Error('Could not send the verification email');
+}
+
 // ---------------------------------------------------------------------------
 // Accounts, in the shape the rest of OpenRive uses (milliseconds, not dates)
 
@@ -476,7 +528,7 @@ export async function sessionUser(headers: Headers): Promise<Account | null> {
   const session = await instance.api.getSession({ headers }).catch(() => null);
   if (!session?.user) return null;
   const account = await getAccount(session.user.id);
-  if (!account || account.disabled) return null;
+  if (!account || account.disabled || (emailVerificationRequired() && !account.emailVerified)) return null;
   const organizationId = headers.get('x-openrive-organization-id') || session.session.activeOrganizationId;
   if (!organizationId) return account;
   return accountInOrganization(account, organizationId);
@@ -537,6 +589,7 @@ export async function createAccount(input: NewAccount): Promise<Account> {
     })
     .returning();
   if (input.password) await setPassword(id, input.password);
+  if (input.password && emailVerificationRequired() && email) await sendAccountVerification(email);
   return toAccount(row!, !!input.password);
 }
 
@@ -552,8 +605,12 @@ export interface AccountPatch {
 export async function updateAccount(id: string, patch: AccountPatch): Promise<Account | null> {
   const conn = await db();
   const values: Partial<schema.UserRow> = {};
+  const requestedEmail = patch.email?.trim().toLowerCase() || null;
+  const existingAccount = patch.email !== undefined ? await getAccount(id) : null;
+  const emailChanged = patch.email !== undefined && existingAccount?.email !== requestedEmail;
   if (patch.name !== undefined) values.name = patch.name.trim();
-  if (patch.email !== undefined) values.email = patch.email?.trim().toLowerCase() || null;
+  if (patch.email !== undefined) values.email = requestedEmail;
+  if (emailChanged && emailVerificationRequired()) values.emailVerified = false;
   if (patch.role !== undefined) values.role = patch.role;
   if (patch.color !== undefined) values.color = patch.color;
   if (patch.disabled !== undefined) values.disabled = patch.disabled;
@@ -588,9 +645,15 @@ export async function updateAccount(id: string, patch: AccountPatch): Promise<Ac
     if (!account?.email) throw new Error('Give the account an email before setting a password');
     await setPassword(id, patch.password);
   }
-  // a new password or a disabled account ends every existing session
-  if (patch.password !== undefined || patch.disabled) await revokeUserSessions(id);
-  return getAccount(id);
+  // Credential, address or access changes invalidate every existing session.
+  if (patch.password !== undefined || emailChanged || patch.disabled) await revokeUserSessions(id);
+  const updated = await getAccount(id);
+  if (emailChanged && emailVerificationRequired() && updated?.email && !updated.emailVerified && updated.hasPassword) {
+    await sendAccountVerification(updated.email);
+  } else if (patch.password !== undefined && emailVerificationRequired() && updated?.email && !updated.emailVerified) {
+    await sendAccountVerification(updated.email);
+  }
+  return updated;
 }
 
 /** Sets (or replaces) the password of an account. */

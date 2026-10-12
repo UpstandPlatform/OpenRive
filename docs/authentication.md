@@ -6,7 +6,7 @@ OpenRive has two ways of knowing who you are:
 | --- | --- | --- |
 | **Login-free** | a local run or the desktop app | pick a user from the header, as OpenRive has always worked |
 | **Sign-in** | self-hosted (a `DATABASE_URL` is set) | an email and a password, sessions, and an admin dashboard |
-| **Cloud sign-in** | `OPENRIVE_EDITION=cloud` | mandatory Better Auth sign-in with PostgreSQL sessions and Redis rate limits |
+| **Cloud sign-in** | `OPENRIVE_EDITION=cloud` | mandatory Better Auth sign-in, verified email ownership, PostgreSQL sessions and Redis rate limits |
 
 Set `OPENRIVE_AUTH` to choose explicitly:
 
@@ -25,11 +25,15 @@ servers, workspaces use Better Auth's organization plugin and global account adm
 
 Open the server in a browser. With nobody registered yet, OpenRive sends you to **/signup** to create the
 administrator account: a name, an email and a password of at least 8 characters. The first account to exist becomes
-the **administrator** and is signed in straight away; everyone who signs up later is an **editor**.
+the **administrator**; everyone who signs up later is an **editor**. In cloud, OpenRive emails a verification link
+and does not create a usable session until the address is verified. Sign-in attempts for an unverified account resend
+the link, and the verification page can send another link on request.
 
-By default, the address is only used to sign in and no mail is sent. To enable verification emails and workspace
-invitations, configure both `OPENRIVE_SMTP_URL` and `OPENRIVE_EMAIL_FROM`. OpenRive requires verified email ownership
-before an invite recipient can join a workspace. SMTP transport errors do not leave a pending invitation behind.
+In cloud, configure `RESEND_API_KEY` and `OPENRIVE_EMAIL_FROM` to send verification and workspace invitation emails.
+The sender must be verified in Resend. OpenRive requires verified email ownership before any cloud service is
+available, including existing browser sessions and MCP/API-key requests. Self-hosted instances can use SMTP via
+`OPENRIVE_SMTP_URL` and `OPENRIVE_EMAIL_FROM`, or Resend by setting `RESEND_API_KEY`; email verification remains
+optional there. Delivery errors do not leave a pending workspace invitation behind.
 CLI and MCP API-key clients can select a workspace per request with the
 `X-OpenRive-Organization-Id` header. OpenRive validates membership and role on
 every request; the header never grants access by itself. A stateful MCP session

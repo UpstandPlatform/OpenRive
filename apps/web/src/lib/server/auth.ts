@@ -3,6 +3,7 @@
 import {
   auth,
   authEnabled,
+  emailVerificationRequired,
   canEditProject,
   canManageProject,
   canShareProject,
@@ -44,7 +45,7 @@ export async function currentUserFromHeaders(requestHeaders: Headers): Promise<A
     });
     if (!result.valid || !result.key) return null;
     const account = await getAccount(result.key.referenceId);
-    if (!account || account.disabled) return null;
+    if (!account || account.disabled || (emailVerificationRequired() && !account.emailVerified)) return null;
     const organizationId = requestHeaders.get('x-openrive-organization-id');
     if (!organizationId) return account;
     const role = await getOrganizationMemberRole(organizationId, account.id);

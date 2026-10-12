@@ -3,8 +3,7 @@
 // the administrator; after that OPENRIVE_SIGNUP decides whether this page is
 // open to everyone or account creation belongs to an administrator.
 //
-// Email confirmation is optional for accounts; workspace invitations require
-// a verified address when SMTP delivery is configured.
+// Cloud accounts must confirm their email before OpenRive creates a usable session.
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { AuthCard, AuthField, AuthLink } from '@/components/AuthCard';
@@ -13,7 +12,7 @@ import { useSession } from '@/lib/client/session';
 
 export default function SignUpPage() {
   const router = useRouter();
-  const { authEnabled, canSignUp, needsSetup, account, refresh, loaded } = useSession();
+  const { authEnabled, emailVerificationRequired, canSignUp, needsSetup, account, refresh, loaded } = useSession();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -35,10 +34,14 @@ export default function SignUpPage() {
     if (password !== confirm) return setError('The passwords do not match');
     if (password.length < 8) return setError('Use at least 8 characters');
     setBusy(true);
-    const { error: failure } = await authClient.signUp.email({ name: name.trim(), email: email.trim(), password });
+    const { error: failure } = await authClient.signUp.email({ name: name.trim(), email: email.trim(), password, callbackURL: '/' });
     if (failure) {
       setError(authError(failure, 'Could not create the account'));
       setBusy(false);
+      return;
+    }
+    if (emailVerificationRequired) {
+      router.replace(`/verify-email?email=${encodeURIComponent(email.trim())}`);
       return;
     }
     await refresh();
@@ -90,7 +93,7 @@ export default function SignUpPage() {
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         placeholder="ada@example.com"
-        hint="Used to sign in. If this server has email configured, a verification link may be sent."
+        hint={emailVerificationRequired ? 'We will email you a link to verify this address before you can use OpenRive.' : 'Used to sign in.'}
       />
       <AuthField
         label="Password"

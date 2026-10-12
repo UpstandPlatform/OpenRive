@@ -43,8 +43,9 @@ MinIO and `false` for AWS S3 or R2:
 | `OPENRIVE_SESSION_DAYS` | `30` | How long a sign-in lasts |
 | `OPENRIVE_AUTH_SECRET` | generated | Optional 32+ character secret. If omitted, a durable secret is generated in the database. |
 | `OPENRIVE_SIGNUP` | `first` | `open`, `first`, or `off`; use `first` or `off` on public deployments. |
-| `OPENRIVE_SMTP_URL` | – | Optional SMTP transport (`smtp://` or `smtps://`). Enables verification mail and workspace invitations. Configure with `OPENRIVE_EMAIL_FROM`. |
-| `OPENRIVE_EMAIL_FROM` | – | Sender address for verification and workspace invitation email; required with `OPENRIVE_SMTP_URL`. |
+| `RESEND_API_KEY` | – | Resend API key. Required for the cloud edition; also enables Resend delivery on self-hosted instances. |
+| `OPENRIVE_EMAIL_FROM` | – | Verified sender address used by Resend in cloud or SMTP when configured; required for cloud and with `OPENRIVE_SMTP_URL`. |
+| `OPENRIVE_SMTP_URL` | – | Optional SMTP transport (`smtp://` or `smtps://`) for self-hosted email. Resend is used when `RESEND_API_KEY` is set. |
 | `OPENRIVE_ACCESS_TOKEN` | – | When set, every request needs HTTP Basic auth with this password (any user name). `/api/health` stays open. Can be combined with accounts. |
 | `OPENRIVE_MCP_STATELESS` | `auto` | `auto` enables stateless HTTP MCP in cloud deployments so requests can reach any replica; set `false` only when a self-hosted load balancer guarantees session affinity. |
 
@@ -66,8 +67,10 @@ MinIO and `false` for AWS S3 or R2:
 The regular `docker-compose.yml` is self-hosted. The private cloud stack is `docker-compose.cloud.yml`; it adds
 persistent MinIO object storage while keeping Redis memory-only. It requires `OPENRIVE_URL`, `OPENRIVE_AUTH_SECRET`,
 `POSTGRES_PASSWORD`, `MINIO_ROOT_USER`, and `MINIO_ROOT_PASSWORD`.
-The cloud stack defaults `OPENRIVE_SIGNUP` to `open` so users can create accounts; the first account is still the
-administrator. Set it to `first` or `off` when the deployment should restrict account creation.
+The cloud stack requires `RESEND_API_KEY` and `OPENRIVE_EMAIL_FROM` for email verification and workspace invitations.
+Use a sender domain verified in Resend. New cloud accounts and any existing cloud sessions or API keys remain
+blocked from OpenRive until the account email is verified. The stack defaults `OPENRIVE_SIGNUP` to `open` so users
+can create accounts; the first account is still the administrator. Set it to `first` or `off` to restrict sign-up.
 
 ## CLI, MCP and the desktop app
 

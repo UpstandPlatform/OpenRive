@@ -11,6 +11,12 @@
         ],
         "createdAt": "2026-10-11T10:34:01.019Z",
         "reason": "Bundled Inter is required for editable Rive text objects; OpenRive interface typography uses bundled IBM Plex Sans."
+      },
+      {
+        "rule": "overused-font",
+        "value": "arial",
+        "createdAt": "2026-10-12T12:39:52.669Z",
+        "reason": "Agent: Arial is an email-client-safe fallback used only by the transactional verification email template."
       }
     ]
   }

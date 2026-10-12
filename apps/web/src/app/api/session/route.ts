@@ -1,4 +1,4 @@
-import { authEnabled, needsSetup, signupMode } from '@openrive/auth';
+import { authEnabled, emailVerificationRequired, needsSetup, signupMode } from '@openrive/auth';
 import { currentUser } from '@/lib/server/auth';
 import { handler, json } from '@/lib/server/route';
 
@@ -10,6 +10,7 @@ export const GET = handler(async () => {
   const first = enabled ? await needsSetup() : false;
   return json({
     authEnabled: enabled,
+    emailVerificationRequired: emailVerificationRequired(),
     // nobody can sign in yet, so the next account created runs the server
     needsSetup: first,
     // the sign-up page is open to anyone, to the first account only, or to nobody

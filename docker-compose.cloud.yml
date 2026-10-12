@@ -15,6 +15,8 @@ services:
       OPENRIVE_AUTH: on
       OPENRIVE_SIGNUP: ${OPENRIVE_SIGNUP:-open}
       OPENRIVE_AUTH_SECRET: ${OPENRIVE_AUTH_SECRET:?Set a random 32+ character auth secret}
+      RESEND_API_KEY: ${RESEND_API_KEY:?Set RESEND_API_KEY from Resend}
+      OPENRIVE_EMAIL_FROM: ${OPENRIVE_EMAIL_FROM:?Set OPENRIVE_EMAIL_FROM to a verified sender address}
       OPENRIVE_TRUSTED_ORIGINS: ${OPENRIVE_TRUSTED_ORIGINS:-}
       OPENRIVE_REDIS_URL: redis://openrive-redis:6379
       # The bundled services share a private Docker network. This explicit
