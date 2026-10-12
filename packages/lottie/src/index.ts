@@ -1,4 +1,4 @@
-export { convertLottie, type LottieConversion } from './convert';
+export { convertLottie, type LottieConversion, type LottieConversionOptions, type LottieFont } from './convert';
 export {
   decodeLottieJson,
   MAX_LOTTIE_INPUT_BYTES,

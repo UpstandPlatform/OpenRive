@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.7 - 2026-10-12
+
+### Import
+
+- Import static Lottie text with an embedded fallback font, separated 2D position channels, alpha mattes, native layer blend modes, and Gaussian Blur as an editable Rive Feather approximation.
+- Add regression coverage for the supplied Sample Animation in converter, .riv round-trip, browser import, and Preview workflows.
+
 ## 0.1.6 - 2026-10-12
 
 ### Import

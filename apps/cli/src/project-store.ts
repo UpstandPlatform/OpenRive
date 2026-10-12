@@ -175,7 +175,7 @@ export async function importFile(file: string, name?: string, ownerId?: string, 
   if (extension === '.json' || extension === '.tgs') {
     const maxBytes = extension === '.tgs' ? MAX_TGS_COMPRESSED_BYTES : MAX_LOTTIE_INPUT_BYTES;
     if (statSync(file).size > maxBytes) throw new StoreError(`${path.basename(file)} exceeds the ${Math.round(maxBytes / (1024 * 1024))} MB import limit`);
-    const { doc } = convertLottie(new Uint8Array(readFileSync(file)), path.basename(file));
+    const { doc } = convertLottie(new Uint8Array(readFileSync(file)), path.basename(file), { font: loadFont() });
     return importDoc(doc, name ?? path.basename(file, extension), ownerId, organizationId);
   }
   if (extension === '.oriv') {

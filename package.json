@@ -35,7 +35,7 @@
     "test": "bun scripts/roundtrip.test.ts && bun scripts/svg.test.ts && bun scripts/bundle.test.ts && bun scripts/databind.test.ts && bun scripts/rigging.test.ts && bun scripts/bone-editor.test.ts && bun scripts/source.test.ts && bun scripts/cli-workflow.test.ts && bun scripts/auth.test.ts && bun scripts/permissions.test.ts && bun scripts/edition.test.ts && bun scripts/route.test.ts && bun scripts/snap.test.ts && bun scripts/skills.test.ts && bun scripts/desktop-version.test.ts",
     "test:skills": "bun scripts/skills.test.ts",
     "test:corpus": "bun scripts/corpus.test.ts",
-    "test:lottie": "bun scripts/lottie-corpus.test.ts",
+    "test:lottie": "bun scripts/lottie-text.test.ts && bun scripts/lottie-sample.test.ts && bun scripts/lottie-corpus.test.ts",
     "test:lottie:browser": "bun scripts/lottie-browser.test.ts",
     "check:riv": "bun scripts/ci-riv-check.ts",
     "db:generate": "bun run --cwd packages/db drizzle-kit generate && bun scripts/embed-migrations.ts",

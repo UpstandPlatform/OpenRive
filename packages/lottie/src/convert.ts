@@ -1,7 +1,8 @@
 import type { ArtboardDoc, CoreObj, RiveDoc } from '@openrive/rive/document';
 import { newDoc, newNode, obj, vertexFromPen } from '@openrive/rive/factory';
 import { duplicateObjects, KEYFRAME_TYPE } from '@openrive/rive/ops';
-import { propDef } from '@openrive/rive/schema';
+import { isA, propDef } from '@openrive/rive/schema';
+import { ensureFontAsset, newTextObjects } from '@openrive/rive/text';
 import { decodeLottieJson } from './decode';
 
 type JsonObject = Record<string, unknown>;
@@ -33,6 +34,7 @@ interface Track<T = unknown> {
 }
 
 interface ConversionContext {
+  doc: RiveDoc;
   artboard: ArtboardDoc;
   animation: CoreObj;
   timing: Timing;
@@ -45,6 +47,9 @@ interface ConversionContext {
   keyedObjects: Map<string, CoreObj>;
   keyedProperties: Map<string, CoreObj>;
   easeInterpolators: Map<string, CoreObj>;
+  font?: LottieFont;
+  fontAssetId?: string;
+  textCount: number;
 }
 
 interface Geometry {
@@ -52,9 +57,27 @@ interface Geometry {
   painted: boolean;
 }
 
+interface LayerEntry {
+  layer: JsonObject;
+  index: number;
+  contentParentId: string;
+  path: string;
+  timing: Timing;
+}
+
 export interface LottieConversion {
   doc: RiveDoc;
   source: 'json' | 'tgs';
+}
+
+export interface LottieFont {
+  name: string;
+  bytes: Uint8Array;
+}
+
+export interface LottieConversionOptions {
+  /** Embedded fallback font used for static text layers. */
+  font?: LottieFont;
 }
 
 const MAX_LAYERS = 256;
@@ -66,8 +89,26 @@ const MAX_NESTING = 32;
 const MAX_ARTBOARD_DIMENSION = 16_384;
 const MAX_DURATION_SECONDS = 600;
 const MAX_MORPH_OPERATIONS = 250_000;
+const LOTTIE_BLEND_MODES: Record<number, number> = {
+  0: 3,  // Rive srcOver
+  1: 24, // multiply
+  2: 14, // screen
+  3: 15, // overlay
+  4: 16, // darken
+  5: 17, // lighten
+  6: 18, // color dodge
+  7: 19, // color burn
+  8: 20, // hard light
+  9: 21, // soft light
+  10: 22, // difference
+  11: 23, // exclusion
+  12: 25, // hue
+  13: 26, // saturation
+  14: 27, // color
+  15: 28, // luminosity
+};
 
-export function convertLottie(input: Uint8Array, fileName = 'animation.json'): LottieConversion {
+export function convertLottie(input: Uint8Array, fileName = 'animation.json', options: LottieConversionOptions = {}): LottieConversion {
   const source = fileName.toLowerCase().endsWith('.tgs') ? 'tgs' : 'json';
   const text = decodeLottieJson(input, fileName);
   let parsed: unknown;
@@ -128,6 +169,7 @@ export function convertLottie(input: Uint8Array, fileName = 'animation.json'): L
   }
 
   const context: ConversionContext = {
+    doc,
     artboard,
     animation: riveAnimation,
     timing,
@@ -140,18 +182,13 @@ export function convertLottie(input: Uint8Array, fileName = 'animation.json'): L
     keyedObjects: new Map(),
     keyedProperties: new Map(),
     easeInterpolators: new Map(),
+    font: options.font,
+    textCount: 0,
   };
   const layerNodes = createLayerNodes(layers, context, artboard.id, 'animation.layers', 0);
-  for (const entry of layerNodes) {
-    if (entry.layer.ty === 4) {
-      withTiming(context, entry.timing, () => {
-        const shapes = asArray(entry.layer.shapes, `${entry.path}.shapes`);
-        parseShapeItems(shapes, entry.contentParentId, `${entry.path}.shapes`, context, 0);
-      });
-    } else if (entry.layer.ty === 0) parseNestedPrecomposition(entry, context, 1);
-  }
+  parseCompositionLayerContents(layerNodes, context, 0);
 
-  if (context.geometryCount === 0) fail('animation.layers', 'contains no visible vector shapes to import');
+  if (context.geometryCount === 0 && context.textCount === 0) fail('animation.layers', 'contains no visible vector shapes or text to import');
   return { doc, source };
 }
 
@@ -161,7 +198,7 @@ function createLayerNodes(
   compositionParentId: string,
   pathPrefix: string,
   depth: number,
-): { layer: JsonObject; contentParentId: string; path: string; timing: Timing }[] {
+): LayerEntry[] {
   if (depth > MAX_NESTING) fail(pathPrefix, `precomposition nesting exceeds ${MAX_NESTING} levels`);
   if (context.timing.allowedEndTime < context.timing.allowedStartTime - 0.001) return [];
   const sourceLayers = layers.map((raw, index) => ({ layer: asObject(raw, `animation.layers[${index}]`), path: `animation.layers[${index}]` }));
@@ -170,20 +207,23 @@ function createLayerNodes(
   }
   const layerIndices = new Map<number, { layer: JsonObject; path: string; position: number }>();
   for (const [position, { layer, path }] of sourceLayers.entries()) {
-    if (layer.hd === true) continue;
     const type = finiteNumber(layer.ty, `${path}.ty`);
-    if (type !== 0 && type !== 3 && type !== 4) fail(`${path}.ty`, `layer type ${type} is not supported; use a vector shape, null, or precomposition layer`);
-    if (type === 0 && layer.refId === undefined) fail(`${path}.refId`, 'precomposition layer is missing its asset reference');
+    if (layer.hd !== true && type !== 0 && type !== 3 && type !== 4 && type !== 5) fail(`${path}.ty`, `layer type ${type} is not supported; use a vector shape, null, text, or precomposition layer`);
+    if (layer.hd !== true && type === 0 && layer.refId === undefined) fail(`${path}.refId`, 'precomposition layer is missing its asset reference');
     if (layer.ddd === 1) fail(`${path}.ddd`, '3D layers cannot be represented in a 2D Rive artboard');
     if (layer.ao === 1) fail(`${path}.ao`, 'auto-orientation is not supported');
     const startTime = optionalNumber(layer.st, 0, `${path}.st`);
     const stretch = optionalNumber(layer.sr, 1, `${path}.sr`);
     if (stretch <= 0) fail(`${path}.sr`, 'reverse or zero time stretch is not supported');
-    if (layer.tt !== undefined && layer.tt !== 0) fail(`${path}.tt`, 'track mattes are not supported');
-    if (layer.td !== undefined && layer.td !== 0) fail(`${path}.td`, 'track matte sources are not supported');
+    if (layer.tt !== undefined && layer.tt !== 0 && finiteNumber(layer.tt, `${path}.tt`) !== 1) fail(`${path}.tt`, 'only alpha track mattes are supported');
+    if (layer.td !== undefined && layer.td !== 0 && finiteNumber(layer.td, `${path}.td`) !== 1) fail(`${path}.td`, 'only alpha track matte sources are supported');
+    if (layer.tt === 1) {
+      const matteIndex = finiteNumber(layer.tp, `${path}.tp`);
+      if (!Number.isInteger(matteIndex) || matteIndex < 0) fail(`${path}.tp`, 'must be a non-negative integer layer index');
+    }
     if (asArray(layer.masksProperties ?? [], `${path}.masksProperties`).length > 0) fail(`${path}.masksProperties`, 'masks are not supported');
-    if (asArray(layer.ef ?? [], `${path}.ef`).length > 0) fail(`${path}.ef`, 'layer effects are not supported');
-    if (layer.bm !== undefined && finiteNumber(layer.bm, `${path}.bm`) !== 0) fail(`${path}.bm`, 'non-normal layer blend modes are not supported');
+    asArray(layer.ef ?? [], `${path}.ef`);
+    layerBlendMode(layer.bm, `${path}.bm`);
     const layerIn = optionalNumber(layer.ip, context.timing.compositionInPoint, `${path}.ip`);
     const layerOut = optionalNumber(layer.op, context.timing.compositionOutPoint, `${path}.op`);
     const index = optionalNumber(layer.ind, position + 1, `${path}.ind`);
@@ -209,7 +249,7 @@ function createLayerNodes(
       parentId = buildLayer(parentIndex);
     }
     const layerName = stringValue(layer.nm, `Layer ${index}`);
-    const wrapperId = addVisibilityNode(parentId, layerName, layer, path, context);
+    const wrapperId = layer.hd === true ? parentId : addVisibilityNode(parentId, layerName, layer, path, context);
     const transforms = asObject(layer.ks, `${path}.ks`);
     const startTime = optionalNumber(layer.st, 0, `${path}.st`);
     const stretch = optionalNumber(layer.sr, 1, `${path}.sr`);
@@ -233,14 +273,147 @@ function createLayerNodes(
   }
   return [...sourceLayers.entries()]
     .filter(([, source]) => source.layer.hd !== true)
-    .map(([position, source]) => built.get(optionalNumber(source.layer.ind, position + 1, `${source.path}.ind`))!);
+    .map(([position, source]) => ({
+      ...built.get(optionalNumber(source.layer.ind, position + 1, `${source.path}.ind`))!,
+      index: optionalNumber(source.layer.ind, position + 1, `${source.path}.ind`),
+    }));
 }
 
-function parseNestedPrecomposition(
-  entry: { layer: JsonObject; contentParentId: string; path: string; timing: Timing },
-  context: ConversionContext,
-  depth: number,
-): void {
+function parseCompositionLayerContents(entries: LayerEntry[], context: ConversionContext, depth: number): void {
+  const matteSources = new Map<number, CoreObj[]>();
+  for (const entry of entries) {
+    const objectStart = context.artboard.objects.length;
+    if (entry.layer.ty === 4) {
+      const geometry = withTiming(context, entry.timing, () =>
+        parseShapeItems(
+          asArray(entry.layer.shapes, `${entry.path}.shapes`),
+          entry.contentParentId,
+          `${entry.path}.shapes`,
+          context,
+          0,
+          entry.layer.td === 1 || entry.layer.tt === 1,
+        ),
+      );
+      if (entry.layer.td === 1) matteSources.set(entry.index, geometry.map((item) => item.shape));
+    } else if (entry.layer.ty === 0) parseNestedPrecomposition(entry, context, depth + 1);
+    else if (entry.layer.ty === 5) parseTextLayer(entry, context);
+    applyLayerAppearance(entry, context, context.artboard.objects.slice(objectStart));
+  }
+
+  const consumedMattes = new Set<number>();
+  for (const entry of entries) {
+    if (entry.layer.tt !== 1) continue;
+    const matteIndex = finiteNumber(entry.layer.tp, `${entry.path}.tp`);
+    const source = entries.find((candidate) => candidate.index === matteIndex && candidate.layer.td === 1);
+    const shapes = matteSources.get(matteIndex);
+    if (!source || !shapes) fail(`${entry.path}.tp`, `alpha matte source layer ${matteIndex} was not found in this composition`);
+    if (shapes.length !== 1) fail(`${source.path}.shapes`, 'alpha mattes must resolve to exactly one vector shape');
+    const target = entry.contentParentId;
+    if (target === shapes[0]!.id) fail(`${entry.path}.tp`, 'a track matte cannot mask itself');
+    shapes[0]!.props.drawableFlags = (Number(shapes[0]!.props.drawableFlags ?? 0) | 1) >>> 0;
+    appendObjects(context, obj('ClippingShape', {
+      name: 'Lottie Alpha Matte',
+      parentId: target,
+      sourceId: shapes[0]!.id,
+      fillRule: 0,
+      isVisible: true,
+    }));
+    consumedMattes.add(matteIndex);
+  }
+  for (const matteIndex of matteSources.keys()) {
+    if (!consumedMattes.has(matteIndex)) {
+      const source = entries.find((entry) => entry.index === matteIndex)!;
+      fail(`${source.path}.td`, 'alpha matte source is not referenced by a track matte');
+    }
+  }
+}
+
+function layerBlendMode(raw: unknown, path: string): number {
+  const sourceMode = raw === undefined ? 0 : finiteNumber(raw, path);
+  const riveMode = LOTTIE_BLEND_MODES[sourceMode];
+  if (riveMode === undefined) fail(path, `layer blend mode ${sourceMode} is not supported`);
+  return riveMode;
+}
+
+function applyLayerAppearance(entry: LayerEntry, context: ConversionContext, objects: CoreObj[]): void {
+  const blendMode = layerBlendMode(entry.layer.bm, `${entry.path}.bm`);
+  if (blendMode !== 3) {
+    const drawables = objects.filter((object) => isA(object.type, 'Drawable'));
+    if (drawables.length > 1) fail(`${entry.path}.bm`, 'non-normal layer blending is supported only when the layer contains one drawable');
+    if (drawables.length === 1) {
+      const drawable = drawables[0]!;
+      const existingMode = Number(drawable.props.blendModeValue ?? 3);
+      if (existingMode !== 3 && existingMode !== blendMode) {
+        fail(`${entry.path}.bm`, 'nested non-normal layer blend modes cannot be combined on one drawable');
+      }
+      drawable.props.blendModeValue = blendMode;
+    }
+  }
+
+  const effects = withTiming(context, entry.timing, () => parseLayerBlur(entry.layer.ef, `${entry.path}.ef`, context));
+  if (!effects) return;
+  if (effects.initial === 0 && effects.keys.every((key) => key.value === 0)) return;
+  const paints = objects.filter((object) => isA(object.type, 'ShapePaint'));
+  const drawables = objects.filter((object) => isA(object.type, 'Drawable'));
+  if ((effects.initial !== 0 || effects.keys.some((key) => key.value !== 0)) && (drawables.length !== 1 || paints.length !== 1)) {
+    fail(`${entry.path}.ef`, 'Gaussian Blur is supported only on a layer with one drawable and one paint');
+  }
+  for (const paint of paints) {
+    if (context.artboard.objects.some((object) => object.type === 'Feather' && object.props.parentId === paint.id)) {
+      fail(`${entry.path}.ef`, 'stacked Gaussian Blur effects on one paint cannot be represented');
+    }
+    const feather = obj('Feather', {
+      name: 'Lottie Gaussian Blur',
+      parentId: paint.id,
+      spaceValue: 1,
+      strength: effects.initial,
+      offsetX: 0,
+      offsetY: 0,
+      inner: false,
+    });
+    appendObjects(context, feather);
+    animateScalar(context, feather, 'strength', effects);
+  }
+}
+
+function parseLayerBlur(raw: unknown, path: string, context: ConversionContext): Track | undefined {
+  const effects = asArray(raw ?? [], path);
+  const enabled: { effect: JsonObject; path: string }[] = [];
+  for (const [index, rawEffect] of effects.entries()) {
+    const effectPath = `${path}[${index}]`;
+    const effect = asObject(rawEffect, effectPath);
+    if (effect.en === false || effect.en === 0) continue;
+    enabled.push({ effect, path: effectPath });
+  }
+  if (enabled.length === 0) return undefined;
+  if (enabled.length > 1) fail(path, 'only one enabled layer effect can be imported at a time');
+
+  const { effect, path: effectPath } = enabled[0]!;
+  if (finiteNumber(effect.ty, `${effectPath}.ty`) !== 29) {
+    fail(`${effectPath}.ty`, `layer effect “${stringValue(effect.nm, 'unknown')}” is not supported`);
+  }
+  const properties = asArray(effect.ef, `${effectPath}.ef`).map((rawProperty, index) => ({
+    property: asObject(rawProperty, `${effectPath}.ef[${index}]`),
+    path: `${effectPath}.ef[${index}]`,
+  }));
+  const radius = properties.find(({ property }) => String(property.nm ?? '').trim().toLowerCase() === 'blurriness') ?? properties[0];
+  const dimensions = properties.find(({ property }) => String(property.nm ?? '').trim().toLowerCase() === 'blur dimensions') ?? properties[1];
+  if (!radius || !dimensions) fail(`${effectPath}.ef`, 'Gaussian Blur is missing its blurriness or dimensions setting');
+
+  const blur = readTrack(radius.property.v, `${radius.path}.v`, 'number', context);
+  for (const [index, value] of [blur.initial, ...blur.keys.map((key) => key.value)].entries()) {
+    if (typeof value !== 'number' || value < 0 || value > MAX_ARTBOARD_DIMENSION) {
+      fail(`${radius.path}.v`, `blurriness value ${index} must be between 0 and ${MAX_ARTBOARD_DIMENSION}`);
+    }
+  }
+  const dimensionsTrack = readTrack(dimensions.property.v, `${dimensions.path}.v`, 'number', context);
+  if (dimensionsTrack.initial !== 1 || dimensionsTrack.keys.length > 0) {
+    fail(`${dimensions.path}.v`, 'only horizontal and vertical Gaussian Blur is supported');
+  }
+  return blur;
+}
+
+function parseNestedPrecomposition(entry: LayerEntry, context: ConversionContext, depth: number): void {
   const assetId = stringValue(entry.layer.refId, '');
   const asset = context.assets.get(assetId);
   if (!asset || asset.layers === undefined) fail(`${entry.path}.refId`, `precomposition asset “${assetId || '(missing)'}” was not found`);
@@ -265,19 +438,125 @@ function parseNestedPrecomposition(
     };
     const assetLayers = asArray(asset.layers, `${entry.path}.precomp(${assetId}).layers`);
     const children = createLayerNodes(assetLayers, context, entry.contentParentId, `${entry.path}.precomp(${assetId}).layers`, depth);
-    for (const child of children) {
-      if (child.layer.ty === 4) {
-        withTiming(context, child.timing, () =>
-          parseShapeItems(asArray(child.layer.shapes, `${child.path}.shapes`), child.contentParentId, `${child.path}.shapes`, context, 0),
-        );
-      } else if (child.layer.ty === 0) {
-        parseNestedPrecomposition(child, context, depth + 1);
-      }
-    }
+    parseCompositionLayerContents(children, context, depth);
   } finally {
     context.timing = previousTiming;
     context.activePrecompositions.delete(assetId);
   }
+}
+
+function parseTextLayer(entry: LayerEntry, context: ConversionContext): void {
+  const { layer, contentParentId, path } = entry;
+  const font = context.font;
+  if (!font || !(font.bytes instanceof Uint8Array) || font.bytes.byteLength === 0) {
+    fail(`${path}.t`, 'static text requires an embedded fallback font with valid, non-empty bytes');
+  }
+  if (font.bytes.byteLength > 20 * 1024 * 1024) fail(`${path}.t`, 'fallback font exceeds the 20 MB embedding limit');
+  if (typeof font.name !== 'string' || !font.name.trim()) fail(`${path}.t`, 'fallback font must have a name');
+
+  const textData = asObject(layer.t, `${path}.t`);
+  const documentData = asObject(textData.d, `${path}.t.d`);
+  const keyframes = asArray(documentData.k, `${path}.t.d.k`);
+  if (keyframes.length !== 1) fail(`${path}.t.d.k`, 'animated or multi-style text documents are not supported');
+  const keyframe = asObject(keyframes[0], `${path}.t.d.k[0]`);
+  if (finiteNumber(keyframe.t, `${path}.t.d.k[0].t`) !== 0 || keyframe.e !== undefined) {
+    fail(`${path}.t.d.k[0]`, 'only a single static text document is supported');
+  }
+
+  const document = asObject(keyframe.s, `${path}.t.d.k[0].s`);
+  const content = document.t;
+  if (typeof content !== 'string' || content.length > 100_000) fail(`${path}.t.d.k[0].s.t`, 'must be a string of at most 100,000 characters');
+  if (content.length === 0) return;
+  validateTextAnimators(textData.a, `${path}.t.a`);
+  validateTextPathOptions(textData, `${path}.t`);
+
+  const size = positiveNumber(document.s, `${path}.t.d.k[0].s.s`, MAX_ARTBOARD_DIMENSION);
+  const fill = document.fc === undefined ? [1, 1, 1] : asArray(document.fc, `${path}.t.d.k[0].s.fc`);
+  if (fill.length !== 3 && fill.length !== 4) fail(`${path}.t.d.k[0].s.fc`, 'must contain three or four color channels');
+  const channels = fill.map((channel, index) => finiteNumber(channel, `${path}.t.d.k[0].s.fc[${index}]`));
+  const color = colorToArgb([channels[0]!, channels[1]!, channels[2]!, channels[3] ?? 1], 1, `${path}.t.d.k[0].s.fc`);
+
+  const strokeWidth = optionalNumber(document.sw, 0, `${path}.t.d.k[0].s.sw`);
+  if (strokeWidth !== 0) fail(`${path}.t.d.k[0].s.sw`, 'text strokes are not supported');
+  const letterSpacing = optionalNumber(document.tr, 0, `${path}.t.d.k[0].s.tr`);
+  if (letterSpacing !== 0) fail(`${path}.t.d.k[0].s.tr`, 'custom text tracking is not supported');
+  const lineHeight = optionalNumber(document.lh, 0, `${path}.t.d.k[0].s.lh`);
+  if (lineHeight !== 0 && content.includes('\n')) fail(`${path}.t.d.k[0].s.lh`, 'custom line height for multiline text is not supported');
+  const lineSpacing = optionalNumber(document.ls, 0, `${path}.t.d.k[0].s.ls`);
+  if (lineSpacing !== 0 && content.includes('\n')) fail(`${path}.t.d.k[0].s.ls`, 'custom line spacing for multiline text is not supported');
+  for (const property of ['ps', 'sz']) {
+    if (document[property] !== undefined && hasNonZeroVector(document[property])) {
+      fail(`${path}.t.d.k[0].s.${property}`, 'paragraph-box text is not supported');
+    }
+  }
+  const align = enumValue(document.j, 0, { 0: 0, 1: 1, 2: 2 }, `${path}.t.d.k[0].s.j`);
+
+  if (++context.textCount > MAX_SHAPES) fail('animation.layers', `supports up to ${MAX_SHAPES} text layers`);
+  if (context.artboard.objects.length + 5 > MAX_RIVE_OBJECTS) fail(path, `creates more than ${MAX_RIVE_OBJECTS} editable Rive objects`);
+  const fontAssetId = context.fontAssetId ??= ensureFontAsset(context.doc, font.name, font.bytes);
+  const objects = newTextObjects({
+    parentId: contentParentId,
+    x: 0,
+    y: 0,
+    text: content,
+    fontAssetId,
+    fontSize: size,
+    color,
+    name: stringValue(layer.nm, 'Text'),
+    align: align === 1 ? 'right' : align === 2 ? 'center' : 'left',
+  });
+  appendObjects(context, ...objects);
+}
+
+function validateTextPathOptions(textData: JsonObject, path: string): void {
+  const pathOptions = asObject(textData.p ?? {}, `${path}.p`);
+  for (const name of ['f', 'l', 'r', 'a', 'p']) {
+    if (pathOptions[name] === undefined) continue;
+    const propertyPath = `${path}.p.${name}`;
+    const property = asObject(pathOptions[name], propertyPath);
+    if (finiteNumber(property.a, `${propertyPath}.a`) !== 0 || !sameNumberValue(property.k, 0, `${propertyPath}.k`)) {
+      fail(propertyPath, 'text on a path is not supported');
+    }
+  }
+  if (textData.m !== undefined) {
+    const moreOptions = asObject(textData.m, `${path}.m`);
+    if (moreOptions.a !== undefined) {
+      const anchor = asObject(moreOptions.a, `${path}.m.a`);
+      if (finiteNumber(anchor.a, `${path}.m.a.a`) !== 0 || !sameNumberValue(anchor.k, [0, 0], `${path}.m.a.k`)) {
+        fail(`${path}.m.a`, 'advanced text anchor settings are not supported');
+      }
+    }
+    if (moreOptions.g !== undefined && finiteNumber(moreOptions.g, `${path}.m.g`) !== 1) {
+      fail(`${path}.m.g`, 'advanced text grouping settings are not supported');
+    }
+  }
+}
+
+function validateTextAnimators(raw: unknown, path: string): void {
+  for (const [index, rawAnimator] of asArray(raw ?? [], path).entries()) {
+    const animator = asObject(rawAnimator, `${path}[${index}]`);
+    const properties = asObject(animator.a, `${path}[${index}].a`);
+    const neutralValues: Record<string, number | number[]> = {
+      a: [0, 0], s: [100, 100], sk: 0, p: [0, 0], r: 0, sa: 0, o: 100,
+      rx: 0, ry: 0, sw: 0, fc: [0, 0, 0], fh: 0, fs: 100, fb: 100, t: 0,
+    };
+    for (const [name, rawProperty] of Object.entries(properties)) {
+      const neutral = neutralValues[name];
+      if (neutral === undefined) fail(`${path}[${index}].a.${name}`, 'text animator property is not supported');
+      const propertyPath = `${path}[${index}].a.${name}`;
+      const property = asObject(rawProperty, propertyPath);
+      if (finiteNumber(property.a, `${propertyPath}.a`) !== 0 || !sameNumberValue(property.k, neutral, `${propertyPath}.k`)) {
+        fail(propertyPath, 'animated or non-default text animator properties are not supported');
+      }
+    }
+  }
+}
+
+function sameNumberValue(raw: unknown, expected: number | number[], path: string): boolean {
+  const actual = Array.isArray(expected) ? asArray(raw, path).map((value, index) => finiteNumber(value, `${path}[${index}]`)) : finiteNumber(raw, path);
+  return Array.isArray(expected)
+    ? Array.isArray(actual) && actual.length === expected.length && actual.every((value, index) => value === expected[index])
+    : actual === expected;
 }
 
 function addVisibilityNode(parentId: string, name: string, layer: JsonObject, path: string, context: ConversionContext): string {
@@ -303,7 +582,17 @@ function addVisibilityNode(parentId: string, name: string, layer: JsonObject, pa
 
 function addTransformNodes(parentId: string, name: string, source: JsonObject, path: string, context: ConversionContext): string {
   const anchor = readTrack(source.a ?? { a: 0, k: [0, 0] }, `${path}.a`, 'vector2', context, false).initial as [number, number];
-  const position = readTrack(source.p ?? { a: 0, k: [0, 0] }, `${path}.p`, 'vector2', context);
+  const positionSource = source.p ?? { a: 0, k: [0, 0] };
+  const separatePosition = isObject(positionSource) && positionSource.s === true;
+  const positionX = separatePosition ? readTrack((positionSource as JsonObject).x, `${path}.p.x`, 'number', context) : undefined;
+  const positionY = separatePosition ? readTrack((positionSource as JsonObject).y, `${path}.p.y`, 'number', context) : undefined;
+  if (separatePosition && (positionSource as JsonObject).z !== undefined) {
+    const positionZ = readTrack((positionSource as JsonObject).z, `${path}.p.z`, 'number', context);
+    if (positionZ.initial !== 0 || positionZ.keys.some((key) => key.value !== 0)) fail(`${path}.p.z`, 'nonzero z position is not supported in a 2D composition');
+  }
+  const position = separatePosition
+    ? { initial: [positionX!.initial as number, positionY!.initial as number] as [number, number], keys: [] }
+    : readTrack(positionSource, `${path}.p`, 'vector2', context);
   const scale = readTrack(source.s ?? { a: 0, k: [100, 100] }, `${path}.s`, 'vector2', context);
   const rotation = readTrack(source.r ?? source.rz ?? { a: 0, k: 0 }, `${path}.r`, 'number', context);
   const opacity = readTrack(source.o ?? { a: 0, k: 100 }, `${path}.o`, 'number', context);
@@ -319,8 +608,13 @@ function addTransformNodes(parentId: string, name: string, source: JsonObject, p
   const offset = newNode(outer.id, `${name} Anchor`, -anchor[0], -anchor[1]);
   appendObjects(context, outer, offset);
 
-  animateVector(context, outer, 'x', position, 0);
-  animateVector(context, outer, 'y', position, 1);
+  if (separatePosition) {
+    animateScalar(context, outer, 'x', positionX!);
+    animateScalar(context, outer, 'y', positionY!);
+  } else {
+    animateVector(context, outer, 'x', position, 0);
+    animateVector(context, outer, 'y', position, 1);
+  }
   animateVector(context, outer, 'scaleX', scale, 0, (value) => value / 100);
   animateVector(context, outer, 'scaleY', scale, 1, (value) => value / 100);
   animateScalar(context, outer, 'rotation', rotation, degreesToRadians);
@@ -328,7 +622,7 @@ function addTransformNodes(parentId: string, name: string, source: JsonObject, p
   return offset.id;
 }
 
-function parseShapeItems(items: unknown[], parentId: string, path: string, context: ConversionContext, depth: number): Geometry[] {
+function parseShapeItems(items: unknown[], parentId: string, path: string, context: ConversionContext, depth: number, allowUnpainted = false): Geometry[] {
   if (depth > MAX_NESTING) fail(path, `shape nesting exceeds ${MAX_NESTING} levels`);
   const itemObjects = items.map((raw, index) => asObject(raw, `${path}[${index}]`));
   const transformItems = itemObjects.filter((item) => item.ty === 'tr');
@@ -360,7 +654,7 @@ function parseShapeItems(items: unknown[], parentId: string, path: string, conte
       case 'gr': {
         if (seenPaint) fail(itemPath, 'nested groups must precede the parent group’s fill and stroke styles');
         const nested = asArray(item.it, `${itemPath}.it`);
-        geometry.push(...parseShapeItems(nested, childParentId, `${itemPath}.it`, context, depth + 1));
+        geometry.push(...parseShapeItems(nested, childParentId, `${itemPath}.it`, context, depth + 1, allowUnpainted));
         break;
       }
       case 'fl':
@@ -401,7 +695,7 @@ function parseShapeItems(items: unknown[], parentId: string, path: string, conte
   }
   if (depth === 0) {
     for (const item of geometry) {
-      if (!item.painted) fail(path, `shape “${String(item.shape.props.name)}” has no supported fill or stroke`);
+      if (!item.painted && !allowUnpainted) fail(path, `shape “${String(item.shape.props.name)}” has no supported fill or stroke`);
     }
   }
   return geometry;
@@ -987,6 +1281,9 @@ function normalizeValue(raw: unknown, kind: ValueKind, path: string): unknown {
   if (kind === 'vector2' && values.length === 3) {
     finiteNumber(values[2], `${path}[2]`); // Bodymovin commonly writes an unused z component for 2D values.
     return [finiteNumber(values[0], `${path}[0]`), finiteNumber(values[1], `${path}[1]`)];
+  }
+  if (kind === 'color' && values.length === 3) {
+    return [...values.map((part, index) => finiteNumber(part, `${path}[${index}]`)), 1];
   }
   if (values.length !== expected) fail(path, `must contain ${expected} numeric values`);
   return values.map((part, index) => finiteNumber(part, `${path}[${index}]`));

@@ -17,6 +17,21 @@ import { getProjectActivity, setProjectFavorite } from '@/lib/client/projectActi
 
 type Filter = 'mine' | 'shared' | 'workspace' | 'all' | 'recent' | 'favorites';
 
+let lottieFontPromise: Promise<Uint8Array> | undefined;
+
+function loadLottieFallbackFont(): Promise<Uint8Array> {
+  lottieFontPromise ??= fetch('/fonts/Inter-Regular.ttf').then(async (response) => {
+    if (!response.ok) throw new Error('Could not load the bundled fallback font for Lottie text');
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength === 0 || bytes.byteLength > 20 * 1024 * 1024) throw new Error('The bundled fallback font is invalid or too large');
+    return bytes;
+  }).catch((error: unknown) => {
+    lottieFontPromise = undefined;
+    throw error;
+  });
+  return lottieFontPromise;
+}
+
 function timeAgo(t: number) {
   const s = (Date.now() - t) / 1000;
   if (s < 60) return 'just now';
@@ -125,7 +140,8 @@ export default function Dashboard() {
         if (/\.(json|tgs)$/i.test(f.name)) {
           const maxBytes = f.name.toLowerCase().endsWith('.tgs') ? MAX_TGS_COMPRESSED_BYTES : MAX_LOTTIE_INPUT_BYTES;
           if (f.size > maxBytes) throw new Error(`${f.name} exceeds the ${Math.round(maxBytes / (1024 * 1024))} MB import limit`);
-          const converted = convertLottie(new Uint8Array(await f.arrayBuffer()), f.name);
+          const font = await loadLottieFallbackFont();
+          const converted = convertLottie(new Uint8Array(await f.arrayBuffer()), f.name, { font: { name: 'Inter', bytes: font } });
           last = await createProjectFromDoc(f.name.replace(/\.(json|tgs)$/i, ''), user.id, converted.doc);
           if (firstOwnFile && !onboardingMarked) { markOnboardingPending(); onboardingMarked = true; }
           continue;

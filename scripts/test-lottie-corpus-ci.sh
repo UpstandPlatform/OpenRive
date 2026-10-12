@@ -34,6 +34,8 @@ bun run --cwd "$root" test:lottie -- \
   "$fixture_root/dotlottie-web/fixtures" \
   "$fixture_root/tdesktop/Telegram/Resources/animations"
 
+sample_json="$fixture_root/Sample Animation.json"
+gzip -dc "$root/scripts/fixtures/lottie/sample-animation.json.gz" > "$sample_json"
 bun run --cwd "$root" test:lottie:browser -- \
-  "$fixture_root/dotlottie-web/fixtures/lottie/balloons_with_string.json" \
+  "$sample_json" \
   "$fixture_root/tdesktop/Telegram/Resources/animations/palette.tgs"

@@ -10,6 +10,10 @@ const telegramTgsRoot = process.argv[3] ?? process.env.TELEGRAM_TGS_FIXTURES_DIR
 if (!fixturesRoot) {
   throw new Error('Pass the dotlottie-web fixtures directory as an argument or set LOTTIE_FIXTURES_DIR.');
 }
+const fallbackFont = {
+  name: 'Inter',
+  bytes: new Uint8Array(readFileSync(path.resolve(import.meta.dir, '../apps/web/public/fonts/Inter-Regular.ttf'))),
+};
 
 const expectedSuccesses = [
   'down.json',
@@ -110,7 +114,7 @@ function assertRoundTrip(doc: ReturnType<typeof convertLottie>['doc'], fixtureNa
   assert.deepEqual(reExportedBytes, rivBytes, `${fixtureName} must survive an OpenRive export/import round trip.`);
   const artboard = imported.artboards[0];
   assert.ok(artboard, `${fixtureName} must create an artboard.`);
-  assert.ok(artboard.objects.some((object) => object.type === 'Shape'), `${fixtureName} must produce editable shapes.`);
+  assert.ok(artboard.objects.some((object) => object.type === 'Shape' || object.type === 'Text'), `${fixtureName} must produce editable shapes or text.`);
   assert.ok(artboard.animations.length > 0, `${fixtureName} must preserve an animation timeline.`);
   const objectIds = new Set([artboard.id, ...artboard.objects.map((object) => object.id)]);
   for (const object of artboard.objects) {
@@ -137,7 +141,7 @@ for (const fixturePath of jsonFiles) {
   const fixtureName = path.relative(fixturesRoot, fixturePath).replaceAll('\\', '/');
   const bytes = new Uint8Array(readFileSync(fixturePath));
   try {
-    const result = convertLottie(bytes, fixtureName);
+    const result = convertLottie(bytes, fixtureName, { font: fallbackFont });
     assertRoundTrip(result.doc, fixtureName);
     convertedCount++;
     successNames.add(fixtureName);
@@ -156,7 +160,7 @@ assert.ok(successNames.size >= 10, `Expected at least 10 distinct real fixtures 
 const tgsSourcePath = path.join(fixturesRoot, 'lottie', 'balloons_with_string.json');
 const tgsSource = new Uint8Array(readFileSync(tgsSourcePath));
 const tgsBytes = gzipSync(tgsSource);
-const tgsConversion = convertLottie(tgsBytes, 'balloons_with_string.tgs');
+const tgsConversion = convertLottie(tgsBytes, 'balloons_with_string.tgs', { font: fallbackFont });
 assert.equal(tgsConversion.source, 'tgs');
 assertRoundTrip(tgsConversion.doc, 'gzip-compressed balloons_with_string.json');
 
@@ -178,7 +182,7 @@ if (telegramTgsRoot) {
   for (const fixturePath of tgsFiles) {
     const fixtureName = path.relative(telegramTgsRoot, fixturePath).replaceAll('\\', '/');
     try {
-      const result = convertLottie(new Uint8Array(readFileSync(fixturePath)), fixtureName);
+      const result = convertLottie(new Uint8Array(readFileSync(fixturePath)), fixtureName, { font: fallbackFont });
       assert.equal(result.source, 'tgs');
       assertRoundTrip(result.doc, fixtureName);
       convertedTgsCount++;

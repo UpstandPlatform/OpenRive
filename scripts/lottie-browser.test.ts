@@ -110,10 +110,11 @@ async function importThroughDashboard(page: Page, fixture: string): Promise<stri
     const artboard = window.__riveEditor.getState().doc?.artboards[0];
     return {
       shapeCount: artboard?.objects.filter((object) => object.type === 'Shape').length ?? 0,
+      textCount: artboard?.objects.filter((object) => object.type === 'Text').length ?? 0,
       animationCount: artboard?.animations.length ?? 0,
     };
   });
-  assert.ok(contents.shapeCount > 0, `${path.basename(fixture)} must create editable shapes.`);
+  assert.ok(contents.shapeCount + contents.textCount > 0, `${path.basename(fixture)} must create editable shapes or text.`);
   assert.ok(contents.animationCount > 0, `${path.basename(fixture)} must create an animation.`);
   return page.url().split('/').at(-1)!;
 }
