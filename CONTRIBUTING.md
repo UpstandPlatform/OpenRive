@@ -13,6 +13,8 @@ and features.
 | Improve docs | [contribution/docs.md](contribution/docs.md) |
 | Write code | [contribution/development.md](contribution/development.md) |
 | Work with AI agents | [contribution/ai-collaboration.md](contribution/ai-collaboration.md) |
+| Report a security vulnerability | [Security policy](SECURITY.md) — use private reporting |
+| Read the community standards | [Code of Conduct](CODE_OF_CONDUCT.md) |
 
 ## Quick start for code contributions
 
@@ -71,6 +73,7 @@ changes belong in `packages/db/src/schema.ts`.
   appropriate.
 - **Docs with features.** User-visible changes update the relevant page in `docs/`.
 - Be kind and constructive. Assume good intent.
+- Follow the [Code of Conduct](CODE_OF_CONDUCT.md) in all OpenRive community spaces.
 
 ## License
 

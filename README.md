@@ -124,6 +124,8 @@ All docs live in [`docs/`](docs/README.md):
 Contributions of all sizes are welcome: bug reports, templates, docs, features and file-format coverage.
 
 - Start with **[CONTRIBUTING.md](CONTRIBUTING.md)**
+- Read the [Code of Conduct](CODE_OF_CONDUCT.md) before participating and use the [Security Policy](SECURITY.md) to
+  report vulnerabilities
 - In-depth guides live in **[`contribution/`](contribution/README.md)**: development setup, code style, testing, adding
   templates, writing docs, and collaborating with AI agents and skills
 - Use the [issue templates](.github/ISSUE_TEMPLATE) for bugs, feature requests and template ideas

@@ -1,6 +1,8 @@
 # Contribution guides
 
-In-depth guides for people working on OpenRive. New here? Read [CONTRIBUTING.md](../CONTRIBUTING.md) first.
+In-depth guides for people working on OpenRive. New here? Read [CONTRIBUTING.md](../CONTRIBUTING.md) first, along
+with the [Code of Conduct](../CODE_OF_CONDUCT.md). To report a vulnerability, follow the
+[Security Policy](../SECURITY.md).
 
 | Guide | What's inside |
 | --- | --- |
