@@ -99,6 +99,14 @@ export class StageEngine {
 
   /** Queues the document for (re)loading. Loads are coalesced. */
   setDoc(doc: RiveDoc) {
+    // Recreating the runtime state machine resets active states, transition
+    // timers, and trigger state. Keep the live instance intact during preview
+    // and apply the latest edit when preview ends.
+    if (this.getState().previewStateMachineIndex >= 0) {
+      this.pendingDoc = doc;
+      this.emit();
+      return;
+    }
     if (this.sm) this.preservedInputs = this.snapshotInputs();
     if (!this.rive || this.loading) {
       this.pendingDoc = doc;
@@ -149,6 +157,17 @@ export class StageEngine {
           this.setDoc(d);
         }
       });
+  }
+
+  applyPendingDoc() {
+    if (this.getState().previewStateMachineIndex >= 0 || !this.pendingDoc) return;
+    const doc = this.pendingDoc;
+    this.pendingDoc = null;
+    this.setDoc(doc);
+  }
+
+  get hasPendingDocument() {
+    return this.pendingDoc !== null;
   }
 
   private releaseInstances() {

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1 - 2026-10-16
+
+### Editor preview
+
+- Keep the live state-machine runtime intact while document edits are pending, then apply the latest document when Preview stops. Show a notice while edits are queued.
+
 ## 0.2.0 - 2026-10-16
 
 ### Reliability and file compatibility

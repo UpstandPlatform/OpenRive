@@ -142,6 +142,7 @@ export function Stage() {
   const engine = useRef<StageEngine | null>(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
   const [engineError, setEngineError] = useState<string | null>(null);
+  const [engineHasPendingDoc, setEngineHasPendingDoc] = useState(false);
   const [drag, setDrag] = useState<Drag | null>(null);
   const [pen, setPen] = useState<{ abId: string; points: PenPoint[]; cursor: [number, number] | null } | null>(null);
   const [spaceDown, setSpaceDown] = useState(false);
@@ -259,7 +260,10 @@ export function Stage() {
       }
       useEditor.setState({ frame: playFrame });
     };
-    const unsub = e.subscribe(() => setEngineError(e.error));
+    const unsub = e.subscribe(() => {
+      setEngineError(e.error);
+      setEngineHasPendingDoc(e.hasPendingDocument);
+    });
     e.init();
     return () => {
       unsub();
@@ -272,6 +276,10 @@ export function Stage() {
   useEffect(() => {
     if (doc) engine.current?.setDoc(doc);
   }, [doc]);
+
+  useEffect(() => {
+    if (!previewing) engine.current?.applyPendingDoc();
+  }, [previewing]);
 
   // ---- sizing ------------------------------------------------------------
   useEffect(() => {
@@ -2017,7 +2025,7 @@ export function Stage() {
       )}
       {previewing && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-anim/90 text-white text-[11px] font-medium pointer-events-none">
-          Previewing state machine: interact with the artboard
+          {engineHasPendingDoc ? 'Edits queued — stop Preview to apply them' : 'Previewing state machine: interact with the artboard'}
         </div>
       )}
       {pen && (
