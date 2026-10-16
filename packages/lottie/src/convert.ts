@@ -55,6 +55,7 @@ interface ConversionContext {
 interface Geometry {
   shape: CoreObj;
   painted: boolean;
+  compoundPath?: boolean;
 }
 
 interface LayerEntry {
@@ -581,7 +582,7 @@ function addVisibilityNode(parentId: string, name: string, layer: JsonObject, pa
 }
 
 function addTransformNodes(parentId: string, name: string, source: JsonObject, path: string, context: ConversionContext): string {
-  const anchor = readTrack(source.a ?? { a: 0, k: [0, 0] }, `${path}.a`, 'vector2', context, false).initial as [number, number];
+  const anchor = readTrack(source.a ?? { a: 0, k: [0, 0] }, `${path}.a`, 'vector2', context);
   const positionSource = source.p ?? { a: 0, k: [0, 0] };
   const separatePosition = isObject(positionSource) && positionSource.s === true;
   const positionX = separatePosition ? readTrack((positionSource as JsonObject).x, `${path}.p.x`, 'number', context) : undefined;
@@ -603,9 +604,8 @@ function addTransformNodes(parentId: string, name: string, source: JsonObject, p
   outer.props.scaleX = s[0] / 100;
   outer.props.scaleY = s[1] / 100;
   outer.props.opacity = (opacity.initial as number) / 100;
-  validatePercent(opacity.initial as number, `${path}.o`);
-  for (const key of opacity.keys) validatePercent(key.value as number, `${path}.o`);
-  const offset = newNode(outer.id, `${name} Anchor`, -anchor[0], -anchor[1]);
+  const initialAnchor = anchor.initial as number[];
+  const offset = newNode(outer.id, `${name} Anchor`, -initialAnchor[0]!, -initialAnchor[1]!);
   appendObjects(context, outer, offset);
 
   if (separatePosition) {
@@ -619,6 +619,8 @@ function addTransformNodes(parentId: string, name: string, source: JsonObject, p
   animateVector(context, outer, 'scaleY', scale, 1, (value) => value / 100);
   animateScalar(context, outer, 'rotation', rotation, degreesToRadians);
   animateScalar(context, outer, 'opacity', opacity, (value) => value / 100);
+  animateVector(context, offset, 'x', anchor, 0, (value) => -(value as number));
+  animateVector(context, offset, 'y', anchor, 1, (value) => -(value as number));
   return offset.id;
 }
 
@@ -637,6 +639,7 @@ function parseShapeItems(items: unknown[], parentId: string, path: string, conte
   }
 
   const geometry: Geometry[] = [];
+  const directPaths = new Set<string>();
   const paints: { style: JsonObject; path: string; type: 'fill' | 'stroke' | 'gradientFill' | 'gradientStroke' }[] = [];
   let seenPaint = false;
   for (let index = 0; index < sourceItems.length; index++) {
@@ -649,7 +652,9 @@ function parseShapeItems(items: unknown[], parentId: string, path: string, conte
       case 'el':
       case 'sr':
         if (seenPaint) fail(itemPath, 'shape geometry must precede its fill and stroke styles');
-        geometry.push(createGeometry(item, childParentId, itemPath, context));
+        const entry = createGeometry(item, childParentId, itemPath, context);
+        geometry.push(entry);
+        if (item.ty === 'sh') directPaths.add(entry.shape.id);
         break;
       case 'gr': {
         if (seenPaint) fail(itemPath, 'nested groups must precede the parent group’s fill and stroke styles');
@@ -685,6 +690,22 @@ function parseShapeItems(items: unknown[], parentId: string, path: string, conte
     }
   }
 
+  // A Lottie fill rule is evaluated across all paths in its group. Rive stores
+  // that rule on a Shape, so combine path-only geometries into one Shape while
+  // keeping each PointsPath and its animated vertices intact. Other geometry
+  // has its own transform and cannot be merged without baking that transform.
+  if (geometry.length > 1 && geometry.every((entry) => entry.compoundPath && directPaths.has(entry.shape.id))) {
+    const sharedShape = geometry[0]!.shape;
+    const removedIds = new Set(geometry.slice(1).map((entry) => entry.shape.id));
+    for (const object of context.artboard.objects) {
+      if (typeof object.props.parentId === 'string' && removedIds.has(object.props.parentId)) {
+        object.props.parentId = sharedShape.id;
+      }
+    }
+    context.artboard.objects = context.artboard.objects.filter((object) => !removedIds.has(object.id));
+    geometry.splice(0, geometry.length, { shape: sharedShape, painted: false });
+  }
+
   for (const paint of paints) {
     for (const item of geometry) {
       if (paint.type === 'fill') addFill(context, item.shape, paint.style, paint.path);
@@ -715,8 +736,6 @@ function applyRepeater(item: JsonObject, path: string, parentId: string, geometr
   const startOpacity = readTrack(transform.so ?? { a: 0, k: 100 }, `${path}.tr.so`, 'number', context);
   const endOpacity = readTrack(transform.eo ?? { a: 0, k: 100 }, `${path}.tr.eo`, 'number', context);
   if (startOpacity.keys.length > 0 || endOpacity.keys.length > 0) fail(`${path}.tr`, 'animated repeater opacity ranges are not supported yet');
-  validatePercent(startOpacity.initial as number, `${path}.tr.so`);
-  validatePercent(endOpacity.initial as number, `${path}.tr.eo`);
   const offset = offsetTrack.initial as number;
   const branches = new Map<string, { root: CoreObj; entries: Geometry[] }>();
   for (const entry of geometry) {
@@ -882,7 +901,7 @@ function createGeometry(item: JsonObject, parentId: string, path: string, contex
         }
       }
     }
-    return { shape, painted: false };
+    return { shape, painted: false, compoundPath: true };
   }
 
   if (item.ty === 'sr') {
@@ -980,20 +999,14 @@ function addFill(context: ConversionContext, shape: CoreObj, style: JsonObject, 
   const fillRule = style.r === 2 ? 1 : 0;
   const color = readTrack(style.c ?? { a: 0, k: [1, 1, 1, 1] }, `${path}.c`, 'color', context);
   const opacity = readTrack(style.o ?? { a: 0, k: 100 }, `${path}.o`, 'number', context);
-  if (color.keys.length > 0 && opacity.keys.length > 0) fail(path, 'color and opacity cannot both be animated on the same fill');
   const alpha = (opacity.initial as number) / 100;
-  validatePercent(opacity.initial as number, `${path}.o`);
-  for (const key of opacity.keys) validatePercent(key.value as number, `${path}.o`);
   const fill = obj('Fill', { name: stringValue(style.nm, 'Fill'), parentId: shape.id, fillRule });
   const solid = obj('SolidColor', {
     parentId: fill.id,
     colorValue: colorToArgb(color.initial as number[], alpha, `${path}.c`),
   });
   appendObjects(context, fill, solid);
-  if (color.keys.length > 0) animateColor(context, solid, color, (value) => colorToArgb(value as number[], alpha, `${path}.c`));
-  if (opacity.keys.length > 0) {
-    animateColor(context, solid, opacity, (value) => colorToArgb(color.initial as number[], (value as number) / 100, `${path}.o`));
-  }
+  animateCombinedColorOpacity(context, solid, color, opacity, path);
 }
 
 function addStroke(context: ConversionContext, shape: CoreObj, style: JsonObject, path: string): void {
@@ -1003,10 +1016,7 @@ function addStroke(context: ConversionContext, shape: CoreObj, style: JsonObject
   const join = enumValue(style.lj, 1, { 1: 0, 2: 1, 3: 2 }, `${path}.lj`);
   const color = readTrack(style.c ?? { a: 0, k: [1, 1, 1, 1] }, `${path}.c`, 'color', context);
   const opacity = readTrack(style.o ?? { a: 0, k: 100 }, `${path}.o`, 'number', context);
-  if (color.keys.length > 0 && opacity.keys.length > 0) fail(path, 'color and opacity cannot both be animated on the same stroke');
   const alpha = (opacity.initial as number) / 100;
-  validatePercent(opacity.initial as number, `${path}.o`);
-  for (const key of opacity.keys) validatePercent(key.value as number, `${path}.o`);
   const width = readTrack(style.w, `${path}.w`, 'number', context);
   const thickness = width.initial as number;
   if (thickness < 0 || width.keys.some((key) => (key.value as number) < 0)) fail(`${path}.w`, 'must be zero or greater');
@@ -1021,10 +1031,7 @@ function addStroke(context: ConversionContext, shape: CoreObj, style: JsonObject
   const solid = obj('SolidColor', { parentId: stroke.id, colorValue: colorToArgb(color.initial as number[], alpha, `${path}.c`) });
   appendObjects(context, stroke, solid);
   animateScalar(context, stroke, 'thickness', width);
-  if (color.keys.length > 0) animateColor(context, solid, color, (value) => colorToArgb(value as number[], alpha, `${path}.c`));
-  if (opacity.keys.length > 0) {
-    animateColor(context, solid, opacity, (value) => colorToArgb(color.initial as number[], (value as number) / 100, `${path}.o`));
-  }
+  animateCombinedColorOpacity(context, solid, color, opacity, path);
 }
 
 function addGradient(context: ConversionContext, shape: CoreObj, style: JsonObject, path: string, isStroke: boolean): void {
@@ -1062,8 +1069,6 @@ function addGradient(context: ConversionContext, shape: CoreObj, style: JsonObje
   }
   if (isStroke && asArray(style.d ?? [], `${path}.d`).length > 0) fail(`${path}.d`, 'dashed strokes are not supported');
   const alpha = (opacity.initial as number) / 100;
-  validatePercent(opacity.initial as number, `${path}.o`);
-  for (const key of opacity.keys) validatePercent(key.value as number, `${path}.o`);
 
   const paint = isStroke
     ? obj('Stroke', {
@@ -1147,7 +1152,7 @@ function readTrack(raw: unknown, path: string, kind: ValueKind, context: Convers
       if (start === undefined) fail(`${path}.k[${index}].s`, 'is missing its start value');
       const value = normalizeValue(start, kind, `${path}.k[${index}].s`);
       const next = entries[index + 1];
-      const spatial = hasNonZeroVector(entry.to) || hasNonZeroVector(next?.ti);
+      const spatial = hasNonZeroVector(entry.to) || hasNonZeroVector(entry.ti);
       if (spatial) {
         if (kind !== 'vector2' || !path.endsWith('.p')) fail(`${path}.k[${index}]`, 'spatial tangents are supported only for 2D position tracks');
         const ease = entry.h === 1 ? 'hold' : lottieEase(entry, next, `${path}.k[${index}]`);
@@ -1155,7 +1160,7 @@ function readTrack(raw: unknown, path: string, kind: ValueKind, context: Convers
         if (next && entry.h !== 1) {
           const endValue = normalizeValue(next.s ?? previousEnd, kind, `${path}.k[${index + 1}].s`) as number[];
           const outgoing = entry.to === undefined ? [0, 0] : vector(entry.to, `${path}.k[${index}].to`);
-          const incoming = next.ti === undefined ? [0, 0] : vector(next.ti, `${path}.k[${index + 1}].ti`);
+          const incoming = entry.ti === undefined ? [0, 0] : vector(entry.ti, `${path}.k[${index}].ti`);
           const duration = finiteNumber(next.t, `${path}.k[${index + 1}].t`) - time;
           if (duration < 0) fail(`${path}.k[${index + 1}].t`, 'keyframe times must be in ascending order');
           for (let sample = Math.floor(time) + 1; sample < finiteNumber(next.t, `${path}.k[${index + 1}].t`); sample++) {
@@ -1217,10 +1222,10 @@ function clipTrackKeys(keys: TrackKey[], kind: ValueKind, context: ConversionCon
   if (!Number.isFinite(sampleCount) || sampleCount < 1 || sampleCount > MAX_KEYFRAMES) {
     fail(path, `clipped timeline needs more than ${MAX_KEYFRAMES} sampled keyframes`);
   }
-  const output: TrackKey[] = [{ time: start, value: sampleTrackValue(keys, start, kind, path), ease: 'linear' }];
-  for (let time = Math.floor(start) + 1; time < end; time++) {
-    output.push({ time, value: sampleTrackValue(keys, time, kind, path), ease: 'linear' });
-  }
+  const firstSegment = keys.findIndex((key, index) => index < keys.length - 1 && keys[index + 1]!.time > start);
+  const startEase = firstSegment >= 0 ? keys[firstSegment]!.ease : 'linear';
+  const output: TrackKey[] = [{ time: start, value: sampleTrackValue(keys, start, kind, path), ease: startEase }];
+  output.push(...keys.filter((key) => key.time > start + 0.001 && key.time < end - 0.001));
   if (end > start + 0.001) output.push({ time: end, value: sampleTrackValue(keys, end, kind, path), ease: 'linear' });
   context.keyframeCount += output.length;
   if (context.keyframeCount > MAX_KEYFRAMES) fail(path, `supports up to ${MAX_KEYFRAMES} keyframes`);
@@ -1325,6 +1330,26 @@ function animateColor(context: ConversionContext, target: CoreObj, track: Track,
   animateKeys(context, target, 'colorValue', track.keys.map((key) => ({ ...key, value: convert(key.value) })));
 }
 
+function animateCombinedColorOpacity(context: ConversionContext, target: CoreObj, color: Track, opacity: Track, path: string): void {
+  if (!color.keys.length && !opacity.keys.length) return;
+  const times = [...new Set([...color.keys, ...opacity.keys].map((key) => key.time))].sort((a, b) => a - b);
+  if (color.keys.length && opacity.keys.length) {
+    const keys = times.map((time) => ({
+      time,
+      value: colorToArgb(
+        sampleTrackValue(color.keys, time, 'color', `${path}.c`) as number[],
+        Number(sampleTrackValue(opacity.keys, time, 'number', `${path}.o`)) / 100,
+        path,
+      ),
+      ease: 'linear' as Ease,
+    }));
+    animateKeys(context, target, 'colorValue', keys);
+    return;
+  }
+  if (color.keys.length) animateColor(context, target, color, (value) => colorToArgb(value as number[], Number(opacity.initial) / 100, `${path}.c`));
+  else animateColor(context, target, opacity, (value) => colorToArgb(color.initial as number[], Number(value) / 100, `${path}.o`));
+}
+
 function animateKeys(context: ConversionContext, target: CoreObj, property: string, keys: TrackKey[]): void {
   for (const key of keys) {
     const frame = frameAt(context.timing, key.time);
@@ -1407,9 +1432,9 @@ function appendObjects(context: ConversionContext, ...objects: CoreObj[]): void 
 }
 
 function lottieEase(current: JsonObject, next: JsonObject | undefined, path: string): Ease {
-  if (!next || !isObject(current.o) || !isObject(next.i)) return 'linear';
+  if (!next || !isObject(current.o) || !isObject(current.i)) return 'linear';
   const out = current.o;
-  const input = next.i;
+  const input = current.i;
   const values: [number, number, number, number] = [
     handleNumber(out.x, `${path}.o.x`),
     handleNumber(out.y, `${path}.o.y`),
@@ -1453,16 +1478,9 @@ function cubicValue(start: number, control1: number, control2: number, end: numb
 }
 
 function colorToArgb(value: number[], alpha: number, path: string): number {
-  const channels = value.map((channel, index) => {
-    if (channel < 0 || channel > 1) fail(`${path}[${index}]`, 'color channels must be between 0 and 1');
-    return Math.round(channel * 255);
-  });
-  if (alpha < 0 || alpha > 1) fail(path, 'opacity must be between 0 and 100 percent');
+  const channels = value.map((channel) => Math.round(Math.max(0, Math.min(1, channel)) * 255));
+  alpha = Math.max(0, Math.min(1, alpha));
   return (((Math.round(channels[3]! * alpha) & 255) << 24) | ((channels[0]! & 255) << 16) | ((channels[1]! & 255) << 8) | (channels[2]! & 255)) >>> 0;
-}
-
-function validatePercent(value: number, path: string): void {
-  if (value < 0 || value > 100) fail(path, 'opacity must be between 0 and 100 percent');
 }
 
 function enumValue(raw: unknown, fallback: number, mapping: Record<number, number>, path: string): number {

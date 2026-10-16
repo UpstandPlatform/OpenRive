@@ -144,9 +144,13 @@ export function AssetsPanel() {
               run: () => {
                 const a = document.createElement('a');
                 const ext = kind === 'font' ? '.ttf' : '';
-                a.href = URL.createObjectURL(new Blob([assetBytes(asset)!.slice()]));
+                const url = URL.createObjectURL(new Blob([assetBytes(asset)!.slice()]));
+                a.href = url;
                 a.download = `${asset.props.name || 'asset'}${ext}`;
+                document.body.appendChild(a);
                 a.click();
+                a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
               },
             },
           ]

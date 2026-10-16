@@ -22,7 +22,7 @@ export interface RawObject {
 export interface RivHeader {
   major: number;
   minor: number;
-  fileId: number;
+  fileId: number | bigint;
   /** original table of contents [propertyKey, backingClass], kept so untouched files round-trip exactly */
   toc?: [number, number][];
   /** property keys the original file used; those don't need new ToC entries */
@@ -78,7 +78,10 @@ export function readRiv(bytes: Uint8Array): RawRiv {
   const header: RivHeader = {
     major: r.readVarUint(),
     minor: r.readVarUint(),
-    fileId: r.readVarUint(),
+    fileId: (() => {
+      const value = r.readVarUint64();
+      return value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : value;
+    })(),
   };
   if (header.major !== 7) {
     throw new Error(`Unsupported .riv major version ${header.major} (expected 7)`);
@@ -100,6 +103,10 @@ export function readRiv(bytes: Uint8Array): RawRiv {
 
   const objects: RawObject[] = [];
   while (!r.isEOF) {
+    // Storage/network layers may append zero alignment bytes after a complete
+    // stream. Accept only all-zero trailing padding; nonzero data is parsed as
+    // an object and still receives normal structural validation.
+    if (bytes.subarray(r.pos).every((byte) => byte === 0)) break;
     const typeKey = r.readVarUint();
     const props: RawProp[] = [];
     for (;;) {
@@ -168,7 +175,7 @@ export function writeRiv(raw: RawRiv): Uint8Array {
   for (const b of FINGERPRINT) w.writeByte(b);
   w.writeVarUint(raw.header.major);
   w.writeVarUint(raw.header.minor);
-  w.writeVarUint(raw.header.fileId);
+  w.writeVarUint64(raw.header.fileId);
   const keys = [...toc.keys()];
   for (const k of keys) w.writeVarUint(k);
   w.writeVarUint(0);

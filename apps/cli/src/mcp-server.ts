@@ -18,7 +18,7 @@ import { fromBase64, toBase64 } from '@openrive/shared/serialize';
 import { MAX_RIV_BASE64_CHARS, type ProjectMeta } from '@openrive/shared';
 import { env } from '@openrive/shared/env';
 import { addTheme, applyTheme, setSwatchColor } from '@openrive/rive/theme';
-import { createProject, deleteProject, edit, EXAMPLES, importFile, importBytes, loadDoc, loadFont, resolveProject, storage, TEMPLATES } from './project-store';
+import { closeProjectStore, createProject, deleteProject, edit, EXAMPLES, importFile, importBytes, loadDoc, loadFont, resolveProject, storage, TEMPLATES } from './project-store';
 
 export interface McpServerOptions {
   /** User that owns newly created/imported projects for authenticated HTTP sessions. */
@@ -628,14 +628,20 @@ tool('switch_theme', 'Make a theme active, recoloring every bound color.', { pro
 return server;
 }
 
-async function main() {
-  await createMcpServer({ allowFilePaths: true }).connect(new StdioServerTransport());
+export async function startMcpServer() {
+  const transport = new StdioServerTransport();
+  await createMcpServer({ allowFilePaths: true }).connect(transport);
   // stdout is the protocol channel; log to stderr only
   console.error('OpenRive MCP server running');
+  await new Promise<void>((resolve) => {
+    transport.onclose = resolve;
+    process.stdin.once('end', resolve);
+  });
+  await closeProjectStore();
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main().catch((e) => {
+  startMcpServer().catch((e) => {
     console.error(e);
     process.exit(1);
   });

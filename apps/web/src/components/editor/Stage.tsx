@@ -208,7 +208,8 @@ export function Stage() {
     if (!canvas) return;
     const getState = (): EngineFrameState => {
       const s = useEditor.getState();
-      const d = s.doc!;
+      const d = s.doc;
+      if (!d) return { mode: s.mode, activeArtboardIndex: -1, animationIndex: -1, time: 0, previewStateMachineIndex: -1, view: s.view, positions: [] };
       const abIndex = d.artboards.findIndex((a) => a.id === s.activeArtboardId);
       const ab = d.artboards[abIndex];
       const animIndex = ab ? ab.animations.findIndex((a) => a.id === s.animationId) : -1;
@@ -248,7 +249,8 @@ export function Stage() {
           playFrame = Math.min(Math.max(playFrame, start), end);
           useEditor.setState({ playing: false });
         } else if (f.loop === 1) {
-          playFrame = start + ((((playFrame - start) % (end - start)) + (end - start)) % (end - start));
+          const range = end - start;
+          playFrame = range > 0 ? start + ((((playFrame - start) % range) + range) % range) : start;
         } else {
           const nd = playFrame >= end ? -1 : 1;
           playFrame = playFrame >= end ? end : start;

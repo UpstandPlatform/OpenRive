@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.2.0 - 2026-10-16
+
+### Reliability and file compatibility
+
+- Preserve 64-bit Rive file IDs, empty-reference sentinels, and aligned file padding; reject truncated or unsafe binary values cleanly.
+- Resolve the remaining Rive object references, retain vertical Bézier handles, and make cascading deletion and databinding property removal safe across instances.
+- Preserve compound Lottie path fill rules, animated anchors, spatial tangents, easing, and combined color/opacity tracks.
+
+### Editor and exports
+
+- Keep selection and editor references valid through undo/redo, guard cyclic hierarchies, and support bone transforms and parent-safe multi-selection commands.
+- Retain state-machine input values during document refreshes, avoid zero-length playback loops, and keep animation exports responsive with worker-based GIF encoding.
+- Correct sprite-sheet downloads, thumbnails, asset URL cleanup, and desktop window state synchronization.
+
+### Server, CLI, and desktop
+
+- Bound request-body reads, return clear errors for invalid JSON, and keep cloud project blobs consistent during duplicate, migration, and cleanup operations.
+- Harden CLI argument handling, validation exit codes, account administration, renderer cleanup, MCP startup, and TUI shutdown.
+- Pin migration locks to one PostgreSQL connection, baseline legacy schemas, and add database indexes and owner references while preserving orphaned legacy files.
+- Validate desktop control origins, retry local server port collisions, and shut down the bundled server and storage client cleanly.
+
 ## 0.1.7 - 2026-10-12
 
 ### Import

@@ -73,7 +73,7 @@ export const newId = () => nanoid(10);
 // ---------------------------------------------------------------------------
 // Reference tables: which properties hold indices, and into which list.
 
-type RefSpace = 'component' | 'animation' | 'stateMachine' | 'state' | 'input' | 'asset' | 'artboard';
+type RefSpace = 'component' | 'animation' | 'stateMachine' | 'state' | 'input' | 'asset' | 'artboard' | 'viewModel' | 'viewModelInstance';
 
 const REF_SPACES: Record<string, RefSpace> = {
   'Component.parentId': 'component',
@@ -112,6 +112,55 @@ const REF_SPACES: Record<string, RefSpace> = {
   'TextStyle.fontAssetId': 'asset',
   'AudioEvent.assetId': 'asset',
   'NestedArtboard.artboardId': 'artboard',
+  'ViewModelInstanceArtboard.propertyValue': 'artboard',
+  'ViewModelInstanceAsset.propertyValue': 'asset',
+  'BindablePropertyList.propertyValue': 'component',
+  'BindablePropertyId.propertyValue': 'component',
+  'NestedAnimation.animationId': 'animation',
+  'NestedInput.inputId': 'input',
+  'ScrollPhysics.constraintId': 'component',
+  'ScrollConstraint.physicsId': 'component',
+  'ScrollBarConstraint.scrollConstraintId': 'component',
+  'TargetEffect.targetId': 'component',
+  'FocusActionTarget.targetId': 'component',
+  'TextTargetModifier.targetId': 'component',
+  'PaintImage.imageAssetId': 'asset',
+  'ListenerInputTypeEvent.eventId': 'component',
+  'TransitionPropertyComponentComparator.objectId': 'component',
+  'DataConverterRangeMapper.interpolatorId': 'component',
+  'DataConverterInterpolator.interpolatorId': 'component',
+  'DataConverterGroupItem.converterId': 'component',
+  'DataBind.converterId': 'component',
+  'ArtboardListMapRule.artboardId': 'artboard',
+  'ArtboardListMapRule.viewModelId': 'viewModel',
+  'Artboard.viewModelId': 'viewModel',
+  'ViewModelInstance.viewModelId': 'viewModel',
+  'ViewModelPropertyViewModel.viewModelReferenceId': 'viewModel',
+  'ViewModelInstanceViewModel.propertyValue': 'viewModel',
+  'DataConverterNumberToList.viewModelId': 'viewModel',
+  'ViewModelInstanceListItem.viewModelId': 'viewModel',
+  'ViewModelInstanceListItem.viewModelInstanceId': 'viewModelInstance',
+  'BlendStateTransition.exitBlendAnimationId': 'animation',
+  'ScriptedTransition.activeComponentId': 'component',
+  'ScriptedTransition.listSource': 'component',
+  'Text.textRunListSource': 'component',
+  'ArtboardComponentList.listSource': 'component',
+  'ViewModelInstanceList.listSource': 'component',
+  'ListPath.listSource': 'component',
+  'ViewModelPropertyEnumCustom.enumId': 'component',
+  'CustomPropertyEnum.enumId': 'component',
+  'ScriptedDrawable.scriptAssetId': 'asset',
+  'ScriptedDataConverter.scriptAssetId': 'asset',
+  'ScriptedPathEffect.scriptAssetId': 'asset',
+  'ScriptedListenerAction.scriptAssetId': 'asset',
+  'ScriptedTransitionCondition.scriptAssetId': 'asset',
+  'ScriptedInterpolator.scriptAssetId': 'asset',
+  'ArtboardComponentListOverride.artboardId': 'artboard',
+  'ScriptInputArtboard.artboardId': 'artboard',
+  'ViewModelInstanceEnum.propertyValue': 'component',
+  'BindablePropertyEnum.propertyValue': 'component',
+  'CustomPropertyEnum.propertyValue': 'component',
+  'TransitionValueIdComparator.value': 'component',
 };
 
 export function refSpaceOf(typeName: string, prop: string): RefSpace | undefined {
@@ -286,6 +335,8 @@ export function importRiv(bytes: Uint8Array): RiveDoc {
   // Resolve index references into ids.
   const artboardIds = doc.artboards.map((a) => a.id);
   const assetIds = assets.map((a) => a.id);
+  const viewModelIds = doc.top.filter((o) => isA(o.type, 'ViewModel')).map((o) => o.id);
+  const viewModelInstanceIds = doc.top.filter((o) => o.type === 'ViewModelInstance').map((o) => o.id);
   const resolveProps = (o: CoreObj, ctx: { idx: AbIndex; states?: CoreObj[]; inputs?: CoreObj[] }) => {
     for (const [name, value] of Object.entries(o.props)) {
       if (typeof value !== 'number') continue;
@@ -313,6 +364,12 @@ export function importRiv(bytes: Uint8Array): RiveDoc {
           break;
         case 'artboard':
           list = artboardIds;
+          break;
+        case 'viewModel':
+          list = viewModelIds;
+          break;
+        case 'viewModelInstance':
+          list = viewModelInstanceIds;
           break;
       }
       if (list && value >= 0 && value < list.length) o.props[name] = list[value];
@@ -360,9 +417,10 @@ function toRaw(o: CoreObj, resolve: (space: RefSpace, id: string) => number | un
       if (space && typeof value === 'string') {
         const index = resolve(space, value);
         if (index === undefined) {
-          // a missing animation must not silently fall back to index 0
-          if (space === 'animation') props.push({ key: pd.key, value: 65535 });
-          continue; // other dangling references are dropped
+          // Core::emptyId is the uint64 all-ones sentinel (-1). Preserve the
+          // empty reference instead of letting an omitted property default to 0.
+          props.push({ key: pd.key, value: -1 });
+          continue;
         }
         props.push({ key: pd.key, value: index });
       } else {
@@ -391,8 +449,15 @@ export function exportRiv(doc: RiveDoc): Uint8Array {
     }
     children.forEach((c) => emitTree(c, resolve));
   };
-  const fileResolve = (space: RefSpace, id: string) =>
-    space === 'asset' ? assetIndex.get(id) : space === 'artboard' ? artboardIndex.get(id) : undefined;
+  const viewModelIndex = new Map(doc.top.filter((o) => isA(o.type, 'ViewModel')).map((o, i) => [o.id, i]));
+  const viewModelInstanceIndex = new Map(doc.top.filter((o) => o.type === 'ViewModelInstance').map((o, i) => [o.id, i]));
+  const fileResolve = (space: RefSpace, id: string) => {
+    if (space === 'asset') return assetIndex.get(id);
+    if (space === 'artboard') return artboardIndex.get(id);
+    if (space === 'viewModel') return viewModelIndex.get(id);
+    if (space === 'viewModelInstance') return viewModelInstanceIndex.get(id);
+    return undefined;
+  };
 
   // Every file needs a Backboard before its artboards; keep the original order otherwise.
   const top = [...doc.top];
@@ -406,6 +471,13 @@ export function exportRiv(doc: RiveDoc): Uint8Array {
     const componentIndex = new Map<string, number>([[ab.artboard.id, 0]]);
     let i = 1;
     for (const o of ordered) if (isIndexable(o.type)) componentIndex.set(o.id, i++);
+    const indexNested = (o: CoreObj) => {
+      for (const child of o.children ?? []) {
+        if (isIndexable(child.type)) componentIndex.set(child.id, i++);
+        indexNested(child);
+      }
+    };
+    for (const tree of [...ab.animations, ...ab.stateMachines]) indexNested(tree);
     const animIndex = new Map(ab.animations.map((a, k) => [a.id, k]));
     const smIndex = new Map(ab.stateMachines.map((a, k) => [a.id, k]));
     const base = (space: RefSpace, id: string): number | undefined => {

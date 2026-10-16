@@ -1,5 +1,4 @@
 'use client';
-import { GIFEncoder, applyPalette, quantize } from 'gifenc';
 import { exportRiv, type RiveDoc } from '@openrive/rive/document';
 import { loadRuntime } from '@/lib/runtime';
 
@@ -46,6 +45,9 @@ export async function renderAnimationFrames(doc: RiveDoc, options: AnimationExpo
   const frames: RenderedFrame[] = [];
   try {
     artboard = file.artboardByIndex(options.artboardIndex);
+    const vm = file.viewModelCount() > 0 ? file.defaultArtboardViewModel(artboard) : null;
+    const vmi = vm && (vm.defaultInstance() ?? vm.instance());
+    if (vmi) artboard.bindViewModelInstance(vmi);
     instance = new rive.LinearAnimationInstance(artboard.animationByIndex(options.animationIndex), artboard);
     const ratio = Math.min(width / Number(abDoc.artboard.props.width), height / Number(abDoc.artboard.props.height));
     for (let i = 0; i < total; i++) {
@@ -78,22 +80,21 @@ export async function renderAnimationFrames(doc: RiveDoc, options: AnimationExpo
 export async function encodeGif(frames: RenderedFrame[], width: number, height: number, fps: number): Promise<Uint8Array> {
   if (!frames.length) throw new Error('No animation frames were rendered.');
   if (width * height * frames.length > 24_000_000) throw new Error('GIF export is limited to 24-million source pixels. Lower the scale or frame rate.');
-  const rgba = new Uint8Array(width * height * 4 * frames.length);
-  frames.forEach((frame, index) => rgba.set(frame.data.data, index * width * height * 4));
-  const palette = quantize(rgba, 256, { format: 'rgba4444', oneBitAlpha: true });
-  const transparentIndex = palette.findIndex((color) => (color[3] ?? 255) < 128);
-  const gif = GIFEncoder();
-  for (const frame of frames) {
-    gif.writeFrame(applyPalette(frame.data.data, palette, 'rgba4444'), width, height, {
-      palette,
-      transparent: transparentIndex >= 0,
-      transparentIndex: Math.max(0, transparentIndex),
-      delay: Math.round(1000 / fps),
-      repeat: 0,
-    });
-  }
-  gif.finish();
-  return gif.bytes();
+  const worker = new Worker(new URL('./gif-encoder.worker.ts', import.meta.url), { type: 'module' });
+  return new Promise<Uint8Array>((resolve, reject) => {
+    worker.onmessage = (event: MessageEvent<{ bytes?: ArrayBuffer; error?: string }>) => {
+      worker.terminate();
+      if (event.data.error) reject(new Error(event.data.error));
+      else if (event.data.bytes) resolve(new Uint8Array(event.data.bytes));
+      else reject(new Error('GIF encoding returned no data.'));
+    };
+    worker.onerror = (event) => {
+      worker.terminate();
+      reject(new Error(event.message || 'GIF encoding failed.'));
+    };
+    const buffers = frames.map((frame) => frame.data.data.buffer as ArrayBuffer);
+    worker.postMessage({ buffers, width, height, fps }, buffers);
+  });
 }
 
 export async function encodeSpriteSheet(frames: RenderedFrame[], width: number, height: number): Promise<Blob> {

@@ -181,4 +181,5 @@ export function App() {
 export async function runTui() {
   const renderer = await createCliRenderer({ exitOnCtrlC: true });
   createRoot(renderer).render(<App />);
+  await new Promise<void>((resolve) => renderer.once('destroy', resolve));
 }

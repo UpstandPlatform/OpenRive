@@ -237,14 +237,39 @@ export const useEditor = create<EditorState>((set, get) => ({
     const { past, doc, future } = get();
     if (!past.length || !doc) return;
     const prev = past[past.length - 1];
-    set({ doc: prev, past: past.slice(0, -1), future: [doc, ...future], version: get().version + 1 });
-    get().select(get().selection.filter((id) => !!findInDoc(prev, id)));
+    const active = prev.artboards.find((artboard) => artboard.id === get().activeArtboardId) ?? prev.artboards[0];
+    const editPathId = get().editPathId;
+    set({
+      doc: prev,
+      past: past.slice(0, -1),
+      future: [doc, ...future],
+      gestureStart: null,
+      version: get().version + 1,
+      activeArtboardId: active?.id ?? null,
+      selection: get().selection.filter((id) => !!findInDoc(prev, id)),
+      animationId: active?.animations.some((animation) => animation.id === get().animationId) ? get().animationId : active?.animations[0]?.id ?? null,
+      stateMachineId: active?.stateMachines.some((machine) => machine.id === get().stateMachineId) ? get().stateMachineId : null,
+      editPathId: active && editPathId && findObj(active, editPathId) ? editPathId : null,
+    });
   },
   redo() {
     const { past, doc, future } = get();
     if (!future.length || !doc) return;
     const next = future[0];
-    set({ doc: next, past: [...past, doc], future: future.slice(1), version: get().version + 1 });
+    const active = next.artboards.find((artboard) => artboard.id === get().activeArtboardId) ?? next.artboards[0];
+    const editPathId = get().editPathId;
+    set({
+      doc: next,
+      past: [...past, doc],
+      future: future.slice(1),
+      gestureStart: null,
+      version: get().version + 1,
+      activeArtboardId: active?.id ?? null,
+      selection: get().selection.filter((id) => !!findInDoc(next, id)),
+      animationId: active?.animations.some((animation) => animation.id === get().animationId) ? get().animationId : active?.animations[0]?.id ?? null,
+      stateMachineId: active?.stateMachines.some((machine) => machine.id === get().stateMachineId) ? get().stateMachineId : null,
+      editPathId: active && editPathId && findObj(active, editPathId) ? editPathId : null,
+    });
   },
   markSaved(version) {
     set({ savedVersion: version });

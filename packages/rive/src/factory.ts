@@ -136,7 +136,7 @@ export function newPenShape(parentId: string, x: number, y: number, points: PenP
 }
 
 export function vertexFromPen(parentId: string, p: PenPoint): CoreObj {
-  if (p.inX === undefined && p.outX === undefined) {
+  if (p.inX === undefined && p.inY === undefined && p.outX === undefined && p.outY === undefined) {
     return obj('StraightVertex', { parentId, x: p.x, y: p.y, radius: 0 });
   }
   const inX = p.inX ?? 0;

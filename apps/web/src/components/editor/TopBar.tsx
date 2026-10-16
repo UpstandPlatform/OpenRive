@@ -57,6 +57,8 @@ export function TopBar({ onSave, onExport, onExportSource, onExportAnimation, on
   const readOnly = useEditor((s) => s.readOnly);
   const canUndo = useEditor((s) => s.past.length > 0);
   const canRedo = useEditor((s) => s.future.length > 0);
+  const weightAction = ACTIONS.find((action) => action.id === 'tool.weight')!;
+  const weightEnabled = useEditor((state) => !!state.doc && isEnabled(weightAction));
   const user = useCurrentUser();
   const [menu, setMenu] = useState<'file' | 'shapes' | null>(null);
   const [shapeMenuPosition, setShapeMenuPosition] = useState<{ left: number; top: number } | null>(null);
@@ -212,7 +214,7 @@ export function TopBar({ onSave, onExport, onExportSource, onExportAnimation, on
       </div>
       {toolBtn('text', <Type size={15} />, 'Text (T)')}
       {toolBtn('bone', <Bone size={15} />, 'Bone (B)')}
-      <button className={`icon-btn w-8 h-8 ${tool === 'weight' ? 'active' : ''}`} aria-label="Paint bone weights (Shift B)" title="Select a bound path to paint bone weights (Shift B)" disabled={!isEnabled(ACTIONS.find((action) => action.id === 'tool.weight')!)} onClick={() => runAction('tool.weight')}><Paintbrush size={15} /></button>
+      <button className={`icon-btn w-8 h-8 ${tool === 'weight' ? 'active' : ''}`} aria-label="Paint bone weights (Shift B)" title="Select a bound path to paint bone weights (Shift B)" disabled={!weightEnabled} onClick={() => runAction('tool.weight')}><Paintbrush size={15} /></button>
       {toolBtn('pen', <PenTool size={15} />, 'Pen (P)')}
       <button
         className="icon-btn w-8 h-8"

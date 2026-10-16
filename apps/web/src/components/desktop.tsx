@@ -110,6 +110,23 @@ export function WindowControls() {
   const shell = useDesktop();
   const [maximized, setMaximized] = useState(false);
 
+  useEffect(() => {
+    if (!shell) return;
+    let active = true;
+    const refresh = async () => {
+      const state = await call<{ maximized?: boolean }>('/state');
+      if (active && typeof state?.maximized === 'boolean') setMaximized(state.maximized);
+    };
+    void refresh();
+    window.addEventListener('focus', refresh);
+    const timer = setInterval(refresh, 2000);
+    return () => {
+      active = false;
+      window.removeEventListener('focus', refresh);
+      clearInterval(timer);
+    };
+  }, [shell]);
+
   const send = useCallback(async (action: 'minimize' | 'maximize' | 'close') => {
     const state = await call<{ maximized?: boolean }>(`/${action}`);
     if (typeof state?.maximized === 'boolean') setMaximized(state.maximized);

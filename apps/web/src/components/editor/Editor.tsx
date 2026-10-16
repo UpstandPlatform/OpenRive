@@ -387,7 +387,7 @@ function captureThumbnail(): string | undefined {
   try {
     const s = useEditor.getState();
     const canvas = document.querySelector('canvas');
-    const ab = s.doc?.artboards[0];
+    const ab = s.doc?.artboards.find((artboard) => artboard.id === s.activeArtboardId) ?? s.doc?.artboards[0];
     if (!canvas || !ab) return undefined;
     const dpr = window.devicePixelRatio || 1;
     const v = s.view;
@@ -401,7 +401,14 @@ function captureThumbnail(): string | undefined {
     const scale = Math.min(1, 360 / w, 240 / h);
     out.width = Math.max(1, Math.round(w * scale));
     out.height = Math.max(1, Math.round(h * scale));
-    out.getContext('2d')!.drawImage(canvas, x, y, w, h, 0, 0, out.width, out.height);
+    const sourceX = Math.max(0, x);
+    const sourceY = Math.max(0, y);
+    const sourceRight = Math.min(canvas.width, x + w);
+    const sourceBottom = Math.min(canvas.height, y + h);
+    if (sourceRight <= sourceX || sourceBottom <= sourceY) return undefined;
+    const scaleX = out.width / w;
+    const scaleY = out.height / h;
+    out.getContext('2d')!.drawImage(canvas, sourceX, sourceY, sourceRight - sourceX, sourceBottom - sourceY, (sourceX - x) * scaleX, (sourceY - y) * scaleY, (sourceRight - sourceX) * scaleX, (sourceBottom - sourceY) * scaleY);
     return out.toDataURL('image/png');
   } catch {
     return undefined;

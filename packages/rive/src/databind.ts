@@ -340,12 +340,33 @@ export function removeProperty(doc: RiveDoc, ab: ArtboardDoc, ref: string) {
   const p = findProperty(doc, ab, ref);
   if (!vm || !p) return false;
 
+  // Instances are flat in doc.top, so collect values for every instance of
+  // this model rather than editing only the default (first) instance.
+  const valuesByInstance: CoreObj[][] = [];
+  let instanceValues: CoreObj[] | undefined;
+  let instanceModel = -1;
+  for (const object of doc.top) {
+    if (object.type === 'ViewModelInstance') {
+      instanceModel = Number(object.props.viewModelId ?? -1);
+      instanceValues = instanceModel === vm.index ? [] : undefined;
+      if (instanceValues) valuesByInstance.push(instanceValues);
+    } else if (isA(object.type, 'ViewModelInstanceValue') && instanceValues) {
+      instanceValues.push(object);
+    } else if (object.type === 'ViewModel' || isA(object.type, 'ViewModelProperty')) {
+      instanceValues = undefined;
+      instanceModel = -1;
+    }
+  }
+
   // remember what every bind pointed at before the indices move
   const before = dataBinds(doc).map((b) => ({ ...b, path: decodePath(b.bind.props.sourcePathIds) }));
-
-  doc.top = doc.top.filter((o) => o !== p.obj && o !== p.value);
-  for (const later of vm.properties) {
-    if (later.index > p.index && later.value) later.value.props.viewModelPropertyId = later.index - 1;
+  const removedValues = new Set(valuesByInstance.flatMap((values) => values.filter((value) => Number(value.props.viewModelPropertyId ?? -1) === p.index)));
+  doc.top = doc.top.filter((o) => o !== p.obj && !removedValues.has(o));
+  for (const values of valuesByInstance) {
+    for (const value of values) {
+      const index = Number(value.props.viewModelPropertyId ?? -1);
+      if (index > p.index) value.props.viewModelPropertyId = index - 1;
+    }
   }
 
   for (const { bind, owner, path } of before) {

@@ -59,7 +59,7 @@ export const sessions = pgTable('sessions', {
   userAgent: text('user_agent'),
   activeOrganizationId: text('active_organization_id'),
   impersonatedBy: text('impersonated_by'),
-});
+}, (table) => [index('sessions_user_id_idx').on(table.userId)]);
 
 /** Better Auth organization plugin tables. */
 export const organizations = pgTable('organization', {
@@ -114,7 +114,7 @@ export const accounts = pgTable('accounts', {
   scope: text('scope'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [index('accounts_user_id_idx').on(table.userId)]);
 
 /** Short-lived tokens (a password reset). Empty while nothing has asked for one. */
 export const verifications = pgTable('verifications', {
@@ -167,7 +167,7 @@ export const apiKeys = pgTable(
 export const projects = pgTable('projects', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
-  ownerId: text('owner_id').notNull().default(''),
+  ownerId: text('owner_id').notNull().default('').references(() => users.id, { onDelete: 'restrict' }),
   createdAt: bigint('created_at', { mode: 'number' }).notNull(),
   updatedAt: bigint('updated_at', { mode: 'number' }).notNull(),
   /** small PNG data URL shown on the files page */
@@ -184,7 +184,11 @@ export const projects = pgTable('projects', {
   riv: bytes('riv'),
   /** object-storage key used by cloud deployments; null means the file is in riv */
   rivStorageKey: text('riv_storage_key'),
-});
+}, (table) => [
+  index('projects_owner_id_idx').on(table.ownerId),
+  index('projects_organization_id_idx').on(table.organizationId),
+  index('projects_updated_at_idx').on(table.updatedAt),
+]);
 
 /** Small key/value store: first-run marker, schema housekeeping. */
 export const settings = pgTable('settings', {

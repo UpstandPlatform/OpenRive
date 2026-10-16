@@ -31,6 +31,13 @@ let objectStorage: Promise<ObjectStorage> | null = null;
 const cloudEdition = () => env().OPENRIVE_EDITION === 'cloud';
 const blobs = () => (objectStorage ??= Promise.resolve().then(() => createObjectStorage()));
 
+export async function closeProjectStore() {
+  const client = await objectStorage?.catch(() => null);
+  objectStorage = null;
+  client?.close();
+  await storage.closeDatabase();
+}
+
 async function prepareProjectRiv(id: string, bytes: Uint8Array) {
   if (!cloudEdition()) return { patch: { riv: bytes } as const, key: undefined, previousKey: undefined };
   const previous = await storage.getProjectAsset(id);

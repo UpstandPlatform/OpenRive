@@ -30,7 +30,7 @@ import {
   type Role,
   type User,
 } from '@openrive/shared';
-import { and, asc, eq, gt, isNotNull, lt } from 'drizzle-orm';
+import { and, asc, eq, gt, isNotNull, lt, ne, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import nodemailer, { type Transporter } from 'nodemailer';
 import { isLegacyHash, verifyLegacyPassword } from './legacy';
@@ -137,8 +137,20 @@ async function secret(): Promise<string> {
 const COLORS = ['#7c5cff', '#2bb3ff', '#27c498', '#ffb020', '#ff5c7a', '#ff7a2b', '#b45cff', '#5ce1ff'];
 
 function trustedOrigins() {
-  const configured = env().OPENRIVE_TRUSTED_ORIGINS?.split(',').map((origin) => origin.trim()).filter(Boolean);
-  return configured?.length ? configured : [env().OPENRIVE_URL];
+  const settings = env();
+  const configured = settings.OPENRIVE_TRUSTED_ORIGINS?.split(',').map((origin) => origin.trim()).filter(Boolean);
+  const origins = (configured?.length ? configured : [settings.OPENRIVE_URL]).flatMap((value) => {
+    try {
+      const url = new URL(value);
+      const origin = url.origin;
+      if (url.hostname === 'localhost') return [origin, new URL(`${url.protocol}//127.0.0.1${url.port ? `:${url.port}` : ''}`).origin];
+      if (url.hostname === '127.0.0.1') return [origin, new URL(`${url.protocol}//localhost${url.port ? `:${url.port}` : ''}`).origin];
+      return [origin];
+    } catch {
+      return [];
+    }
+  });
+  return [...new Set(origins)];
 }
 
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
@@ -335,7 +347,9 @@ async function build() {
           // a disabled account keeps its files but cannot sign in again
           before: async (session) => {
             const [user] = await conn.select().from(schema.users).where(eq(schema.users.id, session.userId)).limit(1);
-            if (!user || user.disabled || user.banned) return false;
+            if (!user || user.disabled) return false;
+            if (user.banned && (!user.banExpires || user.banExpires.getTime() > Date.now())) return false;
+            if (user.banned) await conn.update(schema.users).set({ banned: false, banReason: null, banExpires: null }).where(eq(schema.users.id, user.id));
             await conn.update(schema.users).set({ lastLoginAt: new Date() }).where(eq(schema.users.id, user.id));
           },
         },
@@ -345,7 +359,7 @@ async function build() {
       cookiePrefix: 'openrive',
       database: { generateId: () => nanoid(10) },
       // behind a reverse proxy the host and protocol arrive in headers
-      trustedProxyHeaders: true,
+      trustedProxyHeaders: settings.OPENRIVE_TRUST_PROXY_HEADERS,
     },
     plugins: [
       organization({
@@ -397,7 +411,7 @@ async function build() {
             if (hasWorkspaceCapability(member.role, 'deleteWorkspace')) throw new APIError('FORBIDDEN', { message: 'Transfer workspace ownership through the owner account before changing this role' });
           },
           beforeAcceptInvitation: async ({ invitation, user }) => {
-            if (!user.emailVerified) throw new APIError('FORBIDDEN', { message: 'Verify your email address before accepting this invitation' });
+            if (emailVerificationRequired() && !user.emailVerified) throw new APIError('FORBIDDEN', { message: 'Verify your email address before accepting this invitation' });
             if (user.email?.trim().toLowerCase() !== invitation.email.trim().toLowerCase()) {
               throw new APIError('FORBIDDEN', { message: 'Sign in with the email address this invitation was sent to' });
             }
@@ -717,10 +731,13 @@ export async function revokeUserSessions(userId: string) {
   await conn.delete(schema.sessions).where(eq(schema.sessions.userId, userId));
 }
 
-/** Deletes an account and lets the database cascade its auth records. */
+/** Deletes an account after transferring any owned projects to an active user. */
 export async function deleteAccount(userId: string) {
   const conn = await db();
-  await conn.delete(schema.users).where(eq(schema.users.id, userId));
+  const [heir] = await conn.select({ id: schema.users.id }).from(schema.users)
+    .where(and(ne(schema.users.id, userId), eq(schema.users.disabled, false), eq(schema.users.banned, false)))
+    .orderBy(sql`CASE WHEN ${schema.users.role} = 'admin' THEN 0 ELSE 1 END`, asc(schema.users.position), asc(schema.users.id)).limit(1);
+  return deleteAccountAndTransferProjects(userId, heir?.id);
 }
 
 /** Transfers owned projects and deletes an account atomically. */

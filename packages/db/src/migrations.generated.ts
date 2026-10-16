@@ -103,5 +103,19 @@ export const migrations: EmbeddedMigration[] = [
     "statements": [
       "ALTER TABLE \"organization\" ADD COLUMN \"metadata\" jsonb;"
     ]
+  },
+  {
+    "tag": "0008_black_maddog",
+    "hash": "2dbb447947441cb894ef66f43d84ab03f4b32eb67130cfda4b4a2b265de892e9",
+    "statements": [
+      "-- Preserve existing files with orphaned local owner IDs before enforcing the FK.\nUPDATE \"projects\" SET \"owner_id\" = 'openrive-legacy-unassigned' WHERE \"owner_id\" = '';",
+      "INSERT INTO \"users\" (\"id\", \"name\", \"color\")\nSELECT DISTINCT p.\"owner_id\", p.\"owner_id\", '#6b7280'\nFROM \"projects\" p\nLEFT JOIN \"users\" u ON u.\"id\" = p.\"owner_id\"\nWHERE u.\"id\" IS NULL;",
+      "ALTER TABLE \"projects\" ADD CONSTRAINT \"projects_owner_id_users_id_fk\" FOREIGN KEY (\"owner_id\") REFERENCES \"public\".\"users\"(\"id\") ON DELETE restrict ON UPDATE no action;",
+      "CREATE INDEX \"accounts_user_id_idx\" ON \"accounts\" USING btree (\"user_id\");",
+      "CREATE INDEX \"projects_owner_id_idx\" ON \"projects\" USING btree (\"owner_id\");",
+      "CREATE INDEX \"projects_organization_id_idx\" ON \"projects\" USING btree (\"organization_id\");",
+      "CREATE INDEX \"projects_updated_at_idx\" ON \"projects\" USING btree (\"updated_at\");",
+      "CREATE INDEX \"sessions_user_id_idx\" ON \"sessions\" USING btree (\"user_id\");"
+    ]
   }
 ];

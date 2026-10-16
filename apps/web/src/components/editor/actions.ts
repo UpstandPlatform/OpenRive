@@ -71,7 +71,7 @@ const selectedObjects = (): CoreObj[] => {
     .selection.map((id) => findObj(ab, id))
     .filter((o): o is CoreObj => !!o && o.type !== 'Artboard');
 };
-const selectedNodes = () => selectedObjects().filter((o) => isA(o.type, 'Node'));
+const selectedNodes = () => selectedObjects().filter((o) => isA(o.type, 'Node') || isA(o.type, 'Bone'));
 const topLevel = (ab: ArtboardDoc, ids: string[]) => ids.filter((id) => !ids.some((o) => o !== id && isAncestor(ab, o, id)));
 
 function editArtboard(fn: (ab: ArtboardDoc) => void) {
@@ -350,7 +350,10 @@ function flip(axis: 'scaleX' | 'scaleY') {
   if (!ab) return;
   const ov = s.mode === 'animate' ? sampleAnimation(ab, anim, s.frame) : undefined;
   s.beginGesture();
-  for (const o of selectedNodes()) s.setProps(o.id, { [axis]: -prop(o, axis, ov) });
+  for (const id of topLevel(ab, s.selection)) {
+    const o = findObj(ab, id);
+    if (o && (isA(o.type, 'Node') || isA(o.type, 'Bone'))) s.setProps(o.id, { [axis]: -prop(o, axis, ov) });
+  }
   s.endGesture();
 }
 
@@ -360,7 +363,7 @@ function nudge(dx: number, dy: number) {
   if (!ab || !s.selection.length) return;
   const ov = s.mode === 'animate' ? sampleAnimation(ab, anim, s.frame) : undefined;
   s.beginGesture();
-  for (const id of s.selection) {
+  for (const id of topLevel(ab, s.selection)) {
     const o = findObj(ab, id);
     if (!o) continue;
     if (o.type === 'Artboard') {
@@ -369,7 +372,7 @@ function nudge(dx: number, dy: number) {
         const p = artboardPos(a.artboard);
         setArtboardPos(a.artboard, p.x + dx, p.y + dy);
       });
-    } else if (isA(o.type, 'Node') || isA(o.type, 'Vertex')) {
+    } else if (isA(o.type, 'Node') || isA(o.type, 'Bone') || isA(o.type, 'Vertex')) {
       s.setProps(id, { x: prop(o, 'x', ov) + dx, y: prop(o, 'y', ov) + dy });
     }
   }

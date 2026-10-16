@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { z } from 'zod';
+import { fileURLToPath } from 'node:url';
 
 const envSchema = z.object({
   /** Explicit product edition. When omitted, local is inferred without PostgreSQL and self_hosted with it. */
@@ -51,6 +52,8 @@ const envSchema = z.object({
   OPENRIVE_AUTH_SECRET: z.string().min(32, 'must be at least 32 characters').optional(),
   /** comma-separated origins allowed to call the authentication endpoints */
   OPENRIVE_TRUSTED_ORIGINS: z.string().optional(),
+  /** Trust forwarded host/protocol headers only when a trusted reverse proxy strips client-supplied copies. */
+  OPENRIVE_TRUST_PROXY_HEADERS: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
   /** SMTP transport URL for invitations and account verification (smtp:// or smtps://). */
   OPENRIVE_SMTP_URL: z.string().url().optional(),
   /** Resend API key for cloud account verification and workspace invitations. */
@@ -182,17 +185,20 @@ export function dataDir(): string {
 
 /** Nearest ancestor with a workspace package.json (falls back to the current directory). */
 function workspaceRoot(): string {
-  let dir = process.cwd();
-  for (let i = 0; i < 6; i++) {
-    try {
-      const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as { workspaces?: unknown };
-      if (pkg.workspaces) return dir;
-    } catch {
-      /* keep walking up */
+  const starts = [process.cwd(), dirname(fileURLToPath(import.meta.url))];
+  for (const start of starts) {
+    let dir = start;
+    for (let i = 0; i < 8; i++) {
+      try {
+        const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as { workspaces?: unknown };
+        if (pkg.workspaces) return dir;
+      } catch {
+        /* keep walking up */
+      }
+      const parent = dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
     }
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
   }
-  return process.cwd();
+  return resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 }

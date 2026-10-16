@@ -5,6 +5,7 @@ import { exportRiv, importRiv } from '@openrive/rive/document';
 import { readRiv } from '@openrive/rive/riv-format';
 
 const dir = process.argv[2];
+if (!dir) throw new Error('Usage: bun run test:corpus -- <folder-containing-riv-files>');
 let ok = 0, identical = 0, sameCounts = 0, total = 0, danglingFiles = 0;
 const failures: string[] = [];
 const nonIdentical: string[] = [];

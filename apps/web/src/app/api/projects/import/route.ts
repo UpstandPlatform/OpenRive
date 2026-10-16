@@ -1,6 +1,6 @@
 import { canCreateProject } from '@openrive/auth';
 import { MAX_RIV_BYTES } from '@openrive/shared';
-import { fail, handler, json, limitedRequest, requireSameOrigin } from '@/lib/server/route';
+import { BodyTooLargeError, fail, handler, json, limitedRequest, requireSameOrigin } from '@/lib/server/route';
 import { requireUser } from '@/lib/server/auth';
 import { importProjectBytes, InvalidRivError } from '@/lib/server/project-import';
 
@@ -19,7 +19,8 @@ export const POST = handler(async (request: Request) => {
   let form: FormData;
   try {
     form = await request.formData();
-  } catch {
+  } catch (error) {
+    if (error instanceof BodyTooLargeError) return fail('Request body is too large', 413);
     return fail('Invalid multipart form data');
   }
   const uploaded = form.get('file');

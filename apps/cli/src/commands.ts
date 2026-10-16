@@ -215,7 +215,8 @@ export function validate(args: string[]) {
       }
       const out = exportRiv(importRiv(bytes!));
       const same = Buffer.from(out).equals(Buffer.from(bytes!));
-      console.log(`${same ? '✓' : '≈'} ${file}${same ? ' (byte-identical)' : ' (re-encoded differently)'}`);
+      console.log(`${same ? '✓' : '✗'} ${file}${same ? ' (byte-identical)' : ' (re-encoded differently)'}`);
+      if (!same) failed++;
     } catch (e) {
       failed++;
       console.log(`✗ ${file}: ${(e as Error).message}`);
@@ -342,6 +343,7 @@ export async function render(args: string[], opts: Options) {
   const scale = requestedScale;
   const width = Math.max(1, Math.round(Number(abDoc.artboard.props.width) * scale));
   const height = Math.max(1, Math.round(Number(abDoc.artboard.props.height) * scale));
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) throw new StoreError('The selected artboard has invalid dimensions');
   if (width * height > 64_000_000) throw new StoreError('Output exceeds the 64-million-pixel safety limit');
   const output = args[1] ?? `${safeFileName(String(abDoc.artboard.props.name || path.basename(args[0]).replace(/\.(riv|oriv)$/i, '')))}.png`;
   if (opts.renderer !== undefined && opts.renderer !== 'browser' && opts.renderer !== 'software') throw new StoreError('--renderer must be browser or software');
@@ -362,12 +364,16 @@ export async function render(args: string[], opts: Options) {
   if (typeof globalThis.Path2D === 'undefined') Object.defineProperty(globalThis, 'Path2D', { value: Path2D });
   const wasmBinary = Uint8Array.from(readFileSync(path.join(runtimeDir, 'rive.wasm'))).buffer as ArrayBuffer;
   const rive = await initRive({ wasmBinary, locateFile: (file) => path.join(runtimeDir, file === 'canvas_advanced.wasm' ? 'rive.wasm' : file) });
-  const file = await rive.load(exportRiv(doc), undefined, false);
-  const artboard = file.artboardByIndex(artboardIndex);
   const canvas = createCanvas(width, height);
-  const renderer = rive.makeRenderer(canvas as unknown as HTMLCanvasElement);
-  const animation = animationIndex >= 0 ? new rive.LinearAnimationInstance(artboard.animationByIndex(animationIndex), artboard) : null;
+  let file: Awaited<ReturnType<typeof rive.load>> | null = null;
+  let artboard: ReturnType<Awaited<ReturnType<typeof rive.load>>['artboardByIndex']> | null = null;
+  let renderer: ReturnType<typeof rive.makeRenderer> | null = null;
+  let animation: InstanceType<typeof rive.LinearAnimationInstance> | null = null;
   try {
+    file = await rive.load(exportRiv(doc), undefined, false);
+    artboard = file.artboardByIndex(artboardIndex);
+    renderer = rive.makeRenderer(canvas as unknown as HTMLCanvasElement);
+    animation = animationIndex >= 0 ? new rive.LinearAnimationInstance(artboard.animationByIndex(animationIndex), artboard) : null;
     renderer.clear();
     if (animation) {
       animation.time = time;
@@ -384,9 +390,9 @@ export async function render(args: string[], opts: Options) {
     console.log(`Rendered ${output} (${width}×${height})`);
   } finally {
     animation?.delete();
-    artboard.delete();
+    artboard?.delete();
     (renderer as { delete?: () => void }).delete?.();
-    file.unref?.();
+    file?.unref?.();
   }
 }
 
@@ -416,7 +422,7 @@ export async function users(args: string[], opts: Options) {
   if (sub === 'add') {
     const name = args.slice(1).join(' ');
     if (!name) throw new StoreError('Usage: users add <name> [--role admin|editor|viewer] [--password <pw>] [--email <email>]');
-    const role = roleSchema.catch('editor').parse(opts.role);
+    const role = roleSchema.parse(opts.role ?? 'editor');
     const password = typeof opts.password === 'string' ? opts.password : undefined;
     const account = await createAccount({
       name,
@@ -432,16 +438,18 @@ export async function users(args: string[], opts: Options) {
     if (!ref) throw new StoreError('Usage: users password <name|id> [--password <pw>]');
     const user = list.find((u) => u.id === ref || u.name.toLowerCase() === ref.toLowerCase());
     if (!user) throw new StoreError(`User "${ref}" not found`);
+    const email = ('email' in user && typeof user.email === 'string' ? user.email : null)
+      ?? (authEnabled() ? (await prompt(`Email address for ${user.name}: `)).trim() : null);
     const password = typeof opts.password === 'string' ? opts.password : await prompt(`New password for ${user.name}: `);
     const problem = passwordProblem(password);
     if (problem) throw new StoreError(problem);
-    await updateAccount(user.id, { password });
+    await updateAccount(user.id, { ...(email ? { email } : {}), password });
     console.log(`Set a new password for ${user.name}. Their other sessions were signed out.`);
     return;
   }
   if (sub === 'role') {
-    const role = roleSchema.catch('editor').parse(opts.role ?? args[2]);
-    const ref = args[1] ?? '';
+    const role = roleSchema.parse(opts.role ?? args.at(-1));
+    const ref = opts.role !== undefined ? args.slice(1).join(' ') : args.length > 2 ? args.slice(1, -1).join(' ') : args[1] ?? '';
     const user = list.find((u) => u.id === ref || u.name.toLowerCase() === ref.toLowerCase());
     if (!user) throw new StoreError(`Usage: users role <name|id> --role admin|editor|viewer`);
     await updateAccount(user.id, { role });

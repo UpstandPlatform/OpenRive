@@ -4,7 +4,7 @@
 //   openrive <command>  scriptable commands (see HELP below)
 import { resetEnv } from '@openrive/shared/env';
 import * as commands from './commands';
-import { storage, StoreError } from './project-store';
+import { closeProjectStore, StoreError } from './project-store';
 
 const HELP = `openrive — OpenRive command line tools
 
@@ -55,11 +55,15 @@ Projects can be referenced by id or name.`;
 export function parseArgs(argv: string[]) {
   const positional: string[] = [];
   const options: commands.Options = {};
+  const booleans = new Set(['bundle', 'cdn', 'dev', 'help', 'json']);
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
     if (arg.startsWith('--')) {
-      const [key, value] = arg.slice(2).split('=');
+      const equals = arg.indexOf('=');
+      const key = arg.slice(2, equals < 0 ? undefined : equals);
+      const value = equals < 0 ? undefined : arg.slice(equals + 1);
       if (value !== undefined) options[key!] = value;
+      else if (booleans.has(key!)) options[key!] = true;
       else if (argv[i + 1] && !argv[i + 1]!.startsWith('--')) options[key!] = argv[++i]!;
       else options[key!] = true;
     } else positional.push(arg);
@@ -86,8 +90,7 @@ async function main() {
     case 'serve':
       return commands.serve(options);
     case 'mcp':
-      await import('./mcp-server');
-      return;
+      return (await import('./mcp-server')).startMcpServer();
     case 'list':
       return commands.listProjects();
     case 'templates':
@@ -123,9 +126,9 @@ async function main() {
 }
 
 main()
-  .then(() => storage.closeDatabase())
+  .then(() => closeProjectStore())
   .catch(async (e) => {
     console.error(e instanceof StoreError ? `Error: ${e.message}` : `Error: ${(e as Error).message}`);
-    await storage.closeDatabase().catch(() => {});
+    await closeProjectStore().catch(() => {});
     process.exit(1);
   });

@@ -3,7 +3,7 @@
 // so humans and AI agents build files through the same code as the editor.
 import { ArtboardDoc, CoreObj, RiveDoc } from './document';
 import { newAnimation, newArtboard, newLayer, newParametricShape, newPenShape, obj, PenPoint, ShapeKind, solidFill, solidStroke } from './factory';
-import { childrenOf, detachSkin, EASE_PRESETS, findObj, insertObjects, isAncestor, isAnimatable, parentIdOf, reparent, setInterpolation, upsertKeyframe } from './ops';
+import { childrenOf, deleteObjects, detachSkin, EASE_PRESETS, findObj, insertObjects, isAncestor, isAnimatable, parentIdOf, reparent, setInterpolation, upsertKeyframe } from './ops';
 import { apply, artboardPos, buildScene, Mat, prop, vertexControls, vertexWorldMatrix } from './scene';
 import { adjustInfluence, Influence, packInfluences, pointSegmentDistance, unpackInfluences } from './weights';
 import {
@@ -146,7 +146,7 @@ export interface ShapeInput {
 export function addShape(doc: RiveDoc, s: ShapeInput): CoreObj {
   const ab = getArtboard(doc, s.artboard);
   const parentId = s.parent ? getObject(doc, s.parent, ab.id).o.id : ab.artboard.id;
-  const objs = newParametricShape(s.kind, parentId, s.x, s.y, s.width, s.height, s.fill ? parseColor(s.fill) : 0xffc4c4c4);
+  const objs = newParametricShape(s.kind, parentId, s.x, s.y, s.width, s.height, s.fill !== undefined && s.fill !== null ? parseColor(s.fill) : 0xffc4c4c4);
   const [shape, path] = objs;
   let out = objs;
   if (s.fill === null) out = objs.slice(0, 2);
@@ -172,7 +172,9 @@ export function addPath(
   );
   const shape = objs[0];
   if (p.name) shape.props.name = p.name;
-  if (p.fill !== undefined || p.closed !== false) objs.push(...solidFill(shape.id, parseColor(p.fill ?? '#c4c4c4')));
+  if (p.fill !== null && (p.fill !== undefined || p.stroke === undefined)) {
+    objs.push(...solidFill(shape.id, parseColor(p.fill ?? '#c4c4c4')));
+  }
   if (p.stroke !== undefined) objs.push(...solidStroke(shape.id, parseColor(p.stroke), p.strokeWidth ?? 2));
   insertObjects(ab, objs);
   return shape;
@@ -535,20 +537,7 @@ export function setProperties(doc: RiveDoc, ref: string, props: Record<string, u
 export function deleteObjectsByRef(doc: RiveDoc, refs: string[]) {
   for (const ref of refs) {
     const { ab, o } = getObject(doc, ref);
-    const doomed = new Set<string>([o.id]);
-    let grew = true;
-    while (grew) {
-      grew = false;
-      for (const c of ab.objects) {
-        const p = parentIdOf(ab, c);
-        if (p && doomed.has(p) && !doomed.has(c.id)) {
-          doomed.add(c.id);
-          grew = true;
-        }
-      }
-    }
-    ab.objects = ab.objects.filter((c) => !doomed.has(c.id));
-    for (const a of ab.animations) a.children = (a.children ?? []).filter((ko) => !doomed.has(ko.props.objectId as string));
+    deleteObjects(ab, [o.id]);
   }
 }
 
@@ -966,7 +955,10 @@ export function addClip(doc: RiveDoc, c: { artboard?: string; object: string; so
   const source = getObject(doc, c.source, ab.id).o;
   if (source.id === o.id) throw new ApiError('An object cannot be its own mask');
   // the mask must live outside what it clips, or the runtime clips it away too
+  const visited = new Set<string>();
   for (let parent: CoreObj | undefined = source; parent; parent = findObj(ab, String(parent.props.parentId ?? ''))) {
+    if (visited.has(parent.id)) throw new ApiError('The object hierarchy contains a parent cycle');
+    visited.add(parent.id);
     if (parent.id === o.id) throw new ApiError('The mask cannot be inside the object it masks');
   }
   const existing = clipsOf(ab, o.id).find((x) => x.props.sourceId === source.id);

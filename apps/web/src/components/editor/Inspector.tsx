@@ -97,7 +97,8 @@ function useBinding(ab: ArtboardDoc | undefined, overrides: Overrides) {
     toggleKey: (o: CoreObj, names: string[]) => {
       if (!anim || !ab) return;
       useEditor.getState().commit((d) => {
-        const a = findArtboard(d, ab.id)!;
+        const a = findArtboard(d, ab.id);
+        if (!a) return;
         const an = a.animations.find((x) => x.id === anim.id)!;
         const target = findObj(a, o.id)!;
         const existing = names.map((n) => keyframeAt(an, o.id, o.type, n, frame)).filter((k): k is CoreObj => !!k);
@@ -252,10 +253,14 @@ function ArtboardSection({ ab, b }: { ab: ArtboardDoc; b: Binding }) {
   const a = ab.artboard;
   const setDesign = (values: Record<string, unknown>) =>
     useEditor.getState().commit((d) => {
-      Object.assign(findArtboard(d, ab.id)!.artboard.props, values);
+      const current = findArtboard(d, ab.id);
+      if (current) Object.assign(current.artboard.props, values);
     });
   const setPos = (x: number, y: number) =>
-    useEditor.getState().commit((d) => setArtboardPos(findArtboard(d, ab.id)!.artboard, x, y));
+    useEditor.getState().commit((d) => {
+      const current = findArtboard(d, ab.id);
+      if (current) setArtboardPos(current.artboard, x, y);
+    });
   return (
     <div className="section flex flex-col gap-1.5">
       <div className="flex items-center gap-2 mb-1">
@@ -640,7 +645,8 @@ function PaintsSection({ ab, owner, b }: { ab: ArtboardDoc; owner: CoreObj; b: B
   const strokes = paints.filter((p) => p.type === 'Stroke');
   const add = (type: 'Fill' | 'Stroke') =>
     useEditor.getState().commit((d) => {
-      const a = findArtboard(d, ab.id)!;
+      const a = findArtboard(d, ab.id);
+      if (!a) return;
       const paint = obj(type, { name: type, parentId: owner.id, ...(type === 'Stroke' ? { thickness: 2 } : {}) });
       const color = obj('SolidColor', { parentId: paint.id, colorValue: type === 'Fill' ? 0xffc4c4c4 : 0xffffffff });
       a.objects.push(paint, color);
@@ -683,7 +689,8 @@ function PaintRow({ ab, paint, b }: { ab: ArtboardDoc; paint: CoreObj; b: Bindin
 
   const setKind = (k: string) =>
     commit((d) => {
-      const a = findArtboard(d, ab.id)!;
+      const a = findArtboard(d, ab.id);
+      if (!a) return;
       const old = mutator ? a.objects.find((o) => o.id === mutator.id) : undefined;
       let color = 0xffc4c4c4;
       if (old?.type === 'SolidColor') color = prop(old, 'colorValue');
@@ -725,10 +732,20 @@ function PaintRow({ ab, paint, b }: { ab: ArtboardDoc; paint: CoreObj; b: Bindin
 
   const remove = () =>
     commit((d) => {
-      const a = findArtboard(d, ab.id)!;
+      const a = findArtboard(d, ab.id);
+      if (!a) return;
+      if (!a) return;
       const doomed = new Set<string>([paint.id]);
-      for (const o of a.objects) if (o.props.parentId && doomed.has(o.props.parentId as string)) doomed.add(o.id);
-      for (const o of a.objects) if (o.props.parentId && doomed.has(o.props.parentId as string)) doomed.add(o.id);
+      let grew = true;
+      while (grew) {
+        grew = false;
+        for (const o of a.objects) {
+          if (o.props.parentId && doomed.has(o.props.parentId as string) && !doomed.has(o.id)) {
+            doomed.add(o.id);
+            grew = true;
+          }
+        }
+      }
       a.objects = a.objects.filter((o) => !doomed.has(o.id));
       for (const an of a.animations) an.children = (an.children ?? []).filter((ko) => !doomed.has(ko.props.objectId as string));
     });
@@ -821,7 +838,9 @@ function TrimPathRow({ ab, paint, b }: { ab: ArtboardDoc; paint: CoreObj; b: Bin
         disabled={b.readOnly}
         onClick={() =>
           commit((d) => {
-            findArtboard(d, ab.id)!.objects.push(obj('TrimPath', { parentId: paint.id, start: 0, end: 1, offset: 0, modeValue: 1 }));
+            const a = findArtboard(d, ab.id);
+            if (!a) return;
+            a.objects.push(obj('TrimPath', { parentId: paint.id, start: 0, end: 1, offset: 0, modeValue: 1 }));
           })
         }
       >
@@ -851,7 +870,8 @@ function TrimPathRow({ ab, paint, b }: { ab: ArtboardDoc; paint: CoreObj; b: Bin
           className="icon-btn w-5 h-5"
           onClick={() =>
             commit((d) => {
-              const a = findArtboard(d, ab.id)!;
+              const a = findArtboard(d, ab.id);
+              if (!a) return;
               a.objects = a.objects.filter((o) => o.id !== trim.id);
             })
           }
@@ -918,7 +938,8 @@ function GradientEditor({ ab, g, b }: { ab: ArtboardDoc; g: CoreObj; b: Binding 
             disabled={stops.length <= 2 || b.readOnly}
             onClick={() =>
               commit((d) => {
-                const a = findArtboard(d, ab.id)!;
+                const a = findArtboard(d, ab.id);
+                if (!a) return;
                 a.objects = a.objects.filter((o) => o.id !== s.id);
               })
             }
@@ -932,7 +953,9 @@ function GradientEditor({ ab, g, b }: { ab: ArtboardDoc; g: CoreObj; b: Binding 
         disabled={b.readOnly}
         onClick={() =>
           commit((d) => {
-            findArtboard(d, ab.id)!.objects.push(obj('GradientStop', { parentId: g.id, colorValue: 0xffffffff, position: 0.5 }));
+            const a = findArtboard(d, ab.id);
+            if (!a) return;
+            a.objects.push(obj('GradientStop', { parentId: g.id, colorValue: 0xffffffff, position: 0.5 }));
           })
         }
       >
@@ -1006,7 +1029,8 @@ function TextSection({ o, b, ab }: { o: CoreObj; b: Binding; ab: ArtboardDoc }) 
   const commit = useEditor.getState().commit;
   const setAllStyles = (values: Record<string, unknown>) =>
     commit((d) => {
-      const a = findArtboard(d, ab.id)!;
+      const a = findArtboard(d, ab.id);
+      if (!a) return;
       for (const st of textStyles(a, o.id)) Object.assign(st.props, values);
     });
   const setFont = async (value: string) => {
@@ -1020,7 +1044,9 @@ function TextSection({ o, b, ab }: { o: CoreObj; b: Binding; ab: ArtboardDoc }) 
         const bytes = new Uint8Array(await f.arrayBuffer());
         commit((d) => {
           const id = ensureFontAsset(d, f.name.replace(/\.(ttf|otf)$/i, ''), bytes);
-          for (const st of textStyles(findArtboard(d, ab.id)!, o.id)) st.props.fontAssetId = id;
+          const a = findArtboard(d, ab.id);
+          if (!a) return;
+          for (const st of textStyles(a, o.id)) st.props.fontAssetId = id;
         });
       };
       input.click();
@@ -1030,7 +1056,9 @@ function TextSection({ o, b, ab }: { o: CoreObj; b: Binding; ab: ArtboardDoc }) 
       const font = await loadBundledFont(value.slice(8));
       commit((d) => {
         const id = ensureFontAsset(d, font.name, font.bytes);
-        for (const st of textStyles(findArtboard(d, ab.id)!, o.id)) st.props.fontAssetId = id;
+        const a = findArtboard(d, ab.id);
+        if (!a) return;
+        for (const st of textStyles(a, o.id)) st.props.fontAssetId = id;
       });
       return;
     }
@@ -1047,7 +1075,8 @@ function TextSection({ o, b, ab }: { o: CoreObj; b: Binding; ab: ArtboardDoc }) 
         onKeyDown={(e) => e.stopPropagation()}
         onChange={(e) =>
           commit((d) => {
-            const a = findArtboard(d, ab.id)!;
+            const a = findArtboard(d, ab.id);
+            if (!a) return;
             const rs = textRuns(a, o.id);
             if (!rs.length) return;
             rs[0].props.text = e.target.value;

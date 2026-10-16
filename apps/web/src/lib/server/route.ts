@@ -52,7 +52,7 @@ export function requireSameOrigin(request: Request): Response | null {
   return null;
 }
 
-class BodyTooLargeError extends Error {}
+export class BodyTooLargeError extends Error {}
 
 async function readLimitedBody(request: Request, maxBytes: number): Promise<Uint8Array> {
   const declared = Number(request.headers.get('content-length'));
@@ -88,13 +88,35 @@ async function readLimitedBody(request: Request, maxBytes: number): Promise<Uint
 /** Reads a request body once, enforcing a hard limit before downstream parsing. */
 export async function limitedRequest(request: Request, maxBytes: number): Promise<Request | Response> {
   if (!request.body || request.method === 'GET' || request.method === 'HEAD') return request;
-  try {
-    const bytes = await readLimitedBody(request, maxBytes);
-    return new Request(request, { body: new Blob([bytes as unknown as ArrayBuffer]) });
-  } catch (error) {
-    if (error instanceof BodyTooLargeError) return fail('Request body is too large', 413);
-    throw error;
-  }
+  const declared = Number(request.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > maxBytes) return fail('Request body is too large', 413);
+  const reader = request.body.getReader();
+  let total = 0;
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          reader.releaseLock();
+          controller.close();
+          return;
+        }
+        total += value.byteLength;
+        if (total > maxBytes) {
+          await reader.cancel();
+          controller.error(new BodyTooLargeError());
+          return;
+        }
+        controller.enqueue(value);
+      } catch (error) {
+        controller.error(error);
+      }
+    },
+    cancel(reason) {
+      return reader.cancel(reason);
+    },
+  });
+  return new Request(request, { body, duplex: 'half' } as RequestInit & { duplex: 'half' });
 }
 
 /** Parses a bounded JSON body with a schema; returns a 400 response when invalid. */
@@ -105,6 +127,7 @@ export async function body<S extends z.ZodType>(request: Request, schema: S, max
     if (bytes.length) raw = JSON.parse(new TextDecoder().decode(bytes));
   } catch (error) {
     if (error instanceof BodyTooLargeError) return { error: fail('Request body is too large', 413) };
+    return { error: fail('Invalid JSON body') };
   }
   const parsed = schema.safeParse(raw);
   if (!parsed.success) return { error: fail(formatIssues(parsed.error)) };

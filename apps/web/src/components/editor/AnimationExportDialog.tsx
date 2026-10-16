@@ -40,7 +40,9 @@ export function AnimationExportDialog({ doc, projectName, onClose }: { doc: Rive
         const anchor = document.createElement('a');
         anchor.href = url;
         anchor.download = `${stem}-spritesheet.png`;
+        document.body.appendChild(anchor);
         anchor.click();
+        anchor.remove();
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       }
       onClose();

@@ -18,11 +18,17 @@ export class BinaryReader {
     return this.bytes[this.pos++];
   }
   readVarUint(): number {
-    let result = 0;
+    const result = this.readVarUint64();
+    if (result === (BigInt(1) << BigInt(64)) - BigInt(1)) return -1;
+    if (result > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('VarUint exceeds JavaScript safe integer range');
+    return Number(result);
+  }
+  readVarUint64(): bigint {
+    let result = BigInt(0);
     let shift = 0;
     for (;;) {
       const b = this.readByte();
-      result += (b & 0x7f) * 2 ** shift;
+      result |= BigInt(b & 0x7f) << BigInt(shift);
       if (!(b & 0x80)) break;
       shift += 7;
       if (shift > 63) throw new Error('VarUint overflow');
@@ -30,11 +36,13 @@ export class BinaryReader {
     return result;
   }
   readFloat32(): number {
+    if (this.pos + 4 > this.bytes.length) throw new Error('Unexpected end of file');
     const v = this.view.getFloat32(this.pos, true);
     this.pos += 4;
     return v;
   }
   readUint32(): number {
+    if (this.pos + 4 > this.bytes.length) throw new Error('Unexpected end of file');
     const v = this.view.getUint32(this.pos, true);
     this.pos += 4;
     return v;
@@ -69,13 +77,38 @@ export class BinaryWriter {
     this.buf[this.pos++] = b & 0xff;
   }
   writeVarUint(value: number) {
-    let v = Math.max(0, Math.floor(value));
+    if (!Number.isFinite(value) || !Number.isInteger(value)) throw new Error('VarUint must be a finite integer');
+    if (value < 0) {
+      if (value !== -1) throw new Error('VarUint cannot be negative except for the empty ID sentinel');
+      let v = (BigInt(1) << BigInt(64)) - BigInt(1);
+      while (v > BigInt(0)) {
+        const b = Number(v & BigInt(0x7f));
+        v >>= BigInt(7);
+        this.writeByte(v > BigInt(0) ? b | 0x80 : b);
+      }
+      return;
+    }
+    if (!Number.isSafeInteger(value)) throw new Error('VarUint exceeds JavaScript safe integer range');
+    let v = Math.floor(value);
     do {
       let b = v % 128;
       v = Math.floor(v / 128);
       if (v > 0) b |= 0x80;
       this.writeByte(b);
     } while (v > 0);
+  }
+  writeVarUint64(value: number | bigint) {
+    if (typeof value === 'number') {
+      if (!Number.isSafeInteger(value) || value < 0) throw new Error('VarUint64 number must be a non-negative safe integer');
+      value = BigInt(value);
+    }
+    if (value < BigInt(0) || value > (BigInt(1) << BigInt(64)) - BigInt(1)) throw new Error('VarUint64 is outside the unsigned 64-bit range');
+    let v = value;
+    do {
+      const b = Number(v & BigInt(0x7f));
+      v >>= BigInt(7);
+      this.writeByte(v > BigInt(0) ? b | 0x80 : b);
+    } while (v > BigInt(0));
   }
   writeFloat32(v: number) {
     this.ensure(4);

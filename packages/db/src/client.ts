@@ -60,7 +60,12 @@ async function connect() {
         await new Promise((resolve) => setTimeout(resolve, Math.min(2000, 250 * attempt)));
       }
     }
-    await applyMigrations(db, { lock: true });
+    const migrationClient = await pool.connect();
+    try {
+      await applyMigrations(drizzle(migrationClient, { schema }), { lock: true });
+    } finally {
+      migrationClient.release();
+    }
     return {
       db,
       backend: 'postgres' as const,

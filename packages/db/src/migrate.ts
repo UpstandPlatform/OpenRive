@@ -53,6 +53,10 @@ async function baselineExistingSchema(db: Runner, applied: Set<string>) {
     baseline.add('0002_better_auth');
   }
   if (has('rate_limit')) baseline.add('0003_cute_starbolt');
+  if (has('projects', 'riv_storage_key') && tables.has('apikey')) baseline.add('0004_rare_jetstream');
+  if (has('organization') && has('member') && has('invitation')) baseline.add('0005_low_queen_noir');
+  if (has('projects', 'organization_id') && has('sessions', 'active_organization_id') && has('users', 'banned')) baseline.add('0006_organic_robin_chapel');
+  if (has('organization', 'metadata')) baseline.add('0007_legal_liz_osborn');
 
   for (const migration of migrations) {
     if (!baseline.has(migration.tag) || applied.has(migration.hash)) continue;

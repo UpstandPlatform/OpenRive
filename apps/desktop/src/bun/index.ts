@@ -39,25 +39,39 @@ async function waitForServer(url: string, timeoutMs = 20_000) {
   return false;
 }
 
-const port = await freePort();
-const url = `http://127.0.0.1:${port}`;
-
 if (!existsSync(entry)) throw new Error(`Bundled server not found at ${entry}. Build the web app before packaging.`);
 
-const server = Bun.spawn([process.execPath, entry], {
-  cwd: serverDir,
-  stdio: ['ignore', 'inherit', 'inherit'],
-  env: {
-    ...process.env,
-    NODE_ENV: 'production',
-    PORT: String(port),
-    HOSTNAME: '127.0.0.1',
-    OPENRIVE_DATA_DIR: dataDir,
-    OPENRIVE_URL: url,
-  },
-});
-
-const ready = await waitForServer(url);
+let port = 0;
+let url = '';
+let server: ReturnType<typeof Bun.spawn> | undefined;
+let ready = false;
+for (let attempt = 0; attempt < 5; attempt++) {
+  port = await freePort();
+  url = `http://127.0.0.1:${port}`;
+  server = Bun.spawn([process.execPath, entry], {
+    cwd: serverDir,
+    stdio: ['ignore', 'inherit', 'inherit'],
+    env: {
+      ...process.env,
+      NODE_ENV: 'production',
+      PORT: String(port),
+      HOSTNAME: '127.0.0.1',
+      OPENRIVE_DATA_DIR: dataDir,
+      OPENRIVE_URL: url,
+    },
+  });
+  ready = await waitForServer(url, 5000);
+  if (ready || server.exitCode !== null) {
+    if (ready) break;
+    await server.exited;
+    server = undefined;
+    continue;
+  }
+  // Keep the offline screen available for a slow start, but retain this child
+  // so shutdown can clean it up in the normal lifecycle handler.
+  break;
+}
+if (!server) throw new Error('The OpenRive server could not bind a local port after five attempts.');
 
 // ---------------------------------------------------------------------------
 // Window controls for the web-drawn title bar.
@@ -139,6 +153,8 @@ const control = Bun.serve({
   async fetch(request) {
     const { pathname, searchParams } = new URL(request.url);
     const headers = { 'access-control-allow-origin': url, 'access-control-allow-headers': 'content-type' };
+    const origin = request.headers.get('origin');
+    if (origin && origin !== url) return new Response('origin rejected', { status: 403, headers });
     if (request.method === 'OPTIONS') return new Response(null, { headers });
     if (searchParams.get('token') !== token) return new Response('no', { status: 403, headers });
 
@@ -191,13 +207,18 @@ const window = new BrowserWindow({
   titleBarStyle: 'hidden',
 });
 
-const shutdown = () => {
-  server.kill();
-  void control.stop(true);
+let shuttingDown = false;
+const shutdown = async () => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  await control.stop(true);
+  server!.kill('SIGTERM');
+  const forceKill = setTimeout(() => server!.kill('SIGKILL'), 4000);
+  await server!.exited;
+  clearTimeout(forceKill);
   process.exit(0);
 };
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
-process.on('exit', () => server.kill());
+process.once('SIGINT', () => void shutdown());
+process.once('SIGTERM', () => void shutdown());
 
 void window;

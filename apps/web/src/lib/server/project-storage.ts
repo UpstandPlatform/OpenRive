@@ -10,6 +10,13 @@ async function objectStorage(): Promise<ObjectStorage> {
   return (storageInstance ??= Promise.resolve().then(() => createObjectStorage()));
 }
 
+export async function closeProjectStorage(): Promise<void> {
+  const current = storageInstance;
+  storageInstance = null;
+  const client = await current?.catch(() => null);
+  client?.close();
+}
+
 export async function readProjectRiv(id: string): Promise<Uint8Array | null> {
   const asset = await getProjectAsset(id);
   if (!asset) return null;
@@ -19,8 +26,18 @@ export async function readProjectRiv(id: string): Promise<Uint8Array | null> {
     // operator migration. The deterministic key also makes concurrent reads safe.
     const key = legacyProjectRivKey(id);
     await (await objectStorage()).put(key, asset.riv, 'application/octet-stream');
-    await pointProjectRiv(id, key, asset.updatedAt);
-    return asset.riv;
+    try {
+      await pointProjectRiv(id, key, asset.updatedAt);
+      return asset.riv;
+    } catch (error) {
+      const latest = await getProjectAsset(id);
+      if (latest?.riv) return latest.riv;
+      if (latest?.rivStorageKey) {
+        const current = await (await objectStorage()).get(latest.rivStorageKey);
+        if (current) return current;
+      }
+      throw error;
+    }
   }
   if (!asset.rivStorageKey) return null;
   return (await objectStorage()).get(asset.rivStorageKey);
@@ -52,4 +69,11 @@ export async function objectStorageHealth(): Promise<'disabled' | 'ready'> {
   if (!cloudEdition()) return 'disabled';
   await (await objectStorage()).health();
   return 'ready';
+}
+
+if (typeof process !== 'undefined') {
+  process.once('beforeExit', () => void closeProjectStorage());
+  process.once('SIGTERM', () => {
+    void closeProjectStorage().finally(() => process.kill(process.pid, 'SIGTERM'));
+  });
 }

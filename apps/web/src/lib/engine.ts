@@ -47,6 +47,7 @@ export class StageEngine {
   private disposed = false;
   private listeners = new Set<Listener>();
   private inputPoll = 0;
+  private preservedInputs: PreviewInput[] | null = null;
 
   error: string | null = null;
   ready = false;
@@ -98,6 +99,7 @@ export class StageEngine {
 
   /** Queues the document for (re)loading. Loads are coalesced. */
   setDoc(doc: RiveDoc) {
+    if (this.sm) this.preservedInputs = this.snapshotInputs();
     if (!this.rive || this.loading) {
       this.pendingDoc = doc;
       return;
@@ -180,8 +182,23 @@ export class StageEngine {
         this.sm = new this.rive!.StateMachineInstance(ab.stateMachineByIndex(state.previewStateMachineIndex), ab);
         this.bindViewModel(ab, this.sm);
         this.readInputs();
+        if (this.preservedInputs) {
+          for (const previous of this.preservedInputs) {
+            if (previous.type === 'trigger') continue;
+            for (let k = 0; k < this.sm.inputCount(); k++) {
+              const input = this.sm.input(k);
+              if (input.name !== previous.name) continue;
+              if (input.type === this.rive!.SMIInput.bool && previous.type === 'bool') input.asBool().value = !!previous.value;
+              else if (input.type === this.rive!.SMIInput.number && previous.type === 'number') input.asNumber().value = Number(previous.value);
+            }
+          }
+          this.preservedInputs = null;
+          this.readInputs();
+        }
       } else if (state.mode === 'animate' && state.animationIndex >= 0 && state.animationIndex < ab.animationCount()) {
         this.anim = new this.rive!.LinearAnimationInstance(ab.animationByIndex(state.animationIndex), ab);
+      } else {
+        this.preservedInputs = null;
       }
     }
     this.emit();
@@ -211,6 +228,17 @@ export class StageEngine {
       out.push({ name: input.name, type, value: type === 'trigger' ? false : (input.value as number | boolean) });
     }
     this.inputs = out;
+  }
+
+  private snapshotInputs(): PreviewInput[] {
+    if (!this.sm || !this.rive) return [];
+    const inputs: PreviewInput[] = [];
+    for (let k = 0; k < this.sm.inputCount(); k++) {
+      const input = this.sm.input(k);
+      const type = input.type === this.rive.SMIInput.bool ? 'bool' : input.type === this.rive.SMIInput.number ? 'number' : 'trigger';
+      inputs.push({ name: input.name, type, value: type === 'trigger' ? false : input.value as number | boolean });
+    }
+    return inputs;
   }
 
   setInput(name: string, value: number | boolean) {

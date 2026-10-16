@@ -25,7 +25,7 @@ const ACCOUNT_CAPABILITIES: Record<Role, readonly AccountCapability[]> = {
 };
 
 export function hasAccountCapability(role: Role, capability: AccountCapability): boolean {
-  return ACCOUNT_CAPABILITIES[role].includes(capability);
+  return ACCOUNT_CAPABILITIES[role]?.includes(capability) ?? false;
 }
 
 const WORKSPACE_CAPABILITIES: Record<WorkspaceRole, readonly WorkspaceCapability[]> = {

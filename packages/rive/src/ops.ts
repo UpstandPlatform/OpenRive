@@ -1,5 +1,5 @@
 // Structural edit operations on an (immer draft) document.
-import { ArtboardDoc, CoreObj, deepClone, newId, RiveDoc } from './document';
+import { ArtboardDoc, CoreObj, deepClone, newId, refSpaceOf, RiveDoc } from './document';
 import { obj } from './factory';
 import { apply, buildScene, compose, invert, Mat, mul, prop, vertexSceneControls } from './scene';
 import { defaultValue, isA, propDef, propDefByKey } from './schema';
@@ -121,10 +121,25 @@ export function deleteObjects(ab: ArtboardDoc, ids: string[]) {
   for (const sm of ab.stateMachines) {
     for (const c of sm.children ?? []) {
       if (isA(c.type, 'StateMachineListener') && typeof c.props.targetId === 'string' && doomed.has(c.props.targetId)) {
-        delete c.props.targetId;
+        c.props.targetId = -1;
       }
     }
   }
+  // Masks and targeted constraints cannot safely resolve a deleted component.
+  ab.objects = ab.objects.filter((object) => {
+    if (object.type === 'ClippingShape' && doomed.has(String(object.props.sourceId))) return false;
+    if (['DistanceConstraint', 'IKConstraint', 'TransformConstraint'].includes(object.type) && doomed.has(String(object.props.targetId))) return false;
+    return true;
+  });
+  const clearDanglingRefs = (object: CoreObj) => {
+    for (const [name, value] of Object.entries(object.props)) {
+      if (typeof value === 'string' && doomed.has(value) && refSpaceOf(object.type, name)) object.props[name] = -1;
+    }
+    object.children?.forEach(clearDanglingRefs);
+  };
+  ab.objects.forEach(clearDanglingRefs);
+  ab.animations.forEach(clearDanglingRefs);
+  ab.stateMachines.forEach(clearDanglingRefs);
   cleanupInterpolators(ab);
 }
 
@@ -133,6 +148,7 @@ export function cleanupInterpolators(ab: ArtboardDoc) {
   const collect = (o: CoreObj) => {
     if (typeof o.props.interpolatorId === 'string') used.add(o.props.interpolatorId);
   };
+  for (const o of ab.objects) collect(o);
   for (const a of ab.animations) walkTree(a, collect);
   for (const s of ab.stateMachines) walkTree(s, collect);
   ab.objects = ab.objects.filter((o) => !isA(o.type, 'KeyFrameInterpolator') || used.has(o.id));

@@ -79,21 +79,26 @@ export function Hierarchy() {
 
   // a selection made on the stage should be visible in the list: open the groups around it and scroll to it
   const lastSelected = selection[selection.length - 1];
-  const [revealed, setRevealed] = useState<string | undefined>(undefined);
-  if (lastSelected !== revealed) {
-    setRevealed(lastSelected);
+  useEffect(() => {
     const ab = doc ? findArtboard(doc, activeArtboardId) : undefined;
     const o = ab && lastSelected ? findObj(ab, lastSelected) : undefined;
     if (ab && o) {
       const parents: string[] = [];
-      for (let p = parentIdOf(ab, o); p; ) {
+      const seen = new Set<string>();
+      for (let p = parentIdOf(ab, o); p && !seen.has(p); ) {
+        seen.add(p);
         parents.push(p);
         const po = findObj(ab, p);
         p = po ? parentIdOf(ab, po) : null;
       }
-      if (parents.some((p) => collapsed.has(p))) setCollapsed(new Set([...collapsed].filter((id) => !parents.includes(id))));
+      if (parents.some((p) => collapsed.has(p))) {
+        const timer = window.setTimeout(() => {
+          setCollapsed((current) => new Set([...current].filter((id) => !parents.includes(id))));
+        }, 0);
+        return () => window.clearTimeout(timer);
+      }
     }
-  }
+  }, [lastSelected, doc, activeArtboardId, collapsed]);
   useEffect(() => {
     if (lastSelected) document.querySelector(`[data-layer-row="${lastSelected}"]`)?.scrollIntoView({ block: 'nearest' });
   }, [lastSelected, collapsed]);
@@ -105,8 +110,11 @@ export function Hierarchy() {
       const kids = childrenOf(ab, ab.artboard.id).filter(visibleInTree);
       out.push({ o: ab.artboard, depth: 0, ab, hasKids: kids.length > 0 });
       if (collapsed.has(ab.artboard.id)) continue;
+      const visited = new Set<string>([ab.artboard.id]);
       const walk = (id: string, depth: number) => {
         for (const c of childrenOf(ab, id).filter(visibleInTree)) {
+          if (visited.has(c.id)) continue;
+          visited.add(c.id);
           const sub = childrenOf(ab, c.id).filter(visibleInTree);
           out.push({ o: c, depth, ab, hasKids: sub.length > 0 });
           if (!collapsed.has(c.id)) walk(c.id, depth + 1);
@@ -145,6 +153,14 @@ export function Hierarchy() {
   const onDrop = () => {
     if (!dragId || !drop || dragId === drop.id) return;
     const { id, pos } = drop;
+    const sourceAb = doc?.artboards.find((artboard) => !!findObj(artboard, dragId));
+    const targetAb = doc?.artboards.find((artboard) => !!findObj(artboard, id));
+    if (sourceAb && targetAb && sourceAb.id !== targetAb.id) {
+      toast('Move objects between artboards by copying and pasting them.');
+      setDrop(null);
+      setDragId(null);
+      return;
+    }
     try {
       s.commit((d) => {
         for (const ab of d.artboards) {

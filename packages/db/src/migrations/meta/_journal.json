@@ -57,6 +57,13 @@
       "when": 1791713888916,
       "tag": "0007_legal_liz_osborn",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792175704694,
+      "tag": "0008_black_maddog",
+      "breakpoints": true
     }
   ]
 }

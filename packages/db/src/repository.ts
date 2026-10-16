@@ -13,7 +13,8 @@ import { nanoid } from 'nanoid';
 import { db } from './client';
 import { invitations, members, organizations, projects, sessions, settings, users, type ProjectRow, type UserRow } from './schema';
 
-const toMeta = (row: ProjectRow): ProjectMeta => ({
+type ProjectMetaRow = Omit<ProjectRow, 'doc' | 'riv'>;
+const toMeta = (row: ProjectMetaRow): ProjectMeta => ({
   id: row.id,
   name: row.name,
   ownerId: row.ownerId,
@@ -95,13 +96,39 @@ export async function saveUsers(list: User[]) {
 export async function listProjects(): Promise<ProjectMeta[]> {
   await ensureSeeded();
   const conn = await db();
-  const rows = await conn.select().from(projects).orderBy(desc(projects.updatedAt));
+  const rows = await conn.select({
+    id: projects.id,
+    name: projects.name,
+    ownerId: projects.ownerId,
+    createdAt: projects.createdAt,
+    updatedAt: projects.updatedAt,
+    thumbnail: projects.thumbnail,
+    artboards: projects.artboards,
+    animations: projects.animations,
+    stateMachines: projects.stateMachines,
+    sharedWith: projects.sharedWith,
+    organizationId: projects.organizationId,
+    rivStorageKey: projects.rivStorageKey,
+  }).from(projects).orderBy(desc(projects.updatedAt));
   return rows.map(toMeta);
 }
 
 export async function getProjectMeta(id: string): Promise<ProjectMeta | null> {
   const conn = await db();
-  const [row] = await conn.select().from(projects).where(eq(projects.id, safeId(id)));
+  const [row] = await conn.select({
+    id: projects.id,
+    name: projects.name,
+    ownerId: projects.ownerId,
+    createdAt: projects.createdAt,
+    updatedAt: projects.updatedAt,
+    thumbnail: projects.thumbnail,
+    artboards: projects.artboards,
+    animations: projects.animations,
+    stateMachines: projects.stateMachines,
+    sharedWith: projects.sharedWith,
+    organizationId: projects.organizationId,
+    rivStorageKey: projects.rivStorageKey,
+  }).from(projects).where(eq(projects.id, safeId(id)));
   return row ? toMeta(row) : null;
 }
 
@@ -302,8 +329,9 @@ export async function updateLocalUser(id: string, patch: Partial<Pick<User, 'nam
     const [current] = await tx.select().from(users).where(eq(users.id, safeId(id)));
     if (!current) return null;
     if (patch.role && !isAdministratorRole(patch.role) && isAdministratorRole(current.role)) {
-      const admins = await tx.execute(sql`SELECT id FROM users WHERE role = 'admin' FOR UPDATE`);
-      if (admins.rows.length === 1) throw new Error('At least one admin is required');
+      const result = await tx.execute(sql`SELECT id FROM users WHERE role = 'admin' FOR UPDATE`);
+      const rows = Array.isArray(result) ? result : result && typeof result === 'object' && 'rows' in result && Array.isArray(result.rows) ? result.rows : [];
+      if (rows.length === 1) throw new Error('At least one admin is required');
     }
     const [row] = await tx.update(users).set(patch).where(eq(users.id, safeId(id))).returning();
     return row ? toUser(row) : null;
