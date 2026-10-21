@@ -11,6 +11,13 @@ export const json = (data: unknown, status = 200) => Response.json(data, { statu
 export const fail = (error: string, status = 400) => Response.json({ error }, { status });
 export const notFound = () => fail('Not found', 404);
 
+/** Maps Better Auth API-key verification failures that are temporary request limits. */
+export function apiKeyVerificationFailure(code: unknown): Response | null {
+  if (code === 'RATE_LIMITED') return fail('MCP API key rate limit exceeded. Wait briefly and retry.', 429);
+  if (code === 'USAGE_EXCEEDED') return fail('MCP API key usage limit exceeded.', 429);
+  return null;
+}
+
 /**
  * Cookie-authenticated mutations must come from this origin. Bearer-authenticated
  * MCP calls are exempt because they do not carry the browser session cookie.

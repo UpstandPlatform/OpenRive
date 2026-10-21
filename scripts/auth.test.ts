@@ -76,6 +76,26 @@ try {
   check(!(await auth.sessionUser(new Headers({ cookie: 'openrive.session_token=nonsense' }))), 'an unknown session does not');
   check((await auth.getAccount(admin.id))?.lastLoginAt !== null, 'signing in records the time');
 
+  const mcpKey = await (await api()).createApiKey({
+    headers: session!,
+    body: { configId: 'mcp', name: 'MCP expiry regression', expiresIn: 90 * 24 * 60 * 60 },
+  });
+  const expectedKeyExpiry = Date.now() + 90 * 24 * 60 * 60 * 1000;
+  check(
+    Math.abs(new Date(mcpKey.expiresAt!).getTime() - expectedKeyExpiry) < 2_000,
+    'MCP API key expiry is stored as 90 days when requested in seconds',
+  );
+  let mcpKeyVerification: Awaited<ReturnType<Awaited<ReturnType<typeof api>>['verifyApiKey']>> | undefined;
+  for (let attempt = 0; attempt < 121; attempt++) {
+    mcpKeyVerification = await (await api()).verifyApiKey({
+      body: { configId: 'mcp', key: mcpKey.key, permissions: { mcp: ['read', 'write'] } },
+    });
+  }
+  check(
+    mcpKeyVerification?.valid === false && mcpKeyVerification.error?.code === 'RATE_LIMITED',
+    'the MCP API key rate limiter reports throttling separately from expiration',
+  );
+
   // --- Better Auth workspaces ---------------------------------------------
   const invalidWorkspace = await (await api()).createOrganization({
     body: { name: '   ', slug: 'invalid-workspace' },

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.3 - 2026-10-21
+
+### MCP authentication
+
+- Return a clear `429 Too Many Requests` response when an MCP API key reaches its request or usage limit, instead of reporting it as an expired key with `401 Unauthorized`.
+
 ## 0.2.2 - 2026-10-21
 
 ### Preview bundles

@@ -1,4 +1,4 @@
-import { body, requireSameOrigin } from '../apps/web/src/lib/server/route';
+import { apiKeyVerificationFailure, body, requireSameOrigin } from '../apps/web/src/lib/server/route';
 import { z } from 'zod';
 
 function check(condition: unknown, message: string) {
@@ -56,6 +56,9 @@ try {
   );
   const tooLarge = await body(new Request('http://openrive:3000/api/projects', { method: 'POST', body: '{"x":1}' }), z.object({}), 4);
   check(tooLarge.error?.status === 413, 'bounded JSON bodies must return 413 before parsing');
+  check(apiKeyVerificationFailure('RATE_LIMITED')?.status === 429, 'temporary MCP API key rate limits must return 429, not an authentication failure');
+  check(apiKeyVerificationFailure('USAGE_EXCEEDED')?.status === 429, 'exhausted MCP API key usage must return 429');
+  check(apiKeyVerificationFailure('KEY_EXPIRED') === null, 'expired API keys must remain authentication failures');
   console.log('Route origin and body-limit checks passed');
 } finally {
   for (const [name, value] of Object.entries(saved)) {

@@ -60,7 +60,8 @@ curl -sS -X POST https://openrive.example.com/api/mcp/keys \
 The response contains the secret once. Store it in the AI client and connect its Streamable HTTP transport to
 `https://openrive.example.com/api/mcp` with `Authorization: Bearer <key>`. Keys can be listed with `GET /api/mcp/keys`
 and revoked with `DELETE /api/mcp/keys` and `{"keyId":"…"}`. The key is hashed in PostgreSQL, rate-limited, and
-scoped to the account that created it.
+scoped to the account that created it. MCP API keys allow 120 requests per minute; rate-limited requests return
+`429 Too Many Requests`, which means to retry later and does not mean the key has expired.
 
 Remote clients send `.riv` bytes to `import_riv` as `dataBase64`; `export_riv` returns `dataBase64` when no local path
 is supplied. Remote MCP never accepts server filesystem paths. Cloud HTTP MCP is stateless by default, so requests can

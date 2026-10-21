@@ -18,7 +18,7 @@ import {
 import { getOrganizationMemberRole, listUsers } from '@openrive/db';
 import type { ProjectMeta } from '@openrive/shared';
 import { headers as nextHeaders } from 'next/headers';
-import { fail } from './route';
+import { apiKeyVerificationFailure, fail } from './route';
 
 export { auth, authEnabled, canEditProject, canManageProject, canShareProject, canSeeProject, canTransferProject, isAdmin, SESSION_COOKIE };
 export type { Account };
@@ -35,35 +35,44 @@ export async function currentUser(): Promise<Account | null> {
 }
 
 /** Resolves either a Better Auth session or a scoped Better Auth API key. */
-export async function currentUserFromHeaders(requestHeaders: Headers): Promise<Account | null> {
+type UserResolution = { user: Account; error?: never } | { user: null; error?: Response };
+
+async function resolveCurrentUserFromHeaders(requestHeaders: Headers): Promise<UserResolution> {
   const authorization = requestHeaders.get('authorization');
   if (authorization?.startsWith('Bearer ')) {
     const key = authorization.slice('Bearer '.length).trim();
-    if (!key) return null;
+    if (!key) return { user: null };
     const result = await (await auth()).api.verifyApiKey({
       body: { configId: 'mcp', key, permissions: { mcp: ['read', 'write'] } },
     });
-    if (!result.valid || !result.key) return null;
+    if (!result.valid || !result.key) {
+      const error = apiKeyVerificationFailure(result.error?.code);
+      return error ? { user: null, error } : { user: null };
+    }
     const account = await getAccount(result.key.referenceId);
-    if (!account || account.disabled || (emailVerificationRequired() && !account.emailVerified)) return null;
+    if (!account || account.disabled || (emailVerificationRequired() && !account.emailVerified)) return { user: null };
     const organizationId = requestHeaders.get('x-openrive-organization-id');
-    if (!organizationId) return account;
+    if (!organizationId) return { user: account };
     const role = await getOrganizationMemberRole(organizationId, account.id);
-    return role ? { ...account, activeOrganizationId: organizationId, activeOrganizationRole: role as Account['activeOrganizationRole'] } : account;
+    return { user: role ? { ...account, activeOrganizationId: organizationId, activeOrganizationRole: role as Account['activeOrganizationRole'] } : account };
   }
-  if (authEnabled()) return sessionUser(requestHeaders);
+  if (authEnabled()) return { user: await sessionUser(requestHeaders) };
   const users = await listUsers();
   const local = users.find((u) => isAdmin(u)) ?? users[0];
-  return local ? { ...local, email: null, emailVerified: false, disabled: false, lastLoginAt: null, hasPassword: false } : null;
+  return { user: local ? { ...local, email: null, emailVerified: false, disabled: false, lastLoginAt: null, hasPassword: false } : null };
+}
+
+export async function currentUserFromHeaders(requestHeaders: Headers): Promise<Account | null> {
+  return (await resolveCurrentUserFromHeaders(requestHeaders)).user;
 }
 
 export type Guard<T> = { user: Account; error?: never } | { user?: never; error: Response } | T;
 
 /** Requires a signed-in account. */
 export async function requireUser(): Promise<{ user: Account; error?: never } | { user?: never; error: Response }> {
-  const user = await currentUser();
-  if (!user) return { error: fail('Sign in to continue', 401) };
-  return { user };
+  const result = await resolveCurrentUserFromHeaders(await nextHeaders());
+  if (!result.user) return { error: result.error ?? fail('Sign in to continue', 401) };
+  return { user: result.user };
 }
 
 /** Requires an administrator. */
