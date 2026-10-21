@@ -46,11 +46,12 @@ async function resolveCurrentUserFromHeaders(requestHeaders: Headers): Promise<U
       body: { configId: 'mcp', key, permissions: { mcp: ['read', 'write'] } },
     });
     if (!result.valid || !result.key) {
-      const error = apiKeyVerificationFailure(result.error?.code);
-      return error ? { user: null, error } : { user: null };
+      const error = apiKeyVerificationFailure(result.error);
+      return { user: null, error: error ?? fail('MCP API key was rejected. Check that the full key is configured and has not been revoked.', 401) };
     }
     const account = await getAccount(result.key.referenceId);
-    if (!account || account.disabled || (emailVerificationRequired() && !account.emailVerified)) return { user: null };
+    if (!account || account.disabled) return { user: null, error: fail('The account associated with this MCP API key is disabled or unavailable.', 401) };
+    if (emailVerificationRequired() && !account.emailVerified) return { user: null, error: fail('Verify the account email address before using its MCP API key.', 403) };
     const organizationId = requestHeaders.get('x-openrive-organization-id');
     if (!organizationId) return { user: account };
     const role = await getOrganizationMemberRole(organizationId, account.id);

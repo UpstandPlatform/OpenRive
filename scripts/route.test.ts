@@ -1,4 +1,6 @@
 import { apiKeyVerificationFailure, body, requireSameOrigin } from '../apps/web/src/lib/server/route';
+import { proxy } from '../apps/web/src/proxy';
+import { NextRequest } from 'next/server';
 import { z } from 'zod';
 
 function check(condition: unknown, message: string) {
@@ -8,6 +10,7 @@ function check(condition: unknown, message: string) {
 const saved = {
   OPENRIVE_URL: process.env.OPENRIVE_URL,
   OPENRIVE_TRUSTED_ORIGINS: process.env.OPENRIVE_TRUSTED_ORIGINS,
+  OPENRIVE_ACCESS_TOKEN: process.env.OPENRIVE_ACCESS_TOKEN,
 };
 
 const request = (url: string, headers: Record<string, string>) => new Request(url, { headers });
@@ -57,8 +60,19 @@ try {
   const tooLarge = await body(new Request('http://openrive:3000/api/projects', { method: 'POST', body: '{"x":1}' }), z.object({}), 4);
   check(tooLarge.error?.status === 413, 'bounded JSON bodies must return 413 before parsing');
   check(apiKeyVerificationFailure('RATE_LIMITED')?.status === 429, 'temporary MCP API key rate limits must return 429, not an authentication failure');
+  const throttled = apiKeyVerificationFailure({ code: 'RATE_LIMITED', details: { tryAgainIn: 1_500 } });
+  check(throttled?.status === 429 && throttled.headers.get('retry-after') === '2', 'MCP throttling must carry a precise Retry-After header');
+  check((await throttled?.json() as { code?: string })?.code === 'MCP_API_KEY_RATE_LIMITED', 'throttling must have a stable machine-readable error code');
   check(apiKeyVerificationFailure('USAGE_EXCEEDED')?.status === 429, 'exhausted MCP API key usage must return 429');
-  check(apiKeyVerificationFailure('KEY_EXPIRED') === null, 'expired API keys must remain authentication failures');
+  const expired = apiKeyVerificationFailure('KEY_EXPIRED');
+  check(expired?.status === 401 && expired.headers.has('www-authenticate'), 'expired API keys must clearly identify an invalid bearer credential');
+  check((await expired?.json() as { code?: string })?.code === 'MCP_API_KEY_EXPIRED', 'expired API keys must expose a precise error code');
+
+  process.env.OPENRIVE_ACCESS_TOKEN = 'shared-server-password';
+  const bearerMcp = proxy(new NextRequest('https://openrive.example.com/api/mcp', { headers: { authorization: 'Bearer openrive_mcp_test' } }));
+  check(bearerMcp.status === 200, 'MCP bearer credentials must reach the endpoint verifier even when the shared Basic password is enabled');
+  const protectedPage = proxy(new NextRequest('https://openrive.example.com/editor/project'));
+  check(protectedPage.status === 401, 'the shared Basic password must still protect non-MCP routes');
   console.log('Route origin and body-limit checks passed');
 } finally {
   for (const [name, value] of Object.entries(saved)) {

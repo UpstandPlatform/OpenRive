@@ -18,7 +18,11 @@ import { importRiv } from '@openrive/rive/document';
   try {
   const tools = await client.listTools();
   console.log('tools:', tools.tools.length, tools.tools.map((t) => t.name).join(', '));
-  if (tools.tools.length !== 42) throw new Error(`Expected 42 MCP tools, found ${tools.tools.length}`);
+  if (tools.tools.length !== 50) throw new Error(`Expected 50 MCP tools, found ${tools.tools.length}`);
+  for (const name of ['apply_edit_plan', 'diagnose_project', 'render_preview', 'convert_vertex_type', 'add_clip', 'remove_clip', 'rename_event', 'remove_event']) {
+    if (!tools.tools.some((entry) => entry.name === name)) throw new Error(`Missing MCP tool ${name}`);
+  }
+  if (!tools.tools.find((entry) => entry.name === 'get_project')?.outputSchema) throw new Error('Read tools must advertise a structured result schema');
   const call = async (name: string, args: Record<string, unknown>) => {
     const r = (await client.callTool({ name, arguments: args })) as { content: { text: string }[]; isError?: boolean };
     if (r.isError) throw new Error(`${name}: ${r.content[0].text}`);
@@ -26,6 +30,25 @@ import { importRiv } from '@openrive/rive/document';
   };
   const created = JSON.parse(await call('create_project', { name: 'MCP Smoke Test' }));
   const p = created.id;
+  const plan = JSON.parse(await call('apply_edit_plan', {
+    project: p,
+    operations: [
+      { op: 'add_shape', kind: 'rectangle', name: 'Planned Shape', x: 80, y: 80, width: 40, height: 40, fill: '#5a91ff' },
+      { op: 'add_timeline', name: 'Planned Pulse', duration: 1 },
+      { op: 'add_keyframes', timeline: 'Planned Pulse', object: 'Planned Shape', property: 'scaleX', keys: [{ time: 0, value: 1 }, { time: 1, value: 1.2 }] },
+    ],
+  }));
+  if (!plan.saved || plan.operations.length !== 3) throw new Error('MCP edit plans did not save as a single successful batch');
+  const rejectedPlan = await client.callTool({ name: 'apply_edit_plan', arguments: {
+    project: p,
+    operations: [
+      { op: 'add_shape', kind: 'ellipse', name: 'Must Roll Back', x: 1, y: 1, width: 10, height: 10 },
+      { op: 'set_properties', object: 'No Such Object', properties: { opacity: 0.5 } },
+    ],
+  } }) as { isError?: boolean };
+  if (!rejectedPlan.isError) throw new Error('An invalid MCP edit plan should fail');
+  const rolledBackOutline = JSON.parse(await call('get_project', { project: p }));
+  if (rolledBackOutline.artboards[0].children.some((object: { name: string }) => object.name === 'Must Roll Back')) throw new Error('A failed MCP edit plan partially saved its earlier steps');
   await call('define_theme_color', { project: p, name: 'Brand', color: '#7c5cff' });
   await call('add_shape', { project: p, kind: 'ellipse', name: 'Dot', x: 250, y: 250, width: 120, height: 120 });
   const rootBone = JSON.parse(await call('add_bone', { project: p, name: 'Root', x: 80, y: 80, length: 60 }));
@@ -35,6 +58,7 @@ import { importRiv } from '@openrive/rive/document';
   const riggingOutline = JSON.parse(await call('get_project', { project: p }));
   const rigVertex = riggingOutline.artboards[0].children.find((object: { id: string }) => object.id === rigPath.id)?.children.find((object: { id: string }) => object.id === rigPath.pathId)?.vertices[0]?.id;
   if (typeof rigVertex !== 'string') throw new Error('MCP did not bind path vertices.');
+  await call('convert_vertex_type', { project: p, vertex: rigVertex, type: 'CubicDetachedVertex' });
   await call('set_skin_weights', { project: p, vertex: rigVertex, influences: [{ index: 1, weight: 0.75 }, { index: 2, weight: 0.25 }], channel: 'point' });
   await call('auto_weight_skin', { project: p, path: rigPath.pathId });
   await call('smooth_skin_weights', { project: p, path: rigPath.pathId });
@@ -66,8 +90,14 @@ import { importRiv } from '@openrive/rive/document';
   await call('add_event', { project: p, name: 'Activated', properties: [{ name: 'source', type: 'string', value: 'pointer' }] });
   await call('add_listener', { project: p, stateMachine: 'Interact', target: 'Dot', event: 'click', actions: [{ fireEvent: 'Activated' }] });
   await call('add_listener', { project: p, stateMachine: 'Interact', target: 'Dot', event: 'rive', eventName: 'Activated', actions: [{ property: 'isHover', value: true }] });
+  await call('rename_event', { project: p, event: 'Activated', name: 'Selected' });
+  await call('remove_event', { project: p, event: 'Selected' });
   await call('add_blend_state', { project: p, stateMachine: 'Interact', animations: [{ animation: 'Pulse', value: 0 }] });
   await call('add_shape', { project: p, kind: 'rectangle', name: 'Anchor', x: 100, y: 250, width: 40, height: 40 });
+  const clip = JSON.parse(await call('add_clip', { project: p, object: 'Dot', source: 'Anchor' }));
+  if (!clip.id) throw new Error('MCP could not add a clipping mask');
+  const removedClip = JSON.parse(await call('remove_clip', { project: p, object: 'Dot', clipId: clip.id }));
+  if (removedClip.removed !== 1) throw new Error('MCP could not remove a clipping mask');
   await call('add_distance_constraint', { project: p, object: 'Dot', target: 'Anchor', distance: 100, mode: 'exact', strength: 0.8 });
   const converted = JSON.parse(await call('convert_inputs_to_data_binding', { project: p }));
   console.log('converted inputs:', JSON.stringify(converted));
@@ -80,12 +110,25 @@ import { importRiv } from '@openrive/rive/document';
   const artboard = outline.artboards[0];
   const interactive = artboard.stateMachines.find((machine: { name: string }) => machine.name === 'Interact');
   const states = interactive?.layers.flatMap((layer: { states: { type: string }[] }) => layer.states) ?? [];
-  if (!artboard.events.some((event: { name: string }) => event.name === 'Activated')) throw new Error('MCP event authoring was missing from project inspection');
+  if (artboard.events.some((event: { name: string }) => event.name === 'Selected' || event.name === 'Activated')) throw new Error('MCP event removal did not clear the event');
   if (!states.some((state: { type: string }) => state.type === 'BlendState1DInput')) throw new Error('MCP blend-state authoring was missing from project inspection');
   if (!artboard.children.find((object: { name: string }) => object.name === 'Dot')?.constraints?.some((constraint: { type: string }) => constraint.type === 'DistanceConstraint')) throw new Error('MCP constraint authoring was missing from project inspection');
   console.log('blend states:', JSON.stringify(states));
   console.log('inputs left:', JSON.stringify(outline.artboards[0].stateMachines.map((m: { name: string; inputs: unknown[] }) => `${m.name}:${m.inputs.length}`)));
   console.log('outline:', JSON.stringify(outline.artboards[0].children), JSON.stringify(outline.themeColors));
+  const health = JSON.parse(await call('diagnose_project', { project: p }));
+  if (!health.valid || health.roundTripsByteIdentically !== true) throw new Error('MCP project diagnostics did not report a clean byte-identical file');
+  const preview = await client.callTool({ name: 'render_preview', arguments: { project: p, artboard: '0', animation: 'Pulse', time: 0.25 } }) as {
+    content: { type: string; text?: string; data?: string; mimeType?: string }[];
+    structuredContent?: { width?: number; height?: number; project?: string };
+    isError?: boolean;
+  };
+  if (preview.isError) throw new Error(`MCP render_preview failed: ${preview.content.find((item) => item.text)?.text}`);
+  const image = preview.content.find((item) => item.type === 'image');
+  if (!image || image.mimeType !== 'image/png' || !image.data || !Buffer.from(image.data, 'base64').subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
+    throw new Error('MCP render_preview did not return a PNG image');
+  }
+  if (!preview.structuredContent?.width || !preview.structuredContent.height) throw new Error('MCP preview is missing structured dimensions');
   const out = path.join(outputDirectory, 'mcp-smoke.riv');
   console.log(await call('export_riv', { project: p, path: out }));
   const back = importRiv(new Uint8Array(readFileSync(out)));

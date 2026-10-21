@@ -12,13 +12,16 @@ import { fileURLToPath } from 'node:url';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import * as api from '@openrive/rive/api';
 import { exportRiv, importRiv, type RiveDoc } from '@openrive/rive/document';
+import { diagnoseRiv } from '@openrive/rive/diagnostics';
 import { fromBase64, toBase64 } from '@openrive/shared/serialize';
 import { MAX_RIV_BASE64_CHARS, type ProjectMeta } from '@openrive/shared';
 import { env } from '@openrive/shared/env';
 import { addTheme, applyTheme, setSwatchColor } from '@openrive/rive/theme';
 import { closeProjectStore, createProject, deleteProject, edit, EXAMPLES, importFile, importBytes, loadDoc, loadFont, resolveProject, storage, TEMPLATES } from './project-store';
+import { renderRiveFrame } from './rive-render';
 
 export interface McpServerOptions {
   /** User that owns newly created/imported projects for authenticated HTTP sessions. */
@@ -42,7 +45,7 @@ const server = new McpServer(
   {
     instructions: [
       'Tools for creating and editing Rive (.riv) animation files stored by OpenRive.',
-      'Workflow: list_projects or create_project, then get_project to see the structure (ids, names, timelines, state machines).',
+      'Workflow: list_projects or create_project, inspect with get_project, make related edits together with apply_edit_plan, then run diagnose_project and render_preview to check the result.',
       'Objects, artboards, timelines and state machines can be referenced by id or by name.',
       'Coordinates are in artboard pixels with (0,0) at the top-left; shapes are positioned by their center.',
       'Colors are CSS strings (#rrggbb or #rrggbbaa). Rotation uses rotationDegrees.',
@@ -51,16 +54,24 @@ const server = new McpServer(
       'Use data binding properties (add_property), not state machine inputs: Rive deprecated inputs, and runtimes read and write properties without deprecation warnings.',
       'Files that still have inputs can be migrated in one step with convert_inputs_to_data_binding.',
       'Theme colors: define_theme_color once, use_theme_color on shapes/text; add_theme + switch_theme recolors everything.',
-      'The user can open http://localhost:3000/editor/<id> to see results; edits appear live in an open editor.',
+      'Use the editor URL returned by project tools; do not assume a localhost address. Edits appear live in an open editor.',
+      'Read-only inspection tools return structured results as well as readable text. render_preview also returns a PNG image block when the client supports images.',
+      'apply_edit_plan runs up to 100 supported operations in one save. If any operation fails, the whole plan is discarded; use names or ids created earlier in the same plan for later references.',
     ].join('\n'),
   },
 );
 
-const ok = (data: unknown) => ({ content: [{ type: 'text' as const, text: typeof data === 'string' ? data : JSON.stringify(data, null, 2) }] });
+const ok = (data: unknown) => ({
+  content: [{ type: 'text' as const, text: typeof data === 'string' ? data : JSON.stringify(data, null, 2) }],
+  structuredContent: { result: data },
+});
 const fail = (e: unknown) => ({ content: [{ type: 'text' as const, text: `Error: ${(e as Error).message}` }], isError: true });
 
-function tool<S extends z.ZodRawShape>(name: string, description: string, shape: S, run: (args: z.infer<z.ZodObject<S>>) => Promise<unknown> | unknown) {
-  server.registerTool(name, { description, inputSchema: shape }, (async (args: z.infer<z.ZodObject<S>>) => {
+const readOnlyAnnotations: ToolAnnotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
+const destructiveAnnotations: ToolAnnotations = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false };
+
+function tool<S extends z.ZodRawShape>(name: string, description: string, shape: S, run: (args: z.infer<z.ZodObject<S>>) => Promise<unknown> | unknown, annotations?: ToolAnnotations) {
+  server.registerTool(name, { description, inputSchema: shape, outputSchema: { result: z.unknown() }, ...(annotations ? { annotations } : {}) }, (async (args: z.infer<z.ZodObject<S>>) => {
     try {
       return ok(await run(args));
     } catch (e) {
@@ -102,7 +113,7 @@ async function editAuthorized<T>(ref: string, fn: (doc: RiveDoc) => T) {
 // ---------------------------------------------------------------------------
 // Projects
 
-tool('list_projects', 'List all local Rive projects.', {}, async () =>
+tool('list_projects', 'List projects available to this connection.', {}, async () =>
   (await storage.listProjects()).filter((p) => options.canSeeProject?.(p) ?? true).map((p) => ({
     id: p.id,
     name: p.name,
@@ -111,12 +122,13 @@ tool('list_projects', 'List all local Rive projects.', {}, async () =>
     timelines: p.animations,
     stateMachines: p.stateMachines,
   })),
+  readOnlyAnnotations,
 );
 
 tool('list_templates', 'List starter templates and example files that create_project can use.', {}, () => [
   ...TEMPLATES.map((t) => ({ id: t.id, name: t.name, description: t.description, teaches: t.learn })),
   ...EXAMPLES.map((e) => ({ id: e.id, name: e.name, description: e.description, teaches: e.learn, example: true })),
-]);
+], readOnlyAnnotations);
 
 tool(
   'create_project',
@@ -129,11 +141,11 @@ tool(
   },
 );
 
-tool('delete_project', 'Permanently delete a project from disk.', { project }, async ({ project: ref }) => {
+tool('delete_project', 'Permanently delete a project and its stored file. This cannot be undone.', { project }, async ({ project: ref }) => {
   const meta = await authorized(ref, 'manage');
   await deleteProject(meta.id);
   return `Deleted ${meta.name} (${meta.id})`;
-});
+}, destructiveAnnotations);
 
 tool(
   'get_project',
@@ -143,6 +155,7 @@ tool(
     const { meta, doc } = await loadAuthorized(ref);
     return { id: meta.id, name: meta.name, editor: url(meta.id), ...api.outline(doc) };
   },
+  readOnlyAnnotations,
 );
 
 tool(
@@ -181,7 +194,58 @@ tool('inspect_riv', 'Describe a .riv file. Use dataBase64 for HTTP MCP; path is 
   if (!!p === !!dataBase64) throw new Error('Provide exactly one of path or dataBase64');
   if (p && !options.allowFilePaths) throw new Error('Filesystem paths are not available through HTTP MCP; send dataBase64');
   return api.outline(importRiv(p ? new Uint8Array(readFileSync(p)) : fromBase64(dataBase64!)));
-});
+}, readOnlyAnnotations);
+
+tool(
+  'diagnose_project',
+  'Check a project’s exported .riv for broken references, missing assets, unsupported features and byte-identical round-trip safety. Run after substantial edits and fix error-level diagnostics before delivery.',
+  { project },
+  async ({ project: ref }) => {
+    const { meta, doc } = await loadAuthorized(ref);
+    return { project: meta.name, id: meta.id, ...diagnoseRiv(exportRiv(doc)) };
+  },
+  readOnlyAnnotations,
+);
+
+server.registerTool(
+  'render_preview',
+  {
+    description: 'Render a project artboard to a PNG so you can inspect visual results. Select an animation and time to preview a frame. The software renderer supports vector files; image assets, meshes and feathering require the CLI browser renderer.',
+    inputSchema: {
+      project,
+      artboard: artboard.describe('Artboard id or name (default: first artboard)'),
+      animation: z.string().optional().describe('Timeline id, name or index; omit for a static frame'),
+      time: z.number().min(0).default(0).describe('Seconds into the selected timeline'),
+      scale: z.number().positive().max(2).default(1).describe('Output scale, up to 2×'),
+    },
+    outputSchema: { project: z.string(), artboard: z.string(), width: z.number(), height: z.number(), time: z.number() },
+    annotations: readOnlyAnnotations,
+  },
+  async ({ project: ref, artboard: artboardRef, animation, time, scale }) => {
+    try {
+      const { meta, doc } = await loadAuthorized(ref);
+      const frame = await renderRiveFrame(doc, { artboard: artboardRef, animation, time, scale, maxPixels: 4_000_000 });
+      const selectedArtboard = doc.artboards[frame.artboardIndex];
+      if (!selectedArtboard) throw new Error('The project has no artboards to render');
+      const result = {
+        project: meta.name,
+        artboard: String(selectedArtboard.artboard.props.name || 'Artboard'),
+        width: frame.width,
+        height: frame.height,
+        time,
+      };
+      return {
+        content: [
+          { type: 'text' as const, text: JSON.stringify(result, null, 2) },
+          { type: 'image' as const, data: Buffer.from(frame.png).toString('base64'), mimeType: 'image/png' },
+        ],
+        structuredContent: result,
+      };
+    } catch (error) {
+      return fail(error);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Design
@@ -300,7 +364,38 @@ tool(
 tool('delete_objects', 'Delete objects (and their children and keyframes).', { project, objects: z.array(z.string()) }, async ({ project: ref, objects }) => {
   await editAuthorized(ref, (doc) => api.deleteObjectsByRef(doc, objects));
   return `Deleted ${objects.length} object(s)`;
-});
+}, destructiveAnnotations);
+
+tool(
+  'convert_vertex_type',
+  'Convert a path vertex between straight and cubic handle types while preserving skin weights.',
+  { project, artboard, vertex: z.string().describe('Path vertex id or name'), type: z.enum(['StraightVertex', 'CubicMirroredVertex', 'CubicAsymmetricVertex', 'CubicDetachedVertex']) },
+  async ({ project: ref, ...input }) => {
+    const { result } = await editAuthorized(ref, (doc) => api.convertVertexType(doc, input));
+    return { id: result.id, type: result.type };
+  },
+);
+
+tool(
+  'add_clip',
+  'Clip an object and its children to another shape on the same artboard. The mask shape must be outside the clipped object.',
+  { project, artboard, object: z.string().describe('Object id or name to clip'), source: z.string().describe('Mask shape id or name') },
+  async ({ project: ref, ...input }) => {
+    const { result } = await editAuthorized(ref, (doc) => api.addClip(doc, input));
+    return { id: result.id, object: result.props.parentId, source: result.props.sourceId };
+  },
+);
+
+tool(
+  'remove_clip',
+  'Remove one clip mask or every mask from an object.',
+  { project, artboard, object: z.string().describe('Clipped object id or name'), clipId: z.string().optional().describe('Specific clipping shape id; omit to remove every mask') },
+  async ({ project: ref, ...input }) => {
+    const { result } = await editAuthorized(ref, (doc) => api.removeClip(doc, input));
+    return { removed: result };
+  },
+  destructiveAnnotations,
+);
 
 // ---------------------------------------------------------------------------
 // Animation
@@ -351,6 +446,119 @@ tool(
     const { result } = await editAuthorized(ref, (doc) => api.addKeyframes(doc, { ...k, animation: timeline }));
     return `Added ${result.length} keyframe(s)`;
   },
+);
+
+const planEase = z.union([
+  z.enum(['hold', 'linear', 'easeInOut', 'easeIn', 'easeOut', 'easeOutBack', 'easeInBack']),
+  z.tuple([z.number(), z.number(), z.number(), z.number()]),
+]);
+const planOperation = z.discriminatedUnion('op', [
+  z.object({ op: z.literal('add_artboard'), name: z.string().optional(), width: z.number().default(500), height: z.number().default(500), background: color.optional() }),
+  z.object({ op: z.literal('add_shape'), artboard, parent: z.string().optional(), kind: z.enum(['rectangle', 'ellipse', 'triangle', 'polygon', 'star']), name: z.string().optional(), x: z.number(), y: z.number(), width: z.number(), height: z.number(), fill: color.optional(), noFill: z.boolean().optional(), stroke: color.optional(), strokeWidth: z.number().optional(), cornerRadius: z.number().optional(), points: z.number().optional(), innerRadius: z.number().optional(), rotation: z.number().optional() }),
+  z.object({ op: z.literal('add_path'), artboard, parent: z.string().optional(), name: z.string().optional(), x: z.number().optional(), y: z.number().optional(), points: z.array(z.object({ x: z.number(), y: z.number(), inX: z.number().optional(), inY: z.number().optional(), outX: z.number().optional(), outY: z.number().optional() })), closed: z.boolean().default(true), fill: color.optional(), stroke: color.optional(), strokeWidth: z.number().optional() }),
+  z.object({ op: z.literal('add_text'), artboard, parent: z.string().optional(), text: z.string(), x: z.number(), y: z.number(), fontSize: z.number().optional(), color: color.optional(), name: z.string().optional(), width: z.number().optional(), align: z.enum(['left', 'center', 'right']).optional(), origin: z.enum(['topLeft', 'center']).optional(), bold: z.boolean().optional() }),
+  z.object({ op: z.literal('add_group'), artboard, parent: z.string().optional(), name: z.string().optional(), x: z.number().optional(), y: z.number().optional() }),
+  z.object({ op: z.literal('set_properties'), object: z.string(), properties: z.record(z.string(), z.unknown()) }),
+  z.object({ op: z.literal('delete_objects'), objects: z.array(z.string()).min(1) }),
+  z.object({ op: z.literal('add_timeline'), artboard, name: z.string(), duration: z.number().optional(), fps: z.number().optional(), loop: z.enum(['oneShot', 'loop', 'pingPong']).optional(), speed: z.number().optional() }),
+  z.object({ op: z.literal('add_keyframes'), artboard, timeline: z.string(), object: z.string(), property: z.string(), keys: z.array(z.object({ frame: z.number().optional(), time: z.number().optional(), value: z.union([z.number(), z.string(), z.boolean()]).optional(), themeColor: z.string().optional(), ease: planEase.optional() })).min(1) }),
+  z.object({ op: z.literal('add_state_machine'), artboard, name: z.string() }),
+  z.object({ op: z.literal('add_property'), artboard, type: z.enum(['number', 'boolean', 'trigger', 'string', 'color']), name: z.string(), value: z.union([z.number(), z.boolean(), z.string()]).optional() }),
+  z.object({ op: z.literal('set_property_value'), artboard, property: z.string(), value: z.union([z.number(), z.boolean(), z.string()]) }),
+  z.object({ op: z.literal('add_state'), artboard, stateMachine: z.string().optional(), timeline: z.string(), layer: z.string().optional() }),
+  z.object({ op: z.literal('add_transition'), artboard, stateMachine: z.string().optional(), layer: z.string().optional(), from: z.string(), to: z.string(), durationMs: z.number().optional(), exitTimeMs: z.number().optional(), conditions: z.array(z.object({ property: z.string().optional(), input: z.string().optional(), op: z.enum(['==', '!=', '<', '<=', '>', '>=']).optional(), value: z.union([z.number(), z.boolean(), z.string()]).optional() })).optional() }),
+  z.object({ op: z.literal('add_event'), artboard, name: z.string(), properties: z.array(z.object({ name: z.string(), type: z.enum(['number', 'boolean', 'string', 'color']), value: z.union([z.number(), z.boolean(), z.string()]).optional() })).optional() }),
+]);
+
+tool(
+  'apply_edit_plan',
+  'Apply a sequence of up to 100 design, animation and interaction operations with one project save. All operations succeed together or none are saved. Within the plan, later steps can reference objects and timelines by the names assigned in earlier steps.',
+  { project, operations: z.array(planOperation).min(1).max(100) },
+  async ({ project: ref, operations }) => {
+    const { result } = await editAuthorized(ref, (doc) => operations.map((operation, index) => {
+      try {
+        switch (operation.op) {
+          case 'add_artboard': {
+            const created = api.addArtboard(doc, operation);
+            return { index, op: operation.op, id: created.id, name: created.artboard.props.name };
+          }
+          case 'add_shape': {
+            const { op: _, noFill, ...input } = operation;
+            const created = api.addShape(doc, { ...input, fill: noFill ? null : input.fill });
+            return { index, op: operation.op, id: created.id, name: created.props.name };
+          }
+          case 'add_path': {
+            const { op: _, ...input } = operation;
+            const created = api.addPath(doc, input);
+            const { ab } = api.getObject(doc, created.id, input.artboard);
+            const path = ab.objects.find((object) => object.type === 'PointsPath' && object.props.parentId === created.id);
+            if (!path) throw new Error('The new path could not be located');
+            return { index, op: operation.op, id: created.id, name: created.props.name, pathId: path.id };
+          }
+          case 'add_text': {
+            const { op: _, bold, ...input } = operation;
+            const created = api.addText(doc, { ...input, font: loadFont(bold ? 'Inter Bold' : 'Inter') });
+            return { index, op: operation.op, id: created.id, name: created.props.name };
+          }
+          case 'add_group': {
+            const { op: _, ...input } = operation;
+            const created = api.addGroup(doc, input);
+            return { index, op: operation.op, id: created.id, name: created.props.name };
+          }
+          case 'set_properties':
+            api.setProperties(doc, operation.object, operation.properties);
+            return { index, op: operation.op, object: operation.object, updated: Object.keys(operation.properties) };
+          case 'delete_objects':
+            api.deleteObjectsByRef(doc, operation.objects);
+            return { index, op: operation.op, deleted: operation.objects.length };
+          case 'add_timeline': {
+            const { op: _, ...input } = operation;
+            const created = api.addAnimation(doc, input);
+            return { index, op: operation.op, id: created.id, name: created.props.name };
+          }
+          case 'add_keyframes': {
+            const { op: _, timeline, ...input } = operation;
+            const created = api.addKeyframes(doc, { ...input, animation: timeline });
+            return { index, op: operation.op, count: created.length };
+          }
+          case 'add_state_machine': {
+            const { op: _, ...input } = operation;
+            const created = api.addStateMachine(doc, input);
+            return { index, op: operation.op, id: created.id, name: created.props.name };
+          }
+          case 'add_property': {
+            const { op: _, ...input } = operation;
+            const created = api.addDataProperty(doc, { ...input, value: input.type === 'color' && typeof input.value === 'string' ? api.parseColor(input.value) : input.value });
+            return { index, op: operation.op, id: created.obj.id, name: created.name, type: created.type };
+          }
+          case 'set_property_value': {
+            const { op: _, ...input } = operation;
+            api.setDataProperty(doc, { ...input, value: typeof input.value === 'string' && /^#[0-9a-f]{3,8}$/i.test(input.value) ? api.parseColor(input.value) : input.value });
+            return { index, op: operation.op, property: input.property };
+          }
+          case 'add_state': {
+            const { op: _, timeline, ...input } = operation;
+            const created = api.addState(doc, { ...input, animation: timeline });
+            return { index, op: operation.op, id: created.id };
+          }
+          case 'add_transition': {
+            const { op: _, ...input } = operation;
+            const created = api.addTransition(doc, input);
+            return { index, op: operation.op, id: created.id };
+          }
+          case 'add_event': {
+            const { op: _, ...input } = operation;
+            const created = api.addEvent(doc, input);
+            return { index, op: operation.op, id: created.id, name: created.props.name };
+          }
+        }
+      } catch (error) {
+        throw new Error(`Operation ${index + 1} (${operation.op}) failed; the plan was not saved: ${(error as Error).message}`);
+      }
+    }));
+    return { saved: true, operations: result };
+  },
+  { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
 );
 
 // ---------------------------------------------------------------------------
@@ -558,6 +766,27 @@ tool(
     const { result } = await editAuthorized(ref, (doc) => api.addEvent(doc, event));
     return { id: result.id, name: result.props.name };
   },
+);
+
+tool(
+  'rename_event',
+  'Rename a custom event, keeping its artboard event names unique.',
+  { project, artboard, event: z.string().describe('Event id or name'), name: z.string() },
+  async ({ project: ref, event, name, artboard: artboardRef }) => {
+    const { result } = await editAuthorized(ref, (doc) => api.renameEvent(doc, event, name, artboardRef));
+    return { id: result.id, name: result.props.name };
+  },
+);
+
+tool(
+  'remove_event',
+  'Remove a custom event and its event payload properties and state-machine listeners/actions.',
+  { project, artboard, event: z.string().describe('Event id or name') },
+  async ({ project: ref, event, artboard: artboardRef }) => {
+    await editAuthorized(ref, (doc) => api.removeEvent(doc, event, artboardRef));
+    return { removed: event };
+  },
+  destructiveAnnotations,
 );
 
 tool(

@@ -808,14 +808,16 @@ where py.exe >nul 2>&1\r
 if not errorlevel 1 goto use_py\r
 where python.exe >nul 2>&1\r
 if not errorlevel 1 goto use_python\r
-echo Python 3 is required to start this preview. Install Python, then try again.\r
-pause\r
-exit /b 1\r
+goto use_powershell\r
 :use_py\r
 py -3 "%~dp0serve.py"\r
-exit /b %errorlevel%\r
+if not errorlevel 1 exit /b 0\r
+goto use_powershell\r
 :use_python\r
 python "%~dp0serve.py"\r
+if not errorlevel 1 exit /b 0\r
+:use_powershell\r
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0start-preview.ps1"\r
 exit /b %errorlevel%\r
 `;
 
@@ -850,6 +852,80 @@ if __name__ == "__main__":
             print("\\nPreview server stopped.", flush=True)
 `;
 
+const POWERSHELL_SERVER = `param([switch]$NoBrowser)
+$ErrorActionPreference = 'Stop'
+$rootPath = [System.IO.Path]::GetFullPath($PSScriptRoot)
+$rootPrefix = $rootPath.TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+$listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+$listener.Start()
+$port = ([System.Net.IPEndPoint]$listener.LocalEndpoint).Port
+$url = "http://127.0.0.1:$port/"
+$crlf = [char]13 + [char]10
+$types = @{
+  '.html' = 'text/html; charset=utf-8'
+  '.css' = 'text/css; charset=utf-8'
+  '.js' = 'text/javascript; charset=utf-8'
+  '.mjs' = 'text/javascript; charset=utf-8'
+  '.wasm' = 'application/wasm'
+  '.riv' = 'application/octet-stream'
+  '.json' = 'application/json; charset=utf-8'
+}
+Write-Host "Preview: $url (press Ctrl+C to stop)"
+if (-not $NoBrowser) { Start-Process $url }
+try {
+  while ($true) {
+    $client = $listener.AcceptTcpClient()
+    try {
+      $stream = $client.GetStream()
+      $reader = [System.IO.StreamReader]::new($stream, [System.Text.Encoding]::ASCII, $false, 1024, $true)
+      $requestLine = $reader.ReadLine()
+      if (-not $requestLine) { continue }
+      $headerLine = $reader.ReadLine()
+      while ($null -ne $headerLine -and $headerLine -ne '') { $headerLine = $reader.ReadLine() }
+      $parts = $requestLine.Split(' ', 3)
+      $method = $parts[0]
+      $status = '200 OK'
+      $contentType = 'application/octet-stream'
+      $body = [byte[]]@()
+      if ($parts.Length -lt 2 -or ($method -ne 'GET' -and $method -ne 'HEAD')) {
+        $status = '405 Method Not Allowed'
+        $contentType = 'text/plain; charset=utf-8'
+        $body = [System.Text.Encoding]::UTF8.GetBytes('Only GET and HEAD are supported.')
+      } else {
+        $requestUri = [System.Uri]::new("http://127.0.0.1$($parts[1])")
+        $relative = [System.Uri]::UnescapeDataString($requestUri.AbsolutePath.TrimStart('/')).Replace('/', [System.IO.Path]::DirectorySeparatorChar)
+        if (-not $relative) { $relative = 'index.html' }
+        $filePath = [System.IO.Path]::GetFullPath([System.IO.Path]::Combine($rootPath, $relative))
+        if (-not $filePath.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+          $status = '403 Forbidden'
+          $contentType = 'text/plain; charset=utf-8'
+          $body = [System.Text.Encoding]::UTF8.GetBytes('Forbidden')
+        } elseif (-not [System.IO.File]::Exists($filePath)) {
+          $status = '404 Not Found'
+          $contentType = 'text/plain; charset=utf-8'
+          $body = [System.Text.Encoding]::UTF8.GetBytes('Not found')
+        } else {
+          $extension = [System.IO.Path]::GetExtension($filePath).ToLowerInvariant()
+          if ($types.ContainsKey($extension)) { $contentType = $types[$extension] }
+          if ($method -eq 'GET') { $body = [System.IO.File]::ReadAllBytes($filePath) }
+        }
+      }
+      $header = "HTTP/1.1 $status\${crlf}Content-Type: $contentType\${crlf}Content-Length: $($body.Length)\${crlf}Connection: close\${crlf}X-Content-Type-Options: nosniff\${crlf}\${crlf}"
+      $headerBytes = [System.Text.Encoding]::ASCII.GetBytes($header)
+      $stream.Write($headerBytes, 0, $headerBytes.Length)
+      if ($body.Length -gt 0) { $stream.Write($body, 0, $body.Length) }
+      $stream.Flush()
+    } catch {
+      Write-Warning $_.Exception.Message
+    } finally {
+      $client.Close()
+    }
+  }
+} finally {
+  $listener.Stop()
+}
+`;
+
 function indexHtml(manifest: BundleManifest) {
   const title = manifest.name.replace(/[<>&]/g, '');
   return `<!doctype html>
@@ -865,7 +941,7 @@ function indexHtml(manifest: BundleManifest) {
       <h1>Open this bundle over localhost</h1>
       <p>Browsers block the preview's JavaScript module and animation file when this page is opened directly from <code>file://</code>.</p>
       <ul>
-        <li>On Windows, double-click <code>start-preview.bat</code> in this folder.</li>
+        <li>On Windows, double-click <code>start-preview.bat</code> in this folder (it uses Python 3 if installed, then falls back to built-in PowerShell).</li>
         <li>On macOS or Linux, run <code>python3 serve.py</code> from this folder.</li>
       </ul>
       <p>If this bundle uses the Rive runtime from CDN, it also needs an internet connection.</p>
@@ -909,7 +985,7 @@ Exported from OpenRive. Everything needed to play \`${manifest.file}\` in a brow
 
 ## Run it
 
-Browsers block module and \`fetch\` loads from \`file://\`. On Windows, double-click \`start-preview.bat\`; it starts a local server and opens the preview in your browser. Python 3 must be installed, and the server window needs to stay open while you use the preview.
+Browsers block module and \`fetch\` loads from \`file://\`. On Windows, double-click \`start-preview.bat\`; it starts a local server and opens the preview in your browser. It uses Python 3 when available and falls back to built-in PowerShell, so no separate server install is required. Keep the server window open while you use the preview.
 
 On macOS or Linux, run the included local server from this folder:
 
@@ -929,6 +1005,7 @@ state machine pickers, inputs, data bound properties and an event log.
 | \`styles.css\` | Styling for the preview UI |
 | \`${manifest.file}\` | The animation |
 | \`start-preview.bat\` | Windows launcher for the local preview server |
+| \`start-preview.ps1\` | PowerShell fallback for Windows machines without Python 3 |
 | \`serve.py\` | Local server with the correct JavaScript and WASM content types |
 ${manifest.runtime === 'offline' ? '| `runtime/` | The Rive WASM runtime |\n' : ''}
 ## Scenes
@@ -964,7 +1041,7 @@ function packageJson(manifest: BundleManifest) {
       description: `Standalone Rive preview for ${manifest.name}, exported from OpenRive`,
       main: 'index.js',
       scripts: { start: 'npx --yes serve .' },
-      files: ['index.html', 'index.js', 'styles.css', 'start-preview.bat', 'serve.py', manifest.file, ...(manifest.runtime === 'offline' ? ['runtime'] : [])],
+      files: ['index.html', 'index.js', 'styles.css', 'start-preview.bat', 'start-preview.ps1', 'serve.py', manifest.file, ...(manifest.runtime === 'offline' ? ['runtime'] : [])],
     },
     null,
     2,
@@ -981,6 +1058,7 @@ export function bundleFiles(opts: BundleOptions): BundleFile[] {
     textFile('README.md', readme(manifest)),
     textFile('package.json', packageJson(manifest)),
     textFile('start-preview.bat', WINDOWS_LAUNCHER),
+    textFile('start-preview.ps1', POWERSHELL_SERVER),
     textFile('serve.py', PYTHON_SERVER),
     { name: manifest.file, data: opts.riv },
   ];

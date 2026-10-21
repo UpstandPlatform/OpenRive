@@ -1,10 +1,8 @@
 // Non-interactive commands. `openrive` with no arguments opens the TUI instead.
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { createCanvas, ImageData, Path2D } from '@napi-rs/canvas';
-import initRive from '@rive-app/canvas-advanced';
 import { renderInBrowser } from './browser-render';
+import { renderRiveFrame } from './rive-render';
 import { assetBytes, fileAssets } from '@openrive/rive/assets';
 import { authEnabled, createAccount, deleteAccountAndTransferProjects, listAccounts, passwordProblem, updateAccount } from '@openrive/auth';
 import { deleteLocalUserAndTransferProjects, importLegacyDataDir } from '@openrive/db';
@@ -359,41 +357,9 @@ export async function render(args: string[], opts: Options) {
     console.log(`Rendered ${output} (${width}×${height}, local browser)`);
     return;
   }
-  const runtimeDir = path.dirname(fileURLToPath(import.meta.resolve('@rive-app/canvas-advanced')));
-  if (typeof globalThis.ImageData === 'undefined') Object.defineProperty(globalThis, 'ImageData', { value: ImageData });
-  if (typeof globalThis.Path2D === 'undefined') Object.defineProperty(globalThis, 'Path2D', { value: Path2D });
-  const wasmBinary = Uint8Array.from(readFileSync(path.join(runtimeDir, 'rive.wasm'))).buffer as ArrayBuffer;
-  const rive = await initRive({ wasmBinary, locateFile: (file) => path.join(runtimeDir, file === 'canvas_advanced.wasm' ? 'rive.wasm' : file) });
-  const canvas = createCanvas(width, height);
-  let file: Awaited<ReturnType<typeof rive.load>> | null = null;
-  let artboard: ReturnType<Awaited<ReturnType<typeof rive.load>>['artboardByIndex']> | null = null;
-  let renderer: ReturnType<typeof rive.makeRenderer> | null = null;
-  let animation: InstanceType<typeof rive.LinearAnimationInstance> | null = null;
-  try {
-    file = await rive.load(exportRiv(doc), undefined, false);
-    artboard = file.artboardByIndex(artboardIndex);
-    renderer = rive.makeRenderer(canvas as unknown as HTMLCanvasElement);
-    animation = animationIndex >= 0 ? new rive.LinearAnimationInstance(artboard.animationByIndex(animationIndex), artboard) : null;
-    renderer.clear();
-    if (animation) {
-      animation.time = time;
-      animation.apply(1);
-    }
-    artboard.advance(0);
-    renderer.save();
-    (renderer as unknown as { transform: (...values: number[]) => void }).transform(scale, 0, 0, scale, 0, 0);
-    artboard.draw(renderer);
-    renderer.restore();
-    // The canvas runtime queues drawing commands until the animation frame resolves.
-    rive.resolveAnimationFrame();
-    writeFileSync(output, canvas.toBuffer('image/png'));
-    console.log(`Rendered ${output} (${width}×${height})`);
-  } finally {
-    animation?.delete();
-    artboard?.delete();
-    (renderer as { delete?: () => void }).delete?.();
-    file?.unref?.();
-  }
+  const frame = await renderRiveFrame(doc, { artboard: artboardRef, animation: animationRef || undefined, time, scale, maxPixels: 64_000_000 });
+  writeFileSync(output, frame.png);
+  console.log(`Rendered ${output} (${width}×${height})`);
 }
 
 function diagnoseSource(bytes: Uint8Array) {

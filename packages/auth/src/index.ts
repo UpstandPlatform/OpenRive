@@ -449,7 +449,10 @@ async function build() {
         requireName: true,
         enableMetadata: true,
         keyExpiration: { defaultExpiresIn: 60 * 60 * 24 * 90, maxExpiresIn: 365 },
-        rateLimit: { enabled: true, timeWindow: 60_000, maxRequests: 120 },
+        // Coding agents can make short bursts of MCP calls while inspecting and
+        // editing a file. Keep a per-key safety limit without throttling normal
+        // tool loops after only a couple of requests per second.
+        rateLimit: { enabled: true, timeWindow: 60_000, maxRequests: 600 },
         permissions: { defaultPermissions: { mcp: ['read', 'write'] } },
       }),
     ],

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.4 - 2026-10-21
+
+### Preview bundles
+
+- Add a built-in PowerShell fallback to the Windows launcher, so preview bundles can start their local server even when Python is not installed. Directly opening `index.html` now shows launch instructions instead of module CORS errors.
+
+### MCP
+
+- Return specific machine-readable API-key errors and `Retry-After` for throttling, raise the per-key burst limit for coding-agent workflows, and let verified MCP bearer keys reach the endpoint when shared Basic auth is enabled.
+- Add structured tool results, atomic multi-step edit plans, visual PNG previews, project diagnostics, vertex conversion, clip editing and event rename/removal.
+- Correct deployment-aware MCP instructions and document the recommended inspect, edit, diagnose and preview loop.
+
 ## 0.2.3 - 2026-10-21
 
 ### MCP authentication

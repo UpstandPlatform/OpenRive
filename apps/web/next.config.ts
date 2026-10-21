@@ -14,7 +14,7 @@ const nextConfig: NextConfig = {
   // workspace packages ship TypeScript sources
   transpilePackages: ['@openrive/cli', '@openrive/rive', '@openrive/shared', '@openrive/ui', '@openrive/db'],
   // native/optional server dependencies must not be bundled
-  serverExternalPackages: ['pg', '@electric-sql/pglite'],
+  serverExternalPackages: ['pg', '@electric-sql/pglite', '@napi-rs/canvas'],
   poweredByHeader: false,
   // Route handlers enforce their own schema-specific limits; this prevents
   // Next's proxy layer from buffering a large valid editor/upload request into

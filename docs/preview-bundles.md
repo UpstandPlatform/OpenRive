@@ -34,7 +34,7 @@ Offline bundles ship whichever runtime the editor is currently rendering with, i
 
 Browsers refuse to load modules and fetch files from `file://` URLs. If you open `index.html` directly, it shows instructions instead of failing with a browser security error.
 
-On Windows, double-click `start-preview.bat`. It starts a loopback-only server on an available port and opens the preview. Python 3 must be installed; leave the server window open while using the preview, then close it to stop the server.
+On Windows, double-click `start-preview.bat`. It starts a loopback-only server on an available port and opens the preview. The launcher uses Python 3 when available and falls back to the included PowerShell server, so no separate server install is required. Leave the server window open while using the preview, then close it to stop the server.
 
 On macOS or Linux, run the included local server from this folder:
 
@@ -52,6 +52,7 @@ The server opens the preview in your browser and prints its local URL. It binds 
 | `index.js` | The player: `mountPreview()`, `createPlayer()`, and a `manifest` of the file's scenes |
 | `styles.css` | Styling for the preview UI |
 | `start-preview.bat` | Windows launcher for a local preview server |
+| `start-preview.ps1` | Built-in PowerShell server used when Python is unavailable |
 | `serve.py` | Local server with the correct JavaScript and WASM content types |
 | `<name>.riv` | Your animation, byte for byte the same as **Export .riv** |
 | `runtime/` | The Rive runtime (offline bundles only) |

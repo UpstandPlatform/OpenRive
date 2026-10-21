@@ -8,10 +8,10 @@ The WASM runtime is copied to `apps/web/public/rive/rive.wasm` on `bun install`.
 
 ### A preview bundle shows nothing, or "Could not read …riv"
 
-Browsers block module imports and `fetch` on `file://` URLs, so opening `index.html` by double-clicking it cannot
-work. Serve the unzipped folder instead: `npx --yes serve .` (or `python3 -m http.server 8000`), then open the
-printed URL. A bundle exported with *Runtime from CDN* also needs internet — re-export it with the runtime included
-to play offline. See [preview bundles](preview-bundles.md).
+Browsers block module imports and `fetch` on `file://` URLs, so opening `index.html` directly only shows the run
+instructions. On Windows, double-click `start-preview.bat`; it uses Python 3 when available and otherwise falls back
+to PowerShell. On macOS or Linux, run `python3 serve.py`. A bundle exported with *Runtime from CDN* also needs
+internet — re-export it with the runtime included to play offline. See [preview bundles](preview-bundles.md).
 
 ### The console says state machine inputs are deprecated
 

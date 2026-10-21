@@ -11,10 +11,35 @@ export const json = (data: unknown, status = 200) => Response.json(data, { statu
 export const fail = (error: string, status = 400) => Response.json({ error }, { status });
 export const notFound = () => fail('Not found', 404);
 
-/** Maps Better Auth API-key verification failures that are temporary request limits. */
-export function apiKeyVerificationFailure(code: unknown): Response | null {
-  if (code === 'RATE_LIMITED') return fail('MCP API key rate limit exceeded. Wait briefly and retry.', 429);
-  if (code === 'USAGE_EXCEEDED') return fail('MCP API key usage limit exceeded.', 429);
+/** Return precise, retryable errors so MCP clients do not mistake throttling for expired credentials. */
+export function apiKeyVerificationFailure(error: unknown): Response | null {
+  const value = typeof error === 'object' && error !== null ? error as { code?: unknown; details?: unknown } : null;
+  const code = typeof error === 'string' ? error : value?.code;
+  const details = typeof value?.details === 'object' && value.details !== null ? value.details as { tryAgainIn?: unknown } : null;
+  if (code === 'RATE_LIMITED') {
+    const tryAgainIn = typeof details?.tryAgainIn === 'number' && Number.isFinite(details.tryAgainIn)
+      ? Math.max(1, Math.ceil(details.tryAgainIn / 1000))
+      : 60;
+    return Response.json(
+      { error: 'MCP API key rate limit exceeded. Retry after the indicated delay; the key is still valid.', code: 'MCP_API_KEY_RATE_LIMITED', retryAfterSeconds: tryAgainIn },
+      { status: 429, headers: { 'retry-after': String(tryAgainIn) } },
+    );
+  }
+  if (code === 'USAGE_EXCEEDED') {
+    return Response.json({ error: 'MCP API key usage limit exceeded.', code: 'MCP_API_KEY_USAGE_EXCEEDED' }, { status: 429 });
+  }
+  if (code === 'KEY_EXPIRED') {
+    return Response.json(
+      { error: 'This MCP API key has expired. Create a replacement key from the AI & API settings page.', code: 'MCP_API_KEY_EXPIRED' },
+      { status: 401, headers: { 'www-authenticate': 'Bearer error="invalid_token", error_description="MCP API key expired"' } },
+    );
+  }
+  if (code === 'INVALID_API_KEY' || code === 'KEY_DISABLED' || code === 'KEY_NOT_FOUND') {
+    return Response.json(
+      { error: 'This MCP API key is invalid, revoked, or does not have MCP access. Check the configured secret and key status.', code: 'MCP_API_KEY_INVALID' },
+      { status: 401, headers: { 'www-authenticate': 'Bearer error="invalid_token", error_description="MCP API key invalid or revoked"' } },
+    );
+  }
   return null;
 }
 

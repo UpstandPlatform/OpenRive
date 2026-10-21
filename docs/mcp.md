@@ -11,9 +11,9 @@ The web app's **AI & API** page is the central connection surface. It shows the 
 edition, lets signed-in cloud and self-hosted users create or revoke scoped API keys, and explains the key-free local
 CLI or desktop connection.
 
-The editor and MCP server share the same Rive editing core. Current tools include data properties, transitions,
-listeners and events, 1D blend states, and distance constraints; `get_project` reports those authored elements so an
-assistant can inspect the resulting file before making another edit.
+The editor and MCP server share the same Rive editing core. MCP responses include machine-readable structured content
+in addition to readable text. Agents can make multiple related changes with one `apply_edit_plan` call, then use
+`diagnose_project` and `render_preview` to check the saved file and see a PNG of the result.
 
 ## Connect a client
 
@@ -60,8 +60,10 @@ curl -sS -X POST https://openrive.example.com/api/mcp/keys \
 The response contains the secret once. Store it in the AI client and connect its Streamable HTTP transport to
 `https://openrive.example.com/api/mcp` with `Authorization: Bearer <key>`. Keys can be listed with `GET /api/mcp/keys`
 and revoked with `DELETE /api/mcp/keys` and `{"keyId":"…"}`. The key is hashed in PostgreSQL, rate-limited, and
-scoped to the account that created it. MCP API keys allow 120 requests per minute; rate-limited requests return
-`429 Too Many Requests`, which means to retry later and does not mean the key has expired.
+scoped to the account that created it. MCP API keys allow 600 requests per minute. A rate limit returns `429` with a
+`Retry-After` header and error code `MCP_API_KEY_RATE_LIMITED`; the key remains valid. An expired key returns
+`MCP_API_KEY_EXPIRED`, while an invalid or revoked key returns `MCP_API_KEY_INVALID`. Check the response body before
+rotating a key so a temporary throttle is not mistaken for expiration.
 
 Remote clients send `.riv` bytes to `import_riv` as `dataBase64`; `export_riv` returns `dataBase64` when no local path
 is supplied. Remote MCP never accepts server filesystem paths. Cloud HTTP MCP is stateless by default, so requests can
@@ -72,20 +74,26 @@ The local desktop app serves the same `/api/mcp` route on its loopback origin. I
 off by default and is bound to `127.0.0.1`; use the loopback URL shown by the desktop integration when configuring a
 local AI client.
 
-## Tools (42)
+## Tools (50)
 
 | Area | Tools |
 | --- | --- |
-| Projects | `list_projects`, `list_templates`, `create_project`, `get_project`, `import_riv`, `export_riv`, `delete_project`, `inspect_riv` |
-| Design | `add_artboard`, `add_shape`, `add_path`, `add_text`, `add_group`, `set_properties`, `delete_objects` |
+| Projects | `list_projects`, `list_templates`, `create_project`, `get_project`, `import_riv`, `export_riv`, `delete_project`, `inspect_riv`, `diagnose_project`, `render_preview` |
+| Design | `add_artboard`, `add_shape`, `add_path`, `add_text`, `add_group`, `set_properties`, `delete_objects`, `convert_vertex_type`, `add_clip`, `remove_clip`, `apply_edit_plan` |
 | Animation | `add_timeline`, `add_keyframes` |
-| State machines | `add_state_machine`, `add_state`, `add_blend_state`, `add_transition`, `add_listener`, `add_event` |
+| State machines | `add_state_machine`, `add_state`, `add_blend_state`, `add_transition`, `add_listener`, `add_event`, `rename_event`, `remove_event` |
 | Rigging | `add_bone`, `set_bone_parent`, `bind_skin`, `set_skin_weights`, `auto_weight_skin`, `smooth_skin_weights`, `paint_skin_weights`, `rebind_skin`, `unbind_skin` |
 | Constraints | `add_distance_constraint` |
 | Data binding | `add_property`, `set_property_value`, `convert_inputs_to_data_binding` (and the deprecated `add_input`) |
 | Theme colors | `define_theme_color`, `use_theme_color`, `set_theme_color_value`, `add_theme`, `switch_theme` |
 
 Objects, timelines, states and properties can be referenced **by name**, so assistants don't need to track ids.
+
+`apply_edit_plan` supports up to 100 operations: artboards, shapes, paths, text, groups, property changes, deletes,
+timelines, keyframes, state machines, data properties, states, transitions and events. It saves once after all steps
+succeed; if any step fails, none of the plan is saved. `diagnose_project` checks references, assets and binary
+round-tripping. `render_preview` returns a PNG image for vector-only files; image assets, meshes and feather effects
+need the CLI browser renderer.
 
 Assistants are told to use data binding properties rather than state machine inputs, which Rive deprecated:
 transitions read a property, listeners set one, and `convert_inputs_to_data_binding` migrates an older file.

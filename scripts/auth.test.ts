@@ -86,14 +86,14 @@ try {
     'MCP API key expiry is stored as 90 days when requested in seconds',
   );
   let mcpKeyVerification: Awaited<ReturnType<Awaited<ReturnType<typeof api>>['verifyApiKey']>> | undefined;
-  for (let attempt = 0; attempt < 121; attempt++) {
+  for (let attempt = 0; attempt < 601; attempt++) {
     mcpKeyVerification = await (await api()).verifyApiKey({
       body: { configId: 'mcp', key: mcpKey.key, permissions: { mcp: ['read', 'write'] } },
     });
   }
   check(
     mcpKeyVerification?.valid === false && mcpKeyVerification.error?.code === 'RATE_LIMITED',
-    'the MCP API key rate limiter reports throttling separately from expiration',
+    'the MCP API key permits 600 requests per minute before reporting throttling separately from expiration',
   );
 
   // --- Better Auth workspaces ---------------------------------------------

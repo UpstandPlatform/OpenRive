@@ -87,14 +87,16 @@ for (const runtime of ['offline', 'cdn'] as const) {
   const html = new TextDecoder().decode(entries.find((e) => e.name === 'index.html')!.data);
   const readme = new TextDecoder().decode(entries.find((e) => e.name === 'README.md')!.data);
   const launcher = new TextDecoder().decode(entries.find((e) => e.name === 'start-preview.bat')!.data);
+  const powershell = new TextDecoder().decode(entries.find((e) => e.name === 'start-preview.ps1')!.data);
   const launcherScript = new TextDecoder().decode(entries.find((e) => e.name === 'serve.py')!.data);
   const fileHelpWorks = html.includes("window.location.protocol === 'file:'") && html.includes('start-preview.bat');
   const browserLoadsPlayer = html.includes("import('./index.js')") && !html.includes('<script type="module">');
-  const launcherStartsServer = launcher.includes('serve.py') && launcherScript.includes('ThreadingHTTPServer') && launcherScript.includes('127.0.0.1');
+  const launcherStartsServer = launcher.includes('serve.py') && launcher.includes('start-preview.ps1') && launcherScript.includes('ThreadingHTTPServer') && launcherScript.includes('127.0.0.1');
+  const powershellFallbackWorks = powershell.includes('TcpListener') && powershell.includes('127.0.0.1') && powershell.includes("'.mjs'") && powershell.includes("'.wasm'");
   const runtimeMimeTypes = launcherScript.includes('".mjs": "text/javascript"') && launcherScript.includes('".wasm": "application/wasm"');
   const docsExplainLocalRun = readme.includes('Browsers block module') && readme.includes('start-preview.bat');
   const base = runtime === 'cdn' ? 'https://unpkg.com/@rive-app/canvas-advanced@2.42.2/' : './runtime/';
-  if (!fileHelpWorks || !browserLoadsPlayer || !launcherStartsServer || !runtimeMimeTypes || !docsExplainLocalRun) {
+  if (!fileHelpWorks || !browserLoadsPlayer || !launcherStartsServer || !powershellFallbackWorks || !runtimeMimeTypes || !docsExplainLocalRun) {
     throw new Error(`${runtime} bundle is missing local launch guidance or launcher files`);
   }
   console.log(
@@ -102,7 +104,7 @@ for (const runtime of ['offline', 'cdn'] as const) {
       `, crc ${crcOk ? 'ok' : 'BAD'}, .riv ${rivBack ? 'identical' : 'DIFF'} and ${rivRoundTrips ? 'round-trips' : 'DOES NOT ROUND-TRIP'}` +
       `, runtimeBase ${js.includes(`"runtimeBase": "${base}"`) ? 'ok' : 'WRONG'}` +
       `, file:// help ${fileHelpWorks ? 'ok' : 'MISSING'}` +
-      `, local launcher and runtime MIME types ${launcherStartsServer && runtimeMimeTypes ? 'ok' : 'MISSING'}` +
+      `, local launchers and runtime MIME types ${launcherStartsServer && powershellFallbackWorks && runtimeMimeTypes ? 'ok' : 'MISSING'}` +
       `, index.html loads index.js over HTTP: ${html.includes("import('./index.js')")}` +
       `, mountPreview exported: ${js.includes('export async function mountPreview')}`,
   );

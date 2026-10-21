@@ -13,9 +13,14 @@ function safeEqual(a: string, b: string) {
 
 export function proxy(request: NextRequest) {
   const token = process.env.OPENRIVE_ACCESS_TOKEN || process.env.RIVE_EDITOR_ACCESS_TOKEN;
+  const authorization = request.headers.get('authorization') ?? '';
+  // Remote MCP bearer keys are verified by the /api/mcp handler. Let that
+  // endpoint perform its own auth so a server-wide Basic password cannot turn
+  // a valid MCP key into a generic proxy-level 401.
+  const isMcpBearer = request.nextUrl.pathname.replace(/\/$/, '') === '/api/mcp' && authorization.startsWith('Bearer ');
   // the health check reveals nothing and must work for container probes
-  if (!token || request.nextUrl.pathname === '/api/health') return NextResponse.next();
-  const header = request.headers.get('authorization') ?? '';
+  if (!token || request.nextUrl.pathname === '/api/health' || isMcpBearer) return NextResponse.next();
+  const header = authorization;
   if (header.startsWith('Basic ')) {
     const decoded = Buffer.from(header.slice(6), 'base64').toString('utf8');
     const password = decoded.slice(decoded.indexOf(':') + 1);
