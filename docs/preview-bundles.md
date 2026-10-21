@@ -32,13 +32,17 @@ Offline bundles ship whichever runtime the editor is currently rendering with, i
 
 ## Run one
 
-Browsers refuse to load modules and fetch files from `file://` URLs, so serve the folder:
+Browsers refuse to load modules and fetch files from `file://` URLs. If you open `index.html` directly, it shows instructions instead of failing with a browser security error.
+
+On Windows, double-click `start-preview.bat`. It starts a loopback-only server on an available port and opens the preview. Python 3 must be installed; leave the server window open while using the preview, then close it to stop the server.
+
+On macOS or Linux, run the included local server from this folder:
 
 ```bash
-npx --yes serve .
+python3 serve.py
 ```
 
-`python3 -m http.server 8000` works just as well. Then open the printed URL.
+The server opens the preview in your browser and prints its local URL. It binds only to your own device. The default bundle includes the runtime and works offline; `Runtime from CDN` also needs an internet connection.
 
 ## What is inside
 
@@ -47,6 +51,8 @@ npx --yes serve .
 | `index.html` | The preview page |
 | `index.js` | The player: `mountPreview()`, `createPlayer()`, and a `manifest` of the file's scenes |
 | `styles.css` | Styling for the preview UI |
+| `start-preview.bat` | Windows launcher for a local preview server |
+| `serve.py` | Local server with the correct JavaScript and WASM content types |
 | `<name>.riv` | Your animation, byte for byte the same as **Export .riv** |
 | `runtime/` | The Rive runtime (offline bundles only) |
 | `README.md`, `package.json` | How to run it, and a name for it |
@@ -84,5 +90,5 @@ For snippets that use the regular Rive runtimes in a real app (React, Flutter, i
 
 [`packages/rive/src/bundle.ts`](../packages/rive/src/bundle.ts) generates the files and packs them with a small
 built-in zip writer (stored entries, no dependency), so the web app, the CLI and any other tool build byte-identical
-bundles. `bun run test` checks the zip unpacks, that every entry's CRC matches and that the `.riv` inside still
-round-trips.
+bundles. `bun run test` checks the zip unpacks, that every entry's CRC matches, that the local run guidance and
+server MIME types are present, and that the `.riv` inside still round-trips.

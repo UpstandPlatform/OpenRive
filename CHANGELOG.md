@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.2 - 2026-10-21
+
+### Preview bundles
+
+- Make exported previews explain the browser's `file://` restriction and provide a one-click Windows launcher plus a local server with the correct runtime MIME types.
+- Include clear run instructions for Windows, macOS, and Linux in generated bundles.
+
 ## 0.2.1 - 2026-10-16
 
 ### Editor preview

@@ -780,6 +780,74 @@ body {
     border-top: 1px solid var(--or-line);
   }
 }
+.or-run-help {
+  max-width: 640px;
+  margin: 10vh auto;
+  padding: 24px;
+  color: var(--or-text);
+  background: var(--or-bg1);
+  border: 1px solid var(--or-line);
+  border-radius: 8px;
+  line-height: 1.6;
+}
+.or-run-help h1 { margin: 0 0 12px; font-size: 20px; }
+.or-run-help p, .or-run-help ul { margin: 10px 0; }
+.or-run-help code {
+  padding: 2px 5px;
+  color: var(--or-text);
+  background: var(--or-bg2);
+  border-radius: 3px;
+}
+.or-load-error { margin: 24px; color: #ffb4b4; }
+`;
+
+const WINDOWS_LAUNCHER = `@echo off\r
+setlocal\r
+cd /d "%~dp0"\r
+where py.exe >nul 2>&1\r
+if not errorlevel 1 goto use_py\r
+where python.exe >nul 2>&1\r
+if not errorlevel 1 goto use_python\r
+echo Python 3 is required to start this preview. Install Python, then try again.\r
+pause\r
+exit /b 1\r
+:use_py\r
+py -3 "%~dp0serve.py"\r
+exit /b %errorlevel%\r
+:use_python\r
+python "%~dp0serve.py"\r
+exit /b %errorlevel%\r
+`;
+
+const PYTHON_SERVER = `from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+import sys
+import webbrowser
+
+
+class PreviewHandler(SimpleHTTPRequestHandler):
+    extensions_map = {
+        **SimpleHTTPRequestHandler.extensions_map,
+        ".mjs": "text/javascript",
+        ".wasm": "application/wasm",
+        ".riv": "application/octet-stream",
+    }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, directory=str(Path(__file__).resolve().parent), **kwargs)
+
+
+if __name__ == "__main__":
+    with ThreadingHTTPServer(("127.0.0.1", 0), PreviewHandler) as server:
+        host, port = server.server_address[:2]
+        url = "http://{}:{}/".format(host, port)
+        print("Preview: {} (press Ctrl+C to stop)".format(url), flush=True)
+        if "--no-browser" not in sys.argv[1:]:
+            webbrowser.open(url)
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            print("\\nPreview server stopped.", flush=True)
 `;
 
 function indexHtml(manifest: BundleManifest) {
@@ -793,10 +861,30 @@ function indexHtml(manifest: BundleManifest) {
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <main id="file-help" class="or-run-help" hidden>
+      <h1>Open this bundle over localhost</h1>
+      <p>Browsers block the preview's JavaScript module and animation file when this page is opened directly from <code>file://</code>.</p>
+      <ul>
+        <li>On Windows, double-click <code>start-preview.bat</code> in this folder.</li>
+        <li>On macOS or Linux, run <code>python3 serve.py</code> from this folder.</li>
+      </ul>
+      <p>If this bundle uses the Rive runtime from CDN, it also needs an internet connection.</p>
+    </main>
     <div id="app"></div>
-    <script type="module">
-      import { mountPreview } from './index.js';
-      mountPreview(document.getElementById('app'));
+    <script>
+      if (window.location.protocol === 'file:') {
+        document.getElementById('file-help').hidden = false;
+      } else {
+        import('./index.js')
+          .then(({ mountPreview }) => mountPreview(document.getElementById('app')))
+          .catch((error) => {
+            const message = document.createElement('p');
+            message.className = 'or-load-error';
+            message.textContent = 'The preview could not start. Make sure this folder is served over HTTP and try again.';
+            document.getElementById('app').appendChild(message);
+            console.error(error);
+          });
+      }
     </script>
   </body>
 </html>
@@ -821,13 +909,15 @@ Exported from OpenRive. Everything needed to play \`${manifest.file}\` in a brow
 
 ## Run it
 
-Browsers block module and \`fetch\` loads from \`file://\`, so serve the folder:
+Browsers block module and \`fetch\` loads from \`file://\`. On Windows, double-click \`start-preview.bat\`; it starts a local server and opens the preview in your browser. Python 3 must be installed, and the server window needs to stay open while you use the preview.
+
+On macOS or Linux, run the included local server from this folder:
 
 \`\`\`bash
-npx --yes serve .          # or: python3 -m http.server 8000
+python3 serve.py
 \`\`\`
 
-Then open the printed URL and you get the same preview as in the editor: artboard and
+The server opens the preview in your browser and prints its local URL. It binds only to your own device. You get the same preview as in the editor: artboard and
 state machine pickers, inputs, data bound properties and an event log.
 
 ## What is in here
@@ -838,6 +928,8 @@ state machine pickers, inputs, data bound properties and an event log.
 | \`index.js\` | The player — \`mountPreview()\` for the whole UI, \`createPlayer()\` for just the canvas |
 | \`styles.css\` | Styling for the preview UI |
 | \`${manifest.file}\` | The animation |
+| \`start-preview.bat\` | Windows launcher for the local preview server |
+| \`serve.py\` | Local server with the correct JavaScript and WASM content types |
 ${manifest.runtime === 'offline' ? '| `runtime/` | The Rive WASM runtime |\n' : ''}
 ## Scenes
 
@@ -872,7 +964,7 @@ function packageJson(manifest: BundleManifest) {
       description: `Standalone Rive preview for ${manifest.name}, exported from OpenRive`,
       main: 'index.js',
       scripts: { start: 'npx --yes serve .' },
-      files: ['index.html', 'index.js', 'styles.css', manifest.file, ...(manifest.runtime === 'offline' ? ['runtime'] : [])],
+      files: ['index.html', 'index.js', 'styles.css', 'start-preview.bat', 'serve.py', manifest.file, ...(manifest.runtime === 'offline' ? ['runtime'] : [])],
     },
     null,
     2,
@@ -888,6 +980,8 @@ export function bundleFiles(opts: BundleOptions): BundleFile[] {
     textFile('styles.css', STYLES_CSS),
     textFile('README.md', readme(manifest)),
     textFile('package.json', packageJson(manifest)),
+    textFile('start-preview.bat', WINDOWS_LAUNCHER),
+    textFile('serve.py', PYTHON_SERVER),
     { name: manifest.file, data: opts.riv },
   ];
   if (manifest.runtime === 'offline') {

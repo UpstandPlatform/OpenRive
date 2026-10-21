@@ -85,12 +85,25 @@ for (const runtime of ['offline', 'cdn'] as const) {
   const rivRoundTrips = Buffer.from(exportRiv(importRiv(new Uint8Array(rivEntry.data)))).equals(Buffer.from(riv));
   const js = new TextDecoder().decode(entries.find((e) => e.name === 'index.js')!.data);
   const html = new TextDecoder().decode(entries.find((e) => e.name === 'index.html')!.data);
+  const readme = new TextDecoder().decode(entries.find((e) => e.name === 'README.md')!.data);
+  const launcher = new TextDecoder().decode(entries.find((e) => e.name === 'start-preview.bat')!.data);
+  const launcherScript = new TextDecoder().decode(entries.find((e) => e.name === 'serve.py')!.data);
+  const fileHelpWorks = html.includes("window.location.protocol === 'file:'") && html.includes('start-preview.bat');
+  const browserLoadsPlayer = html.includes("import('./index.js')") && !html.includes('<script type="module">');
+  const launcherStartsServer = launcher.includes('serve.py') && launcherScript.includes('ThreadingHTTPServer') && launcherScript.includes('127.0.0.1');
+  const runtimeMimeTypes = launcherScript.includes('".mjs": "text/javascript"') && launcherScript.includes('".wasm": "application/wasm"');
+  const docsExplainLocalRun = readme.includes('Browsers block module') && readme.includes('start-preview.bat');
   const base = runtime === 'cdn' ? 'https://unpkg.com/@rive-app/canvas-advanced@2.42.2/' : './runtime/';
+  if (!fileHelpWorks || !browserLoadsPlayer || !launcherStartsServer || !runtimeMimeTypes || !docsExplainLocalRun) {
+    throw new Error(`${runtime} bundle is missing local launch guidance or launcher files`);
+  }
   console.log(
     `${runtime}: ${Math.round(zip.length / 1024)} KB, ${entries.length} entries ${same ? 'as listed' : `MISMATCH ${names.join(',')}`}` +
       `, crc ${crcOk ? 'ok' : 'BAD'}, .riv ${rivBack ? 'identical' : 'DIFF'} and ${rivRoundTrips ? 'round-trips' : 'DOES NOT ROUND-TRIP'}` +
       `, runtimeBase ${js.includes(`"runtimeBase": "${base}"`) ? 'ok' : 'WRONG'}` +
-      `, index.html imports index.js: ${html.includes("from './index.js'")}` +
+      `, file:// help ${fileHelpWorks ? 'ok' : 'MISSING'}` +
+      `, local launcher and runtime MIME types ${launcherStartsServer && runtimeMimeTypes ? 'ok' : 'MISSING'}` +
+      `, index.html loads index.js over HTTP: ${html.includes("import('./index.js')")}` +
       `, mountPreview exported: ${js.includes('export async function mountPreview')}`,
   );
   if (runtime === 'offline') writeFileSync('scripts/bundle-test-out.zip', zip);
