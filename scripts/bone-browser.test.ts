@@ -39,10 +39,24 @@ const server = Bun.spawn(
       OPENRIVE_URL: origin,
       OPENRIVE_DATA_DIR: scratch,
     },
-    stdout: 'ignore',
-    stderr: 'inherit',
+    stdout: 'pipe',
+    stderr: 'pipe',
   },
 );
+const serverOutput: string[] = [];
+const captureServerOutput = async (stream: ReadableStream<Uint8Array>) => {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    serverOutput.push(decoder.decode(value, { stream: true }));
+    // Keep the diagnostic bounded if a dev server gets into a noisy loop.
+    while (serverOutput.join('').length > 20_000) serverOutput.shift();
+  }
+};
+void captureServerOutput(server.stdout);
+void captureServerOutput(server.stderr);
 let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
 let scenarios = 0;
 try {
@@ -87,6 +101,17 @@ try {
   const errors: string[] = [];
   const consoleErrors: string[] = [];
   const failedRequests: string[] = [];
+  const requestEvents: string[] = [];
+  page.on('request', (request) => {
+    if (request.isNavigationRequest() || request.resourceType() === 'script') {
+      requestEvents.push(`${request.method()} ${request.resourceType()} ${request.url()}`);
+    }
+  });
+  page.on('response', (response) => {
+    if (response.request().isNavigationRequest() || response.request().resourceType() === 'script') {
+      requestEvents.push(`${response.status()} ${response.request().resourceType()} ${response.url()}`);
+    }
+  });
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('console', (message) => {
     if (message.type() === 'error') consoleErrors.push(message.text());
@@ -109,7 +134,7 @@ try {
     } catch (error) {
       const details = await describePage().catch(() => ({ href: page.url(), readyState: 'unavailable', title: '', body: '', storeLoaded: false, documentLoaded: false }));
       throw new Error(
-        `Editor did not hydrate during ${stage}: ${JSON.stringify({ details, errors, consoleErrors, failedRequests, cause: (error as Error).message })}`,
+        `Editor did not hydrate during ${stage}: ${JSON.stringify({ details, errors, consoleErrors, failedRequests, requestEvents: requestEvents.slice(-80), serverOutput: serverOutput.join('').slice(-20_000), cause: (error as Error).message })}`,
       );
     }
   };
