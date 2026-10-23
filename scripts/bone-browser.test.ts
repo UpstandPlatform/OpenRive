@@ -85,9 +85,36 @@ try {
   browser = await chromium.launch({ headless: true, args: ['--enable-unsafe-swiftshader'] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   const errors: string[] = [];
+  const consoleErrors: string[] = [];
+  const failedRequests: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+  page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()}: ${request.failure()?.errorText ?? 'failed'}`));
+  const describePage = () =>
+    page.evaluate(() => ({
+      href: location.href,
+      readyState: document.readyState,
+      title: document.title,
+      body: document.body.innerText.slice(0, 1000),
+      storeLoaded: !!window.__riveEditor,
+      documentLoaded: !!window.__riveEditor?.getState().doc,
+    }));
+  const waitForEditor = async (stage: string) => {
+    try {
+      // A cold Turbopack compile on a busy CI runner can take longer than the
+      // default Playwright timeout even though the editor is healthy.
+      await page.waitForFunction(() => !!window.__riveEditor?.getState().doc, null, { timeout: 90_000 });
+    } catch (error) {
+      const details = await describePage().catch(() => ({ href: page.url(), readyState: 'unavailable', title: '', body: '', storeLoaded: false, documentLoaded: false }));
+      throw new Error(
+        `Editor did not hydrate during ${stage}: ${JSON.stringify({ details, errors, consoleErrors, failedRequests, cause: (error as Error).message })}`,
+      );
+    }
+  };
   await page.goto(`${origin}/editor/${project.id}`);
-  await page.waitForFunction(() => !!window.__riveEditor?.getState().doc);
+  await waitForEditor('initial load');
   for (const label of ['Expand inspector', 'Expand left sidebar']) {
     const button = page.getByRole('button', { name: label, exact: true });
     if (await button.count()) await button.click();
@@ -226,7 +253,7 @@ try {
   check((await state()).weights.every((weight) => unpackByteSum(Number(weight.values)) === 255), 'Inspector weight slider keeps normalized byte weights');
   await page.getByText('All changes saved', { exact: true }).waitFor();
   await page.reload();
-  await page.waitForFunction(() => !!window.__riveEditor?.getState().doc);
+  await waitForEditor('reload');
   check((await state()).weights.length === 4, 'saved rig survives an editor reload');
   await page.waitForFunction(() => {
     const canvas = document.querySelector('canvas');
