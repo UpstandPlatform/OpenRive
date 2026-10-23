@@ -116,10 +116,12 @@ const REF_SPACES: Record<string, RefSpace> = {
   'ViewModelInstanceAsset.propertyValue': 'asset',
   'BindablePropertyList.propertyValue': 'component',
   'BindablePropertyId.propertyValue': 'component',
+  'BindablePropertyAsset.propertyValue': 'asset',
+  'BindablePropertyArtboard.propertyValue': 'artboard',
+  'BindablePropertyViewModel.propertyValue': 'viewModel',
   'NestedAnimation.animationId': 'animation',
   'NestedInput.inputId': 'input',
   'ScrollPhysics.constraintId': 'component',
-  'ScrollConstraint.physicsId': 'component',
   'ScrollBarConstraint.scrollConstraintId': 'component',
   'TargetEffect.targetId': 'component',
   'FocusActionTarget.targetId': 'component',
@@ -129,8 +131,6 @@ const REF_SPACES: Record<string, RefSpace> = {
   'TransitionPropertyComponentComparator.objectId': 'component',
   'DataConverterRangeMapper.interpolatorId': 'component',
   'DataConverterInterpolator.interpolatorId': 'component',
-  'DataConverterGroupItem.converterId': 'component',
-  'DataBind.converterId': 'component',
   'ArtboardListMapRule.artboardId': 'artboard',
   'ArtboardListMapRule.viewModelId': 'viewModel',
   'Artboard.viewModelId': 'viewModel',
@@ -147,8 +147,6 @@ const REF_SPACES: Record<string, RefSpace> = {
   'ArtboardComponentList.listSource': 'component',
   'ViewModelInstanceList.listSource': 'component',
   'ListPath.listSource': 'component',
-  'ViewModelPropertyEnumCustom.enumId': 'component',
-  'CustomPropertyEnum.enumId': 'component',
   'ScriptedDrawable.scriptAssetId': 'asset',
   'ScriptedDataConverter.scriptAssetId': 'asset',
   'ScriptedPathEffect.scriptAssetId': 'asset',
@@ -157,17 +155,16 @@ const REF_SPACES: Record<string, RefSpace> = {
   'ScriptedInterpolator.scriptAssetId': 'asset',
   'ArtboardComponentListOverride.artboardId': 'artboard',
   'ScriptInputArtboard.artboardId': 'artboard',
-  'ViewModelInstanceEnum.propertyValue': 'component',
-  'BindablePropertyEnum.propertyValue': 'component',
-  'CustomPropertyEnum.propertyValue': 'component',
   'TransitionValueIdComparator.value': 'component',
+  'TransitionValueAssetComparator.value': 'asset',
+  'TransitionValueArtboardComparator.value': 'artboard',
 };
 
 export function refSpaceOf(typeName: string, prop: string): RefSpace | undefined {
   const t = tryType(typeName);
   const p = t?.propsByName.get(prop);
   if (!p) return undefined;
-  return REF_SPACES[`${p.owner}.${p.name}`];
+  return REF_SPACES[`${typeName}.${p.name}`] ?? REF_SPACES[`${p.owner}.${p.name}`];
 }
 
 function tryType(name: string): TypeDef | undefined {
@@ -251,7 +248,7 @@ export function importRiv(bytes: Uint8Array): RiveDoc {
     }
     if (isA(t, 'FileAsset')) {
       doc.top.push(o);
-      assets.push(o);
+      if (t !== 'ManifestAsset') assets.push(o);
       lastAsset = o;
       continue;
     }
@@ -303,8 +300,15 @@ export function importRiv(bytes: Uint8Array): RiveDoc {
       // fire event
     } else if (isA(t, 'StateMachineListener') && inTree(kids(lastSM))) {
       lastListener = o;
-    } else if (lastListener && (isA(t, 'ListenerAction') || t.startsWith('ListenerInputType')) && inTree(kids(lastListener))) {
-      // listener action
+    } else if (
+      lastListener &&
+      (isA(t, 'ListenerAction') ||
+        t.startsWith('ListenerInputType') ||
+        isA(t, 'BindableProperty') ||
+        (isA(t, 'DataBind') && lastTreeObj && (lastTreeObj === lastListener || isA(lastTreeObj.type, 'BindableProperty') || isA(lastTreeObj.type, 'DataBind')))) &&
+      inTree(kids(lastListener))
+    ) {
+      if (isIndexable(t)) idx.components.push(o);
     } else if (lastSM && isA(t, 'StateMachineInput') && inTree(kids(lastSM))) {
       // input
     } else if (!lastSM && !lastAnim && isIndexable(t)) {
@@ -376,6 +380,12 @@ export function importRiv(bytes: Uint8Array): RiveDoc {
       // out-of-range values stay numeric and are written back verbatim
     }
   };
+  const emptyIdx: AbIndex = { components: [], animations: [], stateMachines: [] };
+  const walkTop = (o: CoreObj) => {
+    resolveProps(o, { idx: emptyIdx });
+    o.children?.forEach(walkTop);
+  };
+  for (const o of doc.top) walkTop(o);
   for (const a of doc.artboards) {
     const idx = abIndex.get(a)!;
     resolveProps(a.artboard, { idx });
@@ -413,7 +423,7 @@ function toRaw(o: CoreObj, resolve: (space: RefSpace, id: string) => number | un
       if (value === undefined || value === null) continue;
       const pd = def.propsByName.get(name);
       if (!pd) continue;
-      const space = REF_SPACES[`${pd.owner}.${pd.name}`];
+      const space = refSpaceOf(o.type, name);
       if (space && typeof value === 'string') {
         const index = resolve(space, value);
         if (index === undefined) {
@@ -439,7 +449,7 @@ function toRaw(o: CoreObj, resolve: (space: RefSpace, id: string) => number | un
 export function exportRiv(doc: RiveDoc): Uint8Array {
   const out: RawObject[] = [];
   const artboardIndex = new Map(doc.artboards.map((a, i) => [a.id, i]));
-  const assetIndex = new Map(doc.top.filter((o) => isA(o.type, 'FileAsset')).map((o, i) => [o.id, i]));
+  const assetIndex = new Map(doc.top.filter((o) => isA(o.type, 'FileAsset') && o.type !== 'ManifestAsset').map((o, i) => [o.id, i]));
   const emitTree = (o: CoreObj, resolve: (space: RefSpace, id: string) => number | undefined) => {
     out.push(toRaw(o, resolve));
     let children = o.children ?? [];

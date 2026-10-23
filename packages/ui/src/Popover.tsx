@@ -64,6 +64,8 @@ export function Popover({ anchorRef, onClose, align = 'end', className = '', chi
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        const t = e.target as HTMLElement | null;
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT') && ref.current?.contains(t)) return;
         e.stopPropagation();
         onClose();
       }

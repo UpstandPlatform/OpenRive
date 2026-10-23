@@ -3,9 +3,10 @@
 // Nothing is deleted: the folder stays as a backup.
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { projectMetaSchema, userSchema } from '@openrive/shared';
+import { isAdministratorRole, projectMetaSchema, userSchema } from '@openrive/shared';
 import { dataDir } from '@openrive/shared/env';
 import { db } from './client';
+import { listUsers } from './repository';
 import { projects, users } from './schema';
 
 async function readJson<T>(file: string): Promise<T | null> {
@@ -47,28 +48,38 @@ export async function importLegacyDataDir(dir?: string, log: (msg: string) => vo
 
   let projectCount = 0;
   const entries = await fs.readdir(/* turbopackIgnore: true */ found.projectsDir, { withFileTypes: true }).catch(() => []);
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const dirPath = path.join(found.projectsDir, entry.name);
-    const meta = projectMetaSchema.safeParse(await readJson(path.join(dirPath, 'meta.json')));
-    if (!meta.success) continue;
-    const doc = await fs.readFile(path.join(dirPath, 'doc.json'), 'utf8').catch(() => null);
-    const riv = await fs.readFile(path.join(dirPath, 'file.riv')).catch(() => null);
-    await conn
-      .insert(projects)
-      .values({
-        ...meta.data,
-        thumbnail: meta.data.thumbnail ?? null,
-        artboards: meta.data.artboards ?? null,
-        animations: meta.data.animations ?? null,
-        stateMachines: meta.data.stateMachines ?? null,
-        sharedWith: meta.data.sharedWith ?? null,
-        doc,
-        riv: riv ? new Uint8Array(riv) : null,
-      })
-      .onConflictDoNothing();
-    projectCount++;
-    log(`project: ${meta.data.name} (${meta.data.id})`);
+  const dirEntries = entries.filter((entry) => entry.isDirectory());
+  if (dirEntries.length > 0) {
+    const knownUsers = await listUsers();
+    const validUserIds = new Set(knownUsers.map((u) => u.id));
+    const fallbackOwnerId = (knownUsers.find((u) => isAdministratorRole(u.role)) ?? knownUsers[0])?.id;
+    if (fallbackOwnerId) {
+      for (const entry of dirEntries) {
+        const dirPath = path.join(found.projectsDir, entry.name);
+        const meta = projectMetaSchema.safeParse(await readJson(path.join(dirPath, 'meta.json')));
+        if (!meta.success) continue;
+        const doc = await fs.readFile(path.join(dirPath, 'doc.json'), 'utf8').catch(() => null);
+        const riv = await fs.readFile(path.join(dirPath, 'file.riv')).catch(() => null);
+        const ownerId = validUserIds.has(meta.data.ownerId) ? meta.data.ownerId : fallbackOwnerId;
+        const sharedWith = meta.data.sharedWith?.filter((uid) => validUserIds.has(uid) && uid !== ownerId);
+        await conn
+          .insert(projects)
+          .values({
+            ...meta.data,
+            ownerId,
+            thumbnail: meta.data.thumbnail ?? null,
+            artboards: meta.data.artboards ?? null,
+            animations: meta.data.animations ?? null,
+            stateMachines: meta.data.stateMachines ?? null,
+            sharedWith: sharedWith?.length ? sharedWith : null,
+            doc,
+            riv: riv ? new Uint8Array(riv) : null,
+          })
+          .onConflictDoNothing();
+        projectCount++;
+        log(`project: ${meta.data.name} (${meta.data.id})`);
+      }
+    }
   }
   if (userCount || projectCount) log(`imported ${userCount} users and ${projectCount} projects from ${found.root}`);
   return { users: userCount, projects: projectCount };

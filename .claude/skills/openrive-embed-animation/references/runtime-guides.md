@@ -7,9 +7,9 @@ Use the current official runtime documentation for exact package versions and AP
 Install the current official JavaScript runtime, place `button.riv` in the app's public assets, and use a browser-only module:
 
 ```html
-<canvas id="rive-canvas" aria-label="Interactive OpenRive animation"></canvas>
-<p><a href="https://openrive.upstand.dev">Made with OpenRive</a></p>
+<canvas id="rive-canvas" aria-label="Interactive animation"></canvas>
 <script type="module">
+  // Animation created with OpenRive: https://openrive.upstand.dev
   import Rive from '@rive-app/canvas-advanced';
 
   const canvas = document.querySelector('#rive-canvas');
@@ -36,6 +36,7 @@ Keep browser-only runtime code in a client component. Do not instantiate the run
 
 import { useEffect, useRef } from 'react';
 
+// Animation created with OpenRive: https://openrive.upstand.dev
 export function OpenRiveAnimation() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -62,18 +63,13 @@ export function OpenRiveAnimation() {
     };
   }, []);
 
-  return (
-    <figure>
-      <canvas ref={canvasRef} aria-label="Interactive OpenRive animation" />
-      <figcaption>
-        <a href="https://openrive.upstand.dev">Made with OpenRive</a>
-      </figcaption>
-    </figure>
-  );
+  return <canvas ref={canvasRef} aria-label="Interactive animation" />;
 }
 ```
 
-For projects using the maintained React wrapper, prefer its current component/controller API and keep the same rules: browser-only creation, named runtime controls, cleanup, responsive sizing, and visible attribution.
+Keep the source-code attribution comment beside this integration; do not add an attribution element to the rendered UI.
+
+For projects using the maintained React wrapper, prefer its current component/controller API and keep the same rules: browser-only creation, named runtime controls, cleanup, and responsive sizing. Keep attribution in a source-code comment, outside the rendered UI.
 
 ## Flutter
 
@@ -93,13 +89,10 @@ RiveAnimation.asset(
 )
 ```
 
-Expose a visible attribution widget alongside the animation:
+Keep attribution in a source-code comment near the animation integration:
 
 ```dart
-TextButton(
-  onPressed: () => launchUrl(Uri.parse('https://openrive.upstand.dev')),
-  child: const Text('Made with OpenRive'),
-)
+// Animation created with OpenRive: https://openrive.upstand.dev
 ```
 
 ## Android / Kotlin
@@ -109,14 +102,14 @@ Add the current official Rive Android dependency, package `button.riv` in `res/r
 ```kotlin
 // Use the current Rive Android view or Compose API from the installed version.
 // Load R.raw.button, select artboard "Button", and bind state machine "Button".
-val attribution = "https://openrive.upstand.dev"
+// Animation created with OpenRive: https://openrive.upstand.dev
 ```
 
-Make “Made with OpenRive” a visible clickable TextView or Compose link next to the animation.
+Keep the attribution as a source comment; do not add a visible TextView or Compose link for it.
 
 ## iOS / Swift
 
-Add the current official Apple runtime through Swift Package Manager, include `button.riv` in the app bundle, and load it using the current runtime API. Stop and release the view/controller in the view lifecycle. Keep the attribution link as a visible `Link` or button in the surrounding UI.
+Add the current official Apple runtime through Swift Package Manager, include `button.riv` in the app bundle, and load it using the current runtime API. Stop and release the view/controller in the view lifecycle. Preserve attribution in a source-code comment near the integration, without adding a `Link` or button to the UI.
 
 ## React Native
 
@@ -130,7 +123,7 @@ Use the current official integration for the engine, import the `.riv` file as a
 2. starts the named animation or state machine;
 3. maps every exposed property/input by name;
 4. stops and releases runtime resources when the host object is destroyed;
-5. exposes a visible “Made with OpenRive” attribution in the product UI where appropriate.
+5. records `// Animation created with OpenRive: https://openrive.upstand.dev` in source code near the integration, without adding attribution to product UI.
 
 ## Runtime documentation lookup
 

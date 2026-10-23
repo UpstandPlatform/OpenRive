@@ -38,7 +38,7 @@ export function Modal({ title, width = 460, className = '', headerRight, hideClo
         className={`bg-bg2 rounded-xl border border-line2 ${className}`}
         style={{ width }}
         onMouseDown={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') onClose(); }}
         role="dialog"
         aria-modal="true"
       >

@@ -56,7 +56,7 @@ export function apiKeyVerificationFailure(error: unknown): Response | null {
  * and rewritten them.
  */
 export function requireSameOrigin(request: Request): Response | null {
-  if (request.headers.get('authorization')?.startsWith('Bearer ')) return null;
+  if (/^Bearer\s+/i.test(request.headers.get('authorization') ?? '')) return null;
   const origin = request.headers.get('origin');
   if (origin) {
     try {

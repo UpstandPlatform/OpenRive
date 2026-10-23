@@ -20,7 +20,7 @@ import {
 } from '@openrive/rive/databind';
 import { addAnimation, addBlendState, addDistanceConstraint, addEvent, addListener, addState, addStateMachine, addTransition, removeEvent, renameEvent } from '@openrive/rive/api';
 import { exportRiv, importRiv } from '@openrive/rive/document';
-import { newDoc, newParametricShape } from '@openrive/rive/factory';
+import { newDoc, newParametricShape, obj } from '@openrive/rive/factory';
 import { getTemplate } from '@openrive/rive/templates';
 
 const same = (a: Uint8Array, b: Uint8Array) => Buffer.from(a).equals(Buffer.from(b));
@@ -127,6 +127,20 @@ if (noEvent.objects.some((o) => o.type === 'Event' || o.props.name === 'source')
 }
 console.log('removed event and all listener/payload references: ok');
 roundTrip('after edits', exportRiv(doc));
+
+// Flat artboard binding groups must be removed together when their source
+// property is deleted, so no BindableProperty survives without its context.
+const flatBound = addProperty(doc, ab, { name: 'flatBound', type: 'boolean', value: false });
+const flatBinding = [
+  obj('BindablePropertyBoolean'),
+  obj('DataBindContext', { sourcePathIds: encodePath([flatBound.viewModelIndex, flatBound.index]) }),
+  obj('ListenerViewModelChange'),
+];
+ab.objects.push(...flatBinding);
+removeProperty(doc, ab, 'flatBound');
+if (flatBinding.some((item) => ab.objects.includes(item))) {
+  throw new Error('Removing a view model property left part of its flat binding group behind');
+}
 
 // --- converting a template's inputs ---------------------------------------
 const font = { name: 'Inter', bytes: new Uint8Array(readFileSync('apps/web/public/fonts/Inter-Regular.ttf')) };

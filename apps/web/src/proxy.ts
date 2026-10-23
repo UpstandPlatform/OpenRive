@@ -17,7 +17,7 @@ export function proxy(request: NextRequest) {
   // Remote MCP bearer keys are verified by the /api/mcp handler. Let that
   // endpoint perform its own auth so a server-wide Basic password cannot turn
   // a valid MCP key into a generic proxy-level 401.
-  const isMcpBearer = request.nextUrl.pathname.replace(/\/$/, '') === '/api/mcp' && authorization.startsWith('Bearer ');
+  const isMcpBearer = request.nextUrl.pathname.replace(/\/$/, '') === '/api/mcp' && /^Bearer\s+/i.test(authorization);
   // the health check reveals nothing and must work for container probes
   if (!token || request.nextUrl.pathname === '/api/health' || isMcpBearer) return NextResponse.next();
   const header = authorization;

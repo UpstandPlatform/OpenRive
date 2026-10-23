@@ -152,9 +152,17 @@ const control = Bun.serve({
   port: controlPort,
   async fetch(request) {
     const { pathname, searchParams } = new URL(request.url);
-    const headers = { 'access-control-allow-origin': url, 'access-control-allow-headers': 'content-type' };
     const origin = request.headers.get('origin');
-    if (origin && origin !== url) return new Response('origin rejected', { status: 403, headers });
+    // The fallback page uses Electrobun's opaque views:// origin; the random
+    // per-run token still gates these loopback requests.
+    const allowedOrigins = new Set([url, 'null', 'views://mainview']);
+    const headers = {
+      'access-control-allow-origin': origin && allowedOrigins.has(origin) ? origin : url,
+      'access-control-allow-headers': 'content-type',
+      'access-control-allow-methods': 'GET, OPTIONS',
+      vary: 'Origin',
+    };
+    if (origin && !allowedOrigins.has(origin)) return new Response('origin rejected', { status: 403, headers });
     if (request.method === 'OPTIONS') return new Response(null, { headers });
     if (searchParams.get('token') !== token) return new Response('no', { status: 403, headers });
 
@@ -167,7 +175,7 @@ const control = Bun.serve({
         else window.maximize();
         break;
       case '/close':
-        window.close();
+        window.close(); void shutdown();
         break;
       case '/open': {
         // links to the repository, the docs and the site open in the real browser
@@ -187,7 +195,7 @@ const control = Bun.serve({
         return Response.json(updates, { headers });
       case '/update/apply':
         // quits, swaps the app in place and starts the new version
-        void Updater.applyUpdate();
+        if (server && server.exitCode === null) { server.kill('SIGTERM'); await Promise.race([server.exited, Bun.sleep(2000)]); } await control.stop(true); void Updater.applyUpdate();
         return Response.json({ ok: true }, { headers });
       default:
         return new Response('not found', { status: 404, headers });
@@ -201,7 +209,7 @@ const appUrl = `${url}/?desktop=1&controlPort=${controlPort}&controlToken=${toke
 
 const window = new BrowserWindow({
   title: 'OpenRive',
-  url: ready ? appUrl : 'views://mainview/index.html',
+  url: ready ? appUrl : `views://mainview/index.html?controlPort=${controlPort}&controlToken=${token}`,
   frame: { width: 1440, height: 900, x: 60, y: 60 },
   // no native chrome: the app draws the title bar and window buttons
   titleBarStyle: 'hidden',
@@ -221,4 +229,4 @@ const shutdown = async () => {
 process.once('SIGINT', () => void shutdown());
 process.once('SIGTERM', () => void shutdown());
 
-void window;
+if (!ready) { void waitForServer(url, 30_000).then((isReady) => { if (isReady && !shuttingDown) window.loadURL(appUrl); }); } process.on('exit', () => { if (server && server.exitCode === null) server.kill(); }); void window;

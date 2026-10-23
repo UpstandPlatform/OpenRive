@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.5 - 2026-10-23
+
+### MCP and cloud reliability
+
+- Improve MCP API-key authentication, expiry and rate-limit handling, including clearer errors for coding agents and consistent Bearer token parsing.
+- Add safer project access, API-key management, transactional cloud project updates, and stronger user and permission checks.
+- Expand MCP editing and diagnostics workflows, improve tool guidance, and fix CLI/TUI project operations.
+- Upgrade Next.js to the patched 16.4.1 release after upstream security advisories.
+
+### Editor and file compatibility
+
+- Fix editing, databinding, asset cleanup, animation exports and Lottie conversion edge cases while preserving Rive file round trips.
+- Improve runtime and desktop lifecycle cleanup, save conflict handling, and keyboard dismissal for dialogs and popovers.
+- Make exported preview bundles runnable from a local server on Windows and explain browser restrictions when opened directly from `file://`.
+
 ## 0.2.4 - 2026-10-21
 
 ### Preview bundles

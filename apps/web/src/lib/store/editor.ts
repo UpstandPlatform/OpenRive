@@ -183,6 +183,10 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedKeyframes: [],
       smSelection: null,
       editPathId: null,
+      editTextId: null,
+      hoverId: null,
+      selectionContext: null,
+      gestureStart: null,
       guides: loadGuides(projectId),
     });
   },
@@ -295,6 +299,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       smSelection: null,
       editPathId: null,
       editTextId: null,
+      hoverId: null,
       selectionContext: null,
     });
   },
@@ -353,6 +358,10 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedKeyframes: [],
       smSelection: null,
       editPathId: null,
+      editTextId: null,
+      hoverId: null,
+      selectionContext: null,
+      gestureStart: null,
     });
   },
   setAnimation(id) {

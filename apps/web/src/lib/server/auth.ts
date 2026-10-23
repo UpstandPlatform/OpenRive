@@ -27,8 +27,8 @@ export type { Account };
  * Who is making this request.
  *
  * With authentication on, that is the signed-in account. With it off (the
- * local, login-free default) the request acts as the first admin, so a single
- * user keeps working without signing in.
+ * local, login-free default) the request acts as the chosen local user (or the
+ * first admin), so a single user keeps working without signing in.
  */
 export async function currentUser(): Promise<Account | null> {
   return currentUserFromHeaders(await nextHeaders());
@@ -39,8 +39,9 @@ type UserResolution = { user: Account; error?: never } | { user: null; error?: R
 
 async function resolveCurrentUserFromHeaders(requestHeaders: Headers): Promise<UserResolution> {
   const authorization = requestHeaders.get('authorization');
-  if (authorization?.startsWith('Bearer ')) {
-    const key = authorization.slice('Bearer '.length).trim();
+  const usesBearer = authorization !== null && /^Bearer(?:\s|$)/i.test(authorization);
+  if (usesBearer) {
+    const key = authorization.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() ?? '';
     if (!key) return { user: null };
     const result = await (await auth()).api.verifyApiKey({
       body: { configId: 'mcp', key, permissions: { mcp: ['read', 'write'] } },
@@ -59,7 +60,21 @@ async function resolveCurrentUserFromHeaders(requestHeaders: Headers): Promise<U
   }
   if (authEnabled()) return { user: await sessionUser(requestHeaders) };
   const users = await listUsers();
-  const local = users.find((u) => isAdmin(u)) ?? users[0];
+  const cookieHeader = requestHeaders.get('cookie') ?? '';
+  const cookieMatch = cookieHeader.match(/(?:^|;\s*)openrive:user=([^;]+)/);
+  let cookieUserId: string | null = null;
+  if (cookieMatch) {
+    try {
+      cookieUserId = decodeURIComponent(cookieMatch[1]!);
+    } catch {
+      // Ignore a malformed local-user cookie and fall back to the default user.
+    }
+  }
+  const requestedUserId = requestHeaders.get('x-openrive-user-id') ?? cookieUserId;
+  const local =
+    (requestedUserId ? users.find((u) => u.id === requestedUserId) : undefined) ??
+    users.find((u) => isAdmin(u)) ??
+    users[0];
   return { user: local ? { ...local, email: null, emailVerified: false, disabled: false, lastLoginAt: null, hasPassword: false } : null };
 }
 
@@ -94,4 +109,3 @@ export function requireProjectManager(user: Account, project: ProjectMeta): Resp
   if (!canManageProject(user, project)) return fail('Only the owner or an administrator may manage this file', 403);
   return null;
 }
-

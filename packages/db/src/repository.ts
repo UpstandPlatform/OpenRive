@@ -8,7 +8,7 @@ import {
   type ProjectMeta,
   type User,
 } from '@openrive/shared';
-import { and, asc, desc, eq, notInArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from './client';
 import { invitations, members, organizations, projects, sessions, settings, users, type ProjectRow, type UserRow } from './schema';
@@ -196,7 +196,11 @@ export type UpdateProject = Partial<Pick<ProjectMeta, 'name' | 'thumbnail' | 'ar
   rivStorageKey?: string | null;
 };
 
-export async function updateProject(id: string, patch: UpdateProject, options: { expectedUpdatedAt?: number } = {}): Promise<ProjectMeta | null> {
+export async function updateProject(
+  id: string,
+  patch: UpdateProject,
+  options: { expectedUpdatedAt?: number; touchUpdatedAt?: boolean } = {},
+): Promise<ProjectMeta | null> {
   const conn = await db();
   const values = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
   const where = [eq(projects.id, safeId(id))];
@@ -204,8 +208,11 @@ export async function updateProject(id: string, patch: UpdateProject, options: {
   const [row] = await conn
     .update(projects)
     // Keep the optimistic concurrency token strictly increasing even when two
-    // updates arrive in the same millisecond.
-    .set({ ...values, updatedAt: sql<number>`GREATEST(${projects.updatedAt} + 1, ${Date.now()})` })
+    // updates arrive in the same millisecond, unless migrating storage in place.
+    .set({
+      ...values,
+      ...(options.touchUpdatedAt === false ? {} : { updatedAt: sql<number>`GREATEST(${projects.updatedAt} + 1, ${Date.now()})` }),
+    })
     .where(and(...where))
     .returning();
   return row ? toMeta(row) : null;
@@ -232,11 +239,14 @@ export async function transferOrganizationOwnership(organizationId: string, from
   const conn = await db();
   try {
     return await conn.transaction(async (tx) => {
-      const [target] = await tx.select({ id: members.id }).from(members)
-        .where(and(eq(members.organizationId, organizationId), eq(members.userId, toUserId))).limit(1);
-      const [owner] = await tx.select({ id: members.id, role: members.role }).from(members)
-        .where(and(eq(members.organizationId, organizationId), eq(members.userId, fromUserId))).for('update').limit(1);
-      if (!target || !owner || !canDeleteWorkspace(owner.role) || fromUserId === toUserId) return false;
+      if (fromUserId === toUserId) return false;
+      const locked = await tx.select({ id: members.id, userId: members.userId, role: members.role }).from(members)
+        .where(and(eq(members.organizationId, organizationId), inArray(members.userId, [fromUserId, toUserId])))
+        .orderBy(asc(members.userId))
+        .for('update');
+      const owner = locked.find((row) => row.userId === fromUserId);
+      const target = locked.find((row) => row.userId === toUserId);
+      if (!target || !owner || !canDeleteWorkspace(owner.role)) return false;
       // Conditional update is the compare-and-swap guard against two owners
       // transferring simultaneously from the same owner row.
       const demoted = await tx.update(members).set({ role: 'admin' })
@@ -265,13 +275,15 @@ export async function updateOrganizationMemberRole(
 ): Promise<OrganizationMemberRoleUpdate> {
   const conn = await db();
   return conn.transaction(async (tx) => {
-    const [actor] = await tx.select({ role: members.role }).from(members)
-      .where(and(eq(members.organizationId, organizationId), eq(members.userId, actorId)))
-      .for('update').limit(1);
+    const locked = await tx.select({ id: members.id, userId: members.userId, role: members.role }).from(members)
+      .where(and(eq(members.organizationId, organizationId), inArray(members.userId, [actorId, userId])))
+      .orderBy(asc(members.userId))
+      .for('update');
+    const actor = locked.find((row) => row.userId === actorId);
     if (!actor || !canAssignWorkspaceRole(actor.role, role)) return 'forbidden';
-    const [target] = await tx.select({ id: members.id, role: members.role }).from(members)
-      .where(and(eq(members.organizationId, organizationId), eq(members.userId, userId))).for('update').limit(1);
+    const target = locked.find((row) => row.userId === userId);
     if (!target || canDeleteWorkspace(target.role)) return 'missing';
+    if (!canAssignWorkspaceRole(actor.role, role, target.role)) return 'forbidden';
     const updated = await tx.update(members).set({ role })
       .where(and(eq(members.id, target.id), eq(members.role, target.role)))
       .returning();
@@ -317,7 +329,11 @@ export async function createLocalUser(user: User): Promise<User> {
   const conn = await db();
   const [row] = await conn
     .insert(users)
-    .values({ ...user, createdAt: new Date(user.createdAt), position: user.createdAt })
+    .values({
+      ...user,
+      createdAt: new Date(user.createdAt),
+      position: sql<number>`COALESCE((SELECT MAX(${users.position}) + 1 FROM ${users}), 0)`,
+    })
     .returning();
   return toUser(row!);
 }
@@ -341,12 +357,34 @@ export async function updateLocalUser(id: string, patch: Partial<Pick<User, 'nam
 /** Transfers owned projects and removes one local user in one transaction. */
 export async function deleteLocalUserAndTransferProjects(id: string, heirId: string): Promise<boolean> {
   const conn = await db();
+  const targetId = safeId(id);
+  const nextOwnerId = safeId(heirId);
+  if (targetId === nextOwnerId) throw new Error('Choose a different user to receive transferred projects');
   return conn.transaction(async (tx) => {
+    const [current] = await tx.select().from(users).where(eq(users.id, targetId)).for('update');
+    if (!current) return false;
+    if (isAdministratorRole(current.role)) {
+      const result = await tx.execute(sql`SELECT id FROM users WHERE role = 'admin' FOR UPDATE`);
+      const rows = Array.isArray(result) ? result : result && typeof result === 'object' && 'rows' in result && Array.isArray(result.rows) ? result.rows : [];
+      if (rows.length <= 1) throw new Error('At least one admin is required');
+    }
+    const ownedOrgs = await tx.select({ organizationId: members.organizationId, role: members.role }).from(members)
+      .where(eq(members.userId, targetId));
+    if (ownedOrgs.some((row) => canDeleteWorkspace(row.role))) {
+      throw new Error('Transfer or delete owned workspaces before removing this user');
+    }
     await tx
       .update(projects)
-      .set({ ownerId: safeId(heirId), updatedAt: sql<number>`GREATEST(${projects.updatedAt} + 1, ${Date.now()})` })
-      .where(eq(projects.ownerId, safeId(id)));
-    const deleted = await tx.delete(users).where(eq(users.id, safeId(id))).returning();
+      .set({ ownerId: nextOwnerId, updatedAt: sql<number>`GREATEST(${projects.updatedAt} + 1, ${Date.now()})` })
+      .where(eq(projects.ownerId, targetId));
+    const sharedRows = await tx.select({ id: projects.id, sharedWith: projects.sharedWith }).from(projects);
+    for (const row of sharedRows) {
+      if (row.sharedWith?.includes(targetId)) {
+        const filtered = row.sharedWith.filter((uid) => uid !== targetId);
+        await tx.update(projects).set({ sharedWith: filtered.length ? filtered : null }).where(eq(projects.id, row.id));
+      }
+    }
+    const deleted = await tx.delete(users).where(eq(users.id, targetId)).returning();
     return deleted.length > 0;
   });
 }
@@ -366,7 +404,16 @@ export async function duplicateProject(id: string, ownerId: string): Promise<Pro
   const now = Date.now();
   const [copy] = await conn
     .insert(projects)
-    .values({ ...row, id: nanoid(12), name: `${row.name} Copy`, ownerId, createdAt: now, updatedAt: now, rivStorageKey: null })
+    .values({
+      ...row,
+      id: nanoid(12),
+      name: `${row.name} Copy`,
+      ownerId,
+      sharedWith: null,
+      createdAt: now,
+      updatedAt: now,
+      rivStorageKey: null,
+    })
     .returning();
   return toMeta(copy!);
 }
@@ -380,14 +427,20 @@ export async function duplicateProject(id: string, ownerId: string): Promise<Pro
  */
 export async function ensureSeeded() {
   const conn = await db();
-  const claimed = await conn.insert(settings).values({ key: 'seeded', value: new Date().toISOString() }).onConflictDoNothing().returning();
-  if (!claimed.length) return;
+  const [alreadySeeded] = await conn.select({ key: settings.key }).from(settings).where(eq(settings.key, 'seeded')).limit(1);
+  if (alreadySeeded) return;
   const [existing] = await conn.select({ id: projects.id }).from(projects).limit(1);
-  if (existing) return;
+  if (existing) {
+    await conn.insert(settings).values({ key: 'seeded', value: new Date().toISOString() }).onConflictDoNothing();
+    return;
+  }
 
   const { importLegacyDataDir } = await import('./legacy');
   const imported = await importLegacyDataDir();
-  if (imported.projects) return;
+  if (imported.projects) {
+    await conn.insert(settings).values({ key: 'seeded', value: new Date().toISOString() }).onConflictDoNothing();
+    return;
+  }
 
   const [{ openriveLogo }, { exportRiv }, { stringifyDoc }] = await Promise.all([
     import('@openrive/rive/templates-brand'),
@@ -397,6 +450,10 @@ export async function ensureSeeded() {
   const list = await listUsers();
   const owner = list.find((u) => isAdministratorRole(u.role)) ?? list[0]!;
   const doc = openriveLogo.build();
+  const claimed = await conn.insert(settings).values({ key: 'seeded', value: new Date().toISOString() }).onConflictDoNothing().returning();
+  if (!claimed.length) return;
+  const [afterClaim] = await conn.select({ id: projects.id }).from(projects).limit(1);
+  if (afterClaim) return;
   await createProject({
     name: 'Welcome to OpenRive',
     ownerId: owner.id,

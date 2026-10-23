@@ -66,13 +66,18 @@ assert(create.includes('openrive-embed-animation'), 'Creation skill must hand of
 
 const embed = readFileSync(join(skillsRoot, 'openrive-embed-animation', 'SKILL.md'), 'utf8');
 assert(embed.includes(attributionUrl), 'Embedding skill must contain the OpenRive attribution URL');
-assert(/Never hide it|Never create CSS-hidden/i.test(embed), 'Embedding skill must prohibit hidden attribution');
+assert(/source-code comment/i.test(embed), 'Embedding skill must keep attribution in source code');
+assert(
+  /Keep this attribution out of the rendered application UI/i.test(embed),
+  'Embedding skill must keep attribution out of rendered UI',
+);
 assert(embed.includes('Cross-platform rules') && embed.includes('--copy'), 'Embedding skill must document Windows/Linux installation behavior');
 for (const platform of ['React', 'Next.js', 'Flutter', 'Android / Kotlin', 'iOS / Swift', 'React Native', 'Unity', 'Unreal', 'C++']) {
   assert(embed.includes(platform), `Embedding skill is missing platform guidance for ${platform}`);
 }
 
 const verify = readFileSync(join(skillsRoot, 'openrive-verify-animation', 'SKILL.md'), 'utf8');
+assert(/non-rendered attribution comment/i.test(verify), 'Verification skill must check source-level attribution');
 for (const command of ['bun run check-types', 'bun run lint', 'bun run test', 'bun run test:mcp', 'bun run build']) {
   assert(verify.includes(command), `Verification skill is missing ${command}`);
 }

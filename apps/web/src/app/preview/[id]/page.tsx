@@ -5,6 +5,7 @@ import { ArrowLeft, ChevronDown, Download, Package, RotateCcw } from 'lucide-rea
 import { PlayerApi, PlayerInput, PlayerProperty, RivePlayer } from '@/components/RivePlayer';
 import { importRiv, RiveDoc } from '@openrive/rive/document';
 import { NumberField } from '@/components/editor/controls';
+import { localUserHeaders } from '@/lib/client/session';
 
 export default function PreviewPage({ params }: PageProps<'/preview/[id]'>) {
   const { id } = use(params);
@@ -26,7 +27,11 @@ export default function PreviewPage({ params }: PageProps<'/preview/[id]'>) {
   useEffect(() => {
     (async () => {
       try {
-        const [metaRes, rivRes] = await Promise.all([fetch(`/api/projects/${id}?meta=1`), fetch(`/api/projects/${id}/riv`)]);
+        const headers = localUserHeaders();
+        const [metaRes, rivRes] = await Promise.all([
+          fetch(`/api/projects/${id}?meta=1`, { headers, cache: 'no-store' }),
+          fetch(`/api/projects/${id}/riv`, { headers, cache: 'no-store' }),
+        ]);
         if (!rivRes.ok) throw new Error('This file has not been saved yet or does not exist.');
         const b = new Uint8Array(await rivRes.arrayBuffer());
         setName(metaRes.ok ? (await metaRes.json()).name : 'Preview');

@@ -3,7 +3,7 @@ import { exportRiv, RiveDoc } from '@openrive/rive/document';
 import { newDoc } from '@openrive/rive/factory';
 import { stringifyDoc, toBase64 } from '@openrive/shared/serialize';
 import type { ProjectMeta } from '@openrive/shared';
-import { api } from './session';
+import { api, localUserHeaders } from './session';
 
 export function docStats(doc: RiveDoc) {
   return {
@@ -27,7 +27,7 @@ export async function createBlankProject(ownerId: string, name = 'Untitled') {
 export async function importRivFile(file: File) {
   const form = new FormData();
   form.set('file', file, file.name);
-  const res = await fetch('/api/projects/import', { method: 'POST', body: form, cache: 'no-store' });
+  const res = await fetch('/api/projects/import', { method: 'POST', headers: localUserHeaders(), body: form, cache: 'no-store' });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error((data as { error?: string }).error || `Import failed (${res.status})`);
   return data as ProjectMeta;

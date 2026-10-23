@@ -1,7 +1,7 @@
 // File assets (embedded images and fonts) and placing images on artboards.
-import { ArtboardDoc, CoreObj, RiveDoc } from './document';
+import { ArtboardDoc, CoreObj, refSpaceOf, RiveDoc } from './document';
 import { obj } from './factory';
-import { insertObjects } from './ops';
+import { deleteObjects, insertObjects } from './ops';
 import { isA } from './schema';
 
 export type AssetKind = 'image' | 'font' | 'audio' | 'other';
@@ -14,7 +14,7 @@ export function assetKind(o: CoreObj): AssetKind {
 }
 
 export function fileAssets(doc: RiveDoc): CoreObj[] {
-  return doc.top.filter((o) => isA(o.type, 'FileAsset'));
+  return doc.top.filter((o) => isA(o.type, 'FileAsset') && o.type !== 'ManifestAsset');
 }
 
 export function assetBytes(a: CoreObj): Uint8Array | undefined {
@@ -64,26 +64,53 @@ export function placeImage(ab: ArtboardDoc, asset: CoreObj, x: number, y: number
   return image;
 }
 
-/** Objects that use an asset (images, text styles, audio events). */
+/** Objects that use an asset (images, text styles, audio events, paint images, scripts). */
 export function assetUsers(doc: RiveDoc, assetId: string): { ab: ArtboardDoc; o: CoreObj }[] {
   const out: { ab: ArtboardDoc; o: CoreObj }[] = [];
-  for (const ab of doc.artboards)
-    for (const o of ab.objects) if (o.props.assetId === assetId || o.props.fontAssetId === assetId) out.push({ ab, o });
+  const visit = (ab: ArtboardDoc, object: CoreObj) => {
+    if (Object.entries(object.props).some(([name, value]) => value === assetId && refSpaceOf(object.type, name) === 'asset')) {
+      out.push({ ab, o: object });
+    }
+    object.children?.forEach((child) => visit(ab, child));
+  };
+  for (const ab of doc.artboards) {
+    for (const o of [...ab.objects, ...ab.animations, ...ab.stateMachines]) visit(ab, o);
+  }
   return out;
+}
+
+function clearAssetReferences(object: CoreObj, assetId: string) {
+  for (const [name, value] of Object.entries(object.props)) {
+    if (value === assetId && refSpaceOf(object.type, name) === 'asset') object.props[name] = -1;
+  }
+  object.children?.forEach((child) => clearAssetReferences(child, assetId));
+}
+
+function removeScriptReferences(objects: CoreObj[], assetId: string): CoreObj[] {
+  return objects.filter((object) => {
+    if (object.props.scriptAssetId === assetId) return false;
+    if (object.children) object.children = removeScriptReferences(object.children, assetId);
+    return true;
+  });
 }
 
 /** Removes an asset and every Image using it. Fonts in use are kept (returns false). */
 export function removeAsset(doc: RiveDoc, assetId: string): boolean {
-  const asset = doc.top.find((o) => o.id === assetId);
+  const asset = doc.top.find((o) => o.id === assetId && o.type !== 'ManifestAsset');
   if (!asset) return false;
   const users = assetUsers(doc, assetId);
   if (users.some((u) => u.o.props.fontAssetId === assetId)) return false;
   for (const ab of doc.artboards) {
-    const doomed = new Set(ab.objects.filter((o) => o.props.assetId === assetId).map((o) => o.id));
-    ab.objects = ab.objects.filter((o) => !doomed.has(o.id));
-    for (const a of ab.animations) a.children = (a.children ?? []).filter((ko) => !doomed.has(ko.props.objectId as string));
+    const doomedIds = ab.objects
+      .filter((o) => Object.entries(o.props).some(([name, value]) => value === assetId && refSpaceOf(o.type, name) === 'asset'))
+      .map((o) => o.id);
+    if (doomedIds.length) deleteObjects(ab, doomedIds);
+    ab.animations = removeScriptReferences(ab.animations, assetId);
+    ab.stateMachines = removeScriptReferences(ab.stateMachines, assetId);
+    for (const o of [...ab.objects, ...ab.animations, ...ab.stateMachines]) clearAssetReferences(o, assetId);
   }
-  doc.top = doc.top.filter((o) => o.id !== assetId);
+  doc.top = removeScriptReferences(doc.top, assetId).filter((o) => o.id !== assetId);
+  for (const topObj of doc.top) clearAssetReferences(topObj, assetId);
   return true;
 }
 

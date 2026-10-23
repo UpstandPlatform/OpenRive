@@ -11,7 +11,7 @@
 import { betterAuth } from 'better-auth';
 import { admin, createAccessControl, organization } from 'better-auth/plugins';
 import { apiKey } from '@better-auth/api-key';
-import { APIError } from 'better-auth/api';
+import { APIError, createAuthMiddleware } from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { hashPassword as hashScrypt, verifyPassword as verifyScrypt } from 'better-auth/crypto';
 import { db, schema } from '@openrive/db';
@@ -104,9 +104,13 @@ let redisInstance: Promise<RedisInfrastructure | undefined> | null = null;
 /** The optional distributed store is shared by Better Auth and health checks. */
 function redisStorage(): Promise<RedisInfrastructure | undefined> {
   const configuredUrl = env().OPENRIVE_REDIS_URL;
-  return (redisInstance ??= configuredUrl
+  return (redisInstance ??= (configuredUrl
     ? createRedisInfrastructure({ url: configuredUrl, namespace: 'auth' })
-    : Promise.resolve(undefined));
+    : Promise.resolve(undefined)
+  ).catch((error) => {
+    redisInstance = null;
+    throw error;
+  }));
 }
 
 /** Verifies the configured Redis dependency without exposing its connection details. */
@@ -308,6 +312,19 @@ async function build() {
         lastLoginAt: { type: 'date', required: false, input: false, returned: false },
       },
     },
+    hooks: {
+      before: createAuthMiddleware(async (ctx) => {
+        if (ctx.path === '/sign-up/email') {
+          const [existing] = await conn.select({ id: schema.users.id }).from(schema.users).where(isNotNull(schema.users.email)).limit(1);
+          const mode = signupMode();
+          if (mode === 'off' || (mode === 'first' && existing)) {
+            throw new APIError('FORBIDDEN', {
+              message: existing ? 'An administrator creates the accounts on this server' : 'Accounts on this server are created with the openrive command',
+            });
+          }
+        }
+      }),
+    },
     databaseHooks: {
       user: {
         create: {
@@ -386,7 +403,7 @@ async function build() {
                 .where(eq(schema.members.organizationId, member.organizationId)).limit(1);
               if (!existingMembership) return;
             }
-            if (!hasWorkspaceCapability(member.role, 'editProjects') || hasWorkspaceCapability(member.role, 'manageMembers')) {
+            if (!hasWorkspaceCapability(member.role, 'readProjects') || hasWorkspaceCapability(member.role, 'manageMembers')) {
               throw new APIError('FORBIDDEN', { message: 'Add members as editors or viewers; administrators must be invited by the workspace owner' });
             }
           },
@@ -407,7 +424,7 @@ async function build() {
             if (hasWorkspaceCapability(member.role, 'deleteWorkspace')) throw new APIError('FORBIDDEN', { message: 'Transfer workspace ownership before removing its owner' });
           },
           beforeUpdateMemberRole: async ({ member, newRole }) => {
-            if (!canAssignWorkspaceRole('admin', newRole)) throw new APIError('FORBIDDEN', { message: 'Use Workspace settings to assign administrator access' });
+            if (!canAssignWorkspaceRole('admin', newRole, member.role)) throw new APIError('FORBIDDEN', { message: 'Use Workspace settings to assign administrator access' });
             if (hasWorkspaceCapability(member.role, 'deleteWorkspace')) throw new APIError('FORBIDDEN', { message: 'Transfer workspace ownership through the owner account before changing this role' });
           },
           beforeAcceptInvitation: async ({ invitation, user }) => {
@@ -592,6 +609,7 @@ export async function createAccount(input: NewAccount): Promise<Account> {
   const count = await conn.$count(schema.users);
   const id = nanoid(10);
   const now = new Date();
+  const role = input.role ?? 'editor';
   const [row] = await conn
     .insert(schema.users)
     .values({
@@ -599,12 +617,15 @@ export async function createAccount(input: NewAccount): Promise<Account> {
       name: input.name.trim(),
       email,
       color: input.color ?? COLORS[count % COLORS.length]!,
-      role: input.role ?? 'editor',
-      position: count,
+      role,
+      position: sql<number>`COALESCE((SELECT MAX(${schema.users.position}) + 1 FROM ${schema.users}), 0)`,
       createdAt: now,
       updatedAt: now,
     })
     .returning();
+  if (isAdministratorRole(role) && email) {
+    await conn.insert(schema.settings).values({ key: FIRST_ADMIN_CLAIM, value: id }).onConflictDoNothing();
+  }
   if (input.password) await setPassword(id, input.password);
   if (input.password && emailVerificationRequired() && email) await sendAccountVerification(email);
   return toAccount(row!, !!input.password);
@@ -759,14 +780,26 @@ export async function deleteAccountAndTransferProjects(userId: string, heirId?: 
         throw new Error('Cannot delete the last administrator');
       }
     }
+    const ownedOrgs = await tx.select({ role: schema.members.role }).from(schema.members)
+      .where(eq(schema.members.userId, userId));
+    if (ownedOrgs.some((row) => hasWorkspaceCapability(row.role, 'deleteWorkspace'))) {
+      throw new Error('Transfer or delete owned workspaces before removing this account');
+    }
     if (heirId) {
       await tx
         .update(schema.projects)
-        .set({ ownerId: heirId, updatedAt: Date.now() })
+        .set({ ownerId: heirId, updatedAt: sql<number>`GREATEST(${schema.projects.updatedAt} + 1, ${Date.now()})` })
         .where(eq(schema.projects.ownerId, userId));
     } else {
       const [owned] = await tx.select({ id: schema.projects.id }).from(schema.projects).where(eq(schema.projects.ownerId, userId)).limit(1);
       if (owned) throw new Error('A remaining user is required to receive the account files');
+    }
+    const sharedRows = await tx.select({ id: schema.projects.id, sharedWith: schema.projects.sharedWith }).from(schema.projects);
+    for (const row of sharedRows) {
+      if (row.sharedWith?.includes(userId)) {
+        const filtered = row.sharedWith.filter((uid) => uid !== userId);
+        await tx.update(schema.projects).set({ sharedWith: filtered.length ? filtered : null }).where(eq(schema.projects.id, row.id));
+      }
     }
     const deleted = await tx.delete(schema.users).where(eq(schema.users.id, userId)).returning();
     return deleted.length > 0;
@@ -799,6 +832,12 @@ export function canShareProject(user: Account | User, project: ProjectMeta): boo
   return canAccessProject(user, project, 'share');
 }
 
-export const canTransferProject = canTransferProjectPermission;
+export function canTransferProject(user: Account | User): boolean {
+  return canTransferProjectPermission(user);
+}
+
 export { canCreateProject };
-export const isAdmin = (user: Account | User) => canManageAccounts(user.role);
+
+export function isAdmin(user: { role: Role; disabled?: boolean }): boolean {
+  return canManageAccounts(user.role) && !user.disabled;
+}

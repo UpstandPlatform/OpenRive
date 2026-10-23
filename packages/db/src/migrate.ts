@@ -98,8 +98,15 @@ async function applyMigrationsUnlocked(db: Runner): Promise<string[]> {
   const ran: string[] = [];
   for (const migration of migrations) {
     if (applied.has(migration.hash)) continue;
-    for (const statement of migration.statements) await db.execute(sql.raw(statement));
-    await db.execute(sql`INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES (${migration.hash}, ${Date.now()})`);
+    await db.execute(sql.raw('BEGIN'));
+    try {
+      for (const statement of migration.statements) await db.execute(sql.raw(statement));
+      await db.execute(sql`INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES (${migration.hash}, ${Date.now()})`);
+      await db.execute(sql.raw('COMMIT'));
+    } catch (error) {
+      await db.execute(sql.raw('ROLLBACK')).catch(() => {});
+      throw error;
+    }
     ran.push(migration.tag);
   }
   return ran;

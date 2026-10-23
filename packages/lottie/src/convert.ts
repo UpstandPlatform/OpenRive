@@ -190,6 +190,11 @@ export function convertLottie(input: Uint8Array, fileName = 'animation.json', op
   parseCompositionLayerContents(layerNodes, context, 0);
 
   if (context.geometryCount === 0 && context.textCount === 0) fail('animation.layers', 'contains no visible vector shapes or text to import');
+  // Lottie compositions have timelines but no Rive state machine semantics.
+  // newDoc() supplies a starter state machine for hand-authored projects; it
+  // must not be included in an imported composition, where preview should run
+  // the Lottie timeline directly.
+  artboard.stateMachines = [];
   return { doc, source };
 }
 
@@ -214,8 +219,10 @@ function createLayerNodes(
     if (layer.ddd === 1) fail(`${path}.ddd`, '3D layers cannot be represented in a 2D Rive artboard');
     if (layer.ao === 1) fail(`${path}.ao`, 'auto-orientation is not supported');
     const startTime = optionalNumber(layer.st, 0, `${path}.st`);
+    if (Math.abs(startTime) > MAX_DURATION_SECONDS * context.timing.sourceFps) fail(`${path}.st`, 'layer start time magnitude is out of range');
     const stretch = optionalNumber(layer.sr, 1, `${path}.sr`);
     if (stretch <= 0) fail(`${path}.sr`, 'reverse or zero time stretch is not supported');
+    if (stretch < 0.001 || stretch > 1000) fail(`${path}.sr`, 'time stretch must be between 0.001 and 1000');
     if (layer.tt !== undefined && layer.tt !== 0 && finiteNumber(layer.tt, `${path}.tt`) !== 1) fail(`${path}.tt`, 'only alpha track mattes are supported');
     if (layer.td !== undefined && layer.td !== 0 && finiteNumber(layer.td, `${path}.td`) !== 1) fail(`${path}.td`, 'only alpha track matte sources are supported');
     if (layer.tt === 1) {
@@ -563,12 +570,19 @@ function sameNumberValue(raw: unknown, expected: number | number[], path: string
 function addVisibilityNode(parentId: string, name: string, layer: JsonObject, path: string, context: ConversionContext): string {
   const layerIn = optionalNumber(layer.ip, context.timing.compositionInPoint, `${path}.ip`);
   const layerOut = optionalNumber(layer.op, context.timing.compositionOutPoint, `${path}.op`);
+  if (layerOut <= layerIn) {
+    const wrapper = newNode(parentId, `${name} Visibility`);
+    wrapper.props.opacity = 0;
+    appendObjects(context, wrapper);
+    return wrapper.id;
+  }
   const startsBeforeComposition = layerIn <= context.timing.compositionInPoint;
   const endsAfterComposition = layerOut >= context.timing.compositionOutPoint;
   const visibleAtStart = startsBeforeComposition && layerOut > context.timing.compositionInPoint;
   if (visibleAtStart && endsAfterComposition) return parentId;
 
   const wrapper = newNode(parentId, `${name} Visibility`);
+  wrapper.props.opacity = visibleAtStart ? 1 : 0;
   const keys: TrackKey[] = [{ time: context.timing.compositionInPoint, value: visibleAtStart ? 1 : 0, ease: 'hold' }];
   if (layerIn > context.timing.compositionInPoint + 0.001 && layerIn < context.timing.compositionOutPoint) {
     keys.push({ time: layerIn, value: 1, ease: 'hold' });
@@ -680,7 +694,7 @@ function parseShapeItems(items: unknown[], parentId: string, path: string, conte
         break;
       case 'rp':
         if (seenPaint) fail(itemPath, 'repeaters must appear before their fill and stroke styles');
-        geometry.push(...applyRepeater(item, itemPath, childParentId, geometry, context));
+        geometry.splice(0, geometry.length, ...applyRepeater(item, itemPath, childParentId, geometry, context));
         break;
       case 'tr':
         fail(itemPath, 'unexpected transform item');
@@ -767,8 +781,17 @@ function applyRepeater(item: JsonObject, path: string, parentId: string, geometr
       if (copyIndex === 0) {
         branch.root.props.parentId = transformParentId;
       } else {
+        const beforeKeyedCount = context.animation.children?.length ?? 0;
         const clonedRootId = duplicateObjects(context.artboard, [branch.root.id])[0];
         if (!clonedRootId) fail(path, 'could not duplicate repeater content');
+        for (const ko of (context.animation.children ?? []).slice(beforeKeyedCount)) {
+          for (const kp of ko.children ?? []) {
+            context.animationKeyframeCount += kp.children?.length ?? 0;
+            if (context.animationKeyframeCount > MAX_ANIMATION_KEYFRAMES) {
+              fail(path, `creates more than ${MAX_ANIMATION_KEYFRAMES} timeline keyframes`);
+            }
+          }
+        }
         const clonedSubtree = subtreeObjects(context, clonedRootId);
         const originalShapes = originalSubtree.filter((object) => object.type === 'Shape');
         const clonedShapes = clonedSubtree.filter((object) => object.type === 'Shape');

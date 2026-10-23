@@ -73,8 +73,12 @@ log(api.outline(doc));`,
 function runScript(code: string, doc: RiveDoc, artboard: string, log: (...a: unknown[]) => void): RiveDoc {
   const draft = deepClone(doc);
   const api = { ...openriveApi, ...assetsApi, ...themeApi, importSvg };
-  const fn = new Function('doc', 'api', 'artboard', 'log', `"use strict";\n${code}`);
-  const result = fn(draft, api, artboard, log);
+  const blocked = ['window', 'document', 'globalThis', 'self', 'fetch', 'XMLHttpRequest', 'WebSocket', 'localStorage', 'sessionStorage', 'indexedDB', 'cookieStore', 'navigator', 'location', 'parent', 'top', 'opener', 'Function', 'eval'];
+  // Keep the script body strict while shadowing browser globals in a sloppy
+  // outer function: `eval` cannot be a parameter of a strict-mode function.
+  const createRunner = new Function('doc', 'api', 'artboard', 'log', ...blocked, `return function() { "use strict";\n${code}\n};`);
+  const fn = createRunner(draft, api, artboard, log);
+  const result = fn();
   if (result && typeof (result as Promise<unknown>).then === 'function') throw new Error('Scripts run synchronously; async code is not supported.');
   return draft;
 }
@@ -108,6 +112,7 @@ function ScriptsTab() {
   const run = () => {
     const st = useEditor.getState();
     if (!st.doc || !current) return;
+    st.endGesture();
     const ab = findArtboard(st.doc, st.activeArtboardId) ?? st.doc.artboards[0];
     const lines: { text: string; error?: boolean }[] = [];
     const log = (...a: unknown[]) => lines.push({ text: a.map((v) => (typeof v === 'string' ? v : JSON.stringify(v, null, 2))).join(' ') });
@@ -183,7 +188,7 @@ function ScriptsTab() {
       {current ? (
         <div className="flex-1 flex flex-col min-w-0">
           <div className="h-8 flex items-center gap-2 px-2 border-b border-line">
-            <input className="field h-6 w-48" value={current.name} disabled={readOnly} onChange={(e) => update({ name: e.target.value })} />
+            <input className="field h-6 w-48" value={current.name} disabled={readOnly} onFocus={() => s.beginGesture()} onBlur={() => s.endGesture()} onChange={(e) => update({ name: e.target.value })} />
             <span className="text-t3 text-[11px] truncate flex-1">
               Globals: <code>doc</code>, <code>api</code> (OpenRive API: addShape, addText, addAnimation, addKeyframes, addStateMachine, setProperties, outline…),{' '}
               <code>artboard</code> (active artboard id), <code>log()</code>
@@ -198,6 +203,8 @@ function ScriptsTab() {
               spellCheck={false}
               value={current.code}
               disabled={readOnly}
+              onFocus={() => s.beginGesture()}
+              onBlur={() => s.endGesture()}
               onChange={(e) => update({ code: e.target.value })}
               onKeyDown={(e) => {
                 e.stopPropagation();

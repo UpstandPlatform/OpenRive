@@ -53,6 +53,7 @@ export const PUT = handler(async (request: Request, ctx: RouteContext<'/api/proj
   };
   const bytes = riv ? fromBase64(riv) : undefined;
   const oldAsset = bytes && cloudEdition() ? await getProjectAsset(id) : null;
+  const effectiveExpectedUpdatedAt = expectedUpdatedAt ?? oldAsset?.updatedAt;
   const newKey = bytes && cloudEdition() ? await uploadProjectRiv(id, bytes) : undefined;
   let meta: Awaited<ReturnType<typeof updateProject>>;
   try {
@@ -64,7 +65,7 @@ export const PUT = handler(async (request: Request, ctx: RouteContext<'/api/proj
         ...(bytes && !cloudEdition() ? { riv: bytes } : {}),
         ...accessPatch,
       },
-      { expectedUpdatedAt },
+      { expectedUpdatedAt: effectiveExpectedUpdatedAt },
     );
   } catch (error) {
     if (newKey) await removeProjectRiv(newKey);

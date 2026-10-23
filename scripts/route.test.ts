@@ -57,6 +57,10 @@ try {
     (await status(requireSameOrigin(request('https://openrive.example.com/api/mcp/keys', { 'sec-fetch-site': 'cross-site' })))) === 403,
     'cross-site requests without an Origin header must be rejected',
   );
+  check(
+    (await status(requireSameOrigin(request('http://openrive:3000/api/mcp', { origin: 'https://agent.example', authorization: 'bearer openrive_mcp_test' })))) === 200,
+    'the HTTP Bearer scheme must be accepted case-insensitively for MCP requests',
+  );
   const tooLarge = await body(new Request('http://openrive:3000/api/projects', { method: 'POST', body: '{"x":1}' }), z.object({}), 4);
   check(tooLarge.error?.status === 413, 'bounded JSON bodies must return 413 before parsing');
   check(apiKeyVerificationFailure('RATE_LIMITED')?.status === 429, 'temporary MCP API key rate limits must return 429, not an authentication failure');
@@ -71,6 +75,8 @@ try {
   process.env.OPENRIVE_ACCESS_TOKEN = 'shared-server-password';
   const bearerMcp = proxy(new NextRequest('https://openrive.example.com/api/mcp', { headers: { authorization: 'Bearer openrive_mcp_test' } }));
   check(bearerMcp.status === 200, 'MCP bearer credentials must reach the endpoint verifier even when the shared Basic password is enabled');
+  const lowerCaseBearerMcp = proxy(new NextRequest('https://openrive.example.com/api/mcp', { headers: { authorization: 'bearer openrive_mcp_test' } }));
+  check(lowerCaseBearerMcp.status === 200, 'lowercase HTTP Bearer credentials must reach the MCP endpoint verifier');
   const protectedPage = proxy(new NextRequest('https://openrive.example.com/editor/project'));
   check(protectedPage.status === 401, 'the shared Basic password must still protect non-MCP routes');
   console.log('Route origin and body-limit checks passed');

@@ -11,7 +11,7 @@ const deleteKeySchema = z.object({ keyId: z.string().trim().min(1).max(128) });
 
 async function browserUser() {
   const requestHeaders = await headers();
-  if (requestHeaders.get('authorization')?.startsWith('Bearer ')) {
+  if (/^Bearer(?:\s|$)/i.test(requestHeaders.get('authorization') ?? '')) {
     return { error: fail('Sign in with the browser session to manage MCP keys', 403) } as const;
   }
   const guard = await requireUser();

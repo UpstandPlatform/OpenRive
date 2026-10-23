@@ -140,8 +140,10 @@ export function canAssignWorkspaceAdministrators(role: string | null | undefined
   return hasWorkspaceCapability(role, 'assignAdministrators');
 }
 
-export function canAssignWorkspaceRole(actorRole: string | null | undefined, targetRole: string): boolean {
+export function canAssignWorkspaceRole(actorRole: string | null | undefined, targetRole: string, currentRole?: string | null): boolean {
   if (!canManageWorkspace(actorRole)) return false;
+  if (currentRole && canDeleteWorkspace(currentRole)) return false;
+  if (currentRole && canManageWorkspace(currentRole) && !canAssignWorkspaceAdministrators(actorRole)) return false;
   return targetRole === 'admin'
     ? canAssignWorkspaceAdministrators(actorRole)
     : targetRole === 'editor' || targetRole === 'viewer';

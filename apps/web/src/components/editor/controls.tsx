@@ -40,6 +40,7 @@ export function NumberField({
   const shown = round(value * scale, precision);
   const [text, setText] = useState(String(shown));
   const [focused, setFocused] = useState(false);
+  const cancelCommit = useRef(false);
   const clamp = (v: number) => Math.min(max ?? Infinity, Math.max(min ?? -Infinity, v));
   const commit = () => {
     const expr = text.trim();
@@ -69,10 +70,12 @@ export function NumberField({
     const up = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
       useEditor.getState().endGesture();
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
   };
   return (
     <div className={`relative flex items-center min-w-0 ${className}`}>
@@ -90,18 +93,25 @@ export function NumberField({
         value={focused ? text : `${shown}${suffix ?? ''}`}
         disabled={disabled}
         onFocus={(e) => {
+          cancelCommit.current = false;
           setFocused(true);
           setText(String(shown));
           requestAnimationFrame(() => e.target.select());
         }}
         onBlur={() => {
           setFocused(false);
+          if (cancelCommit.current) {
+            cancelCommit.current = false;
+            setText(String(shown));
+            return;
+          }
           commit();
         }}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
           if (e.key === 'Escape') {
+            cancelCommit.current = true;
             setText(String(shown));
             setFocused(false);
             (e.target as HTMLInputElement).blur();
@@ -135,6 +145,7 @@ export function TextField({
 }) {
   const [text, setText] = useState(value);
   const [prevValue, setPrevValue] = useState(value);
+  const cancelCommit = useRef(false);
   if (prevValue !== value) {
     setPrevValue(value);
     setText(value);
@@ -145,11 +156,19 @@ export function TextField({
       value={text}
       placeholder={placeholder}
       disabled={disabled}
+      onFocus={() => { cancelCommit.current = false; }}
       onChange={(e) => setText(e.target.value)}
-      onBlur={() => text !== value && onChange(text)}
+      onBlur={() => {
+        if (cancelCommit.current) {
+          cancelCommit.current = false;
+          setText(value);
+          return;
+        }
+        if (text !== value) onChange(text);
+      }}
       onKeyDown={(e) => {
         if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-        if (e.key === 'Escape') setText(value);
+        if (e.key === 'Escape') { cancelCommit.current = true; setText(value); (e.target as HTMLInputElement).blur(); }
         e.stopPropagation();
       }}
     />
@@ -238,10 +257,12 @@ export function ColorPicker({
     const up = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
       useEditor.getState().endGesture();
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
   };
   const [h, s, v] = hsv;
   const [hr, hg, hb] = hsvToRgb(h, 1, 1);

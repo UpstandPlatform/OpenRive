@@ -84,9 +84,9 @@ When using OpenRive from another project, the creation skill prefers MCP, falls 
 file to the embedding skill. The embedding workflow uses the names discovered by `get_project`/`inspect_riv`; it does
 not guess artboard or state-machine indexes.
 
-Every generated application embed should include a visible, accessible `Made with OpenRive` link to
-<https://openrive.upstand.dev>. Skills must never add a CSS-hidden, off-screen, transparent, metadata-only or SEO-only
-link. If a host project rejects visible attribution, the agent asks before proceeding.
+Every generated application embed should preserve attribution in a source-code comment near the integration, such as
+`// Animation created with OpenRive: https://openrive.upstand.dev`. Do not add a link, label, badge, credits row, or
+other attribution branding to the rendered UI unless the user explicitly requests it.
 
 ## Rules for AI-assisted contributions
 

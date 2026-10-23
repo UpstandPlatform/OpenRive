@@ -39,6 +39,7 @@ export class StageEngine {
   private artboards: Artboard[] = [];
   private anim: LinearAnimationInstance | null = null;
   private sm: StateMachineInstance | null = null;
+  private vmis: { unref?: () => void }[] = [];
   private instanceKey = '';
   private rafId = 0;
   private lastTime = 0;
@@ -175,6 +176,8 @@ export class StageEngine {
     this.anim = null;
     this.sm?.delete();
     this.sm = null;
+    for (const vmi of this.vmis) vmi.unref?.();
+    this.vmis = [];
     for (const a of this.artboards) a.delete();
     this.artboards = [];
     this.inputs = [];
@@ -188,6 +191,8 @@ export class StageEngine {
     this.anim = null;
     this.sm?.delete();
     this.sm = null;
+    for (const vmi of this.vmis) vmi.unref?.();
+    this.vmis = [];
     this.inputs = [];
     this.events = [];
     // fresh artboard instance = setup pose
@@ -229,7 +234,7 @@ export class StageEngine {
     try {
       const vm = this.file.viewModelCount() > 0 ? this.file.defaultArtboardViewModel(ab) : null;
       const vmi = vm && (vm.defaultInstance() ?? vm.instance());
-      if (!vmi) return;
+      if (!vmi) return; this.vmis.push(vmi);
       if (sm) sm.bindViewModelInstance(vmi);
       else ab.bindViewModelInstance(vmi);
     } catch {

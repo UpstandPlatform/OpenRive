@@ -497,7 +497,15 @@ export function setText(doc: RiveDoc, ref: string, text: string) {
   const runs = textRuns(ab, o.id);
   if (!runs.length) throw new ApiError(`"${ref}" is not a text object`);
   runs[0].props.text = text;
-  ab.objects = ab.objects.filter((r) => !runs.slice(1).includes(r));
+  const extraIds = new Set(runs.slice(1).map((r) => r.id));
+  if (extraIds.size > 0) {
+    for (const obj of ab.objects) {
+      if (obj.type === 'TextModifierRange' && typeof obj.props.runId === 'string' && extraIds.has(obj.props.runId)) {
+        obj.props.runId = runs[0].id;
+      }
+    }
+    deleteObjects(ab, [...extraIds]);
+  }
 }
 
 /**
@@ -722,8 +730,9 @@ export function addBlendState(
     const name = s.parameter?.trim() || 'Blend 1D';
     input = obj('StateMachineNumber', { name });
     sm.children ??= [];
-    const firstLayer = sm.children.findIndex((child) => isA(child.type, 'StateMachineLayer'));
-    sm.children.splice(firstLayer < 0 ? sm.children.length : firstLayer, 0, input);
+    const firstNonInput = sm.children.findIndex((child) => !isA(child.type, 'StateMachineInput'));
+    if (firstNonInput < 0) sm.children.push(input);
+    else sm.children.splice(firstNonInput, 0, input);
   }
   const children = s.animations.map(({ animation, value }) => {
     const timeline = getAnimation(ab, animation);
@@ -874,7 +883,16 @@ export function addEvent(
   for (const field of e.properties ?? []) {
     const fieldName = field.name.trim();
     const type = field.type === 'number' ? 'CustomPropertyNumber' : field.type === 'boolean' ? 'CustomPropertyBoolean' : field.type === 'color' ? 'CustomPropertyColor' : 'CustomPropertyString';
-    const value = field.type === 'number' ? Number(field.value ?? 0) : field.type === 'boolean' ? !!field.value : field.type === 'color' ? Number(field.value ?? 0xffffffff) >>> 0 : String(field.value ?? '');
+    const value =
+      field.type === 'number'
+        ? Number(field.value ?? 0)
+        : field.type === 'boolean'
+          ? !!field.value
+          : field.type === 'color'
+            ? field.value !== undefined
+              ? parseColor(field.value)
+              : 0xffffffff
+            : String(field.value ?? '');
     const property = obj(type, { name: fieldName, parentId: event.id, propertyValue: value });
     ab.objects.push(property);
   }
@@ -898,22 +916,10 @@ export function renameEvent(doc: RiveDoc, eventRef: string, name: string, artboa
 export function removeEvent(doc: RiveDoc, eventRef: string, artboardRef?: string) {
   const { ab, o } = getObject(doc, eventRef, artboardRef);
   if (o.type !== 'Event') throw new ApiError(`"${eventRef}" is not an event`);
-  const doomed = new Set([o.id]);
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const item of ab.objects) {
-      if (typeof item.props.parentId === 'string' && doomed.has(item.props.parentId) && !doomed.has(item.id)) {
-        doomed.add(item.id);
-        changed = true;
-      }
-    }
-  }
-  ab.objects = ab.objects.filter((item) => !doomed.has(item.id));
   for (const sm of ab.stateMachines) {
     const clean = (item: CoreObj) => {
       item.children = item.children?.filter((child) => {
-        if (child.type === 'StateMachineListenerSingle' && child.props.eventId === o.id) return false;
+        if ((child.type === 'StateMachineListenerSingle' || child.type === 'ListenerInputTypeEvent') && child.props.eventId === o.id) return false;
         if ((child.type === 'ListenerFireEvent' || child.type === 'StateMachineFireEvent') && child.props.eventId === o.id) return false;
         return true;
       });
@@ -921,6 +927,7 @@ export function removeEvent(doc: RiveDoc, eventRef: string, artboardRef?: string
     };
     clean(sm);
   }
+  deleteObjects(ab, [o.id]);
   return true;
 }
 
@@ -976,9 +983,9 @@ export function clipsOf(ab: ArtboardDoc, objectId: string): CoreObj[] {
 /** Removes one mask, or every mask of an object when no clip id is given. */
 export function removeClip(doc: RiveDoc, c: { artboard?: string; object: string; clipId?: string }) {
   const { ab, o } = getObject(doc, c.object, c.artboard);
-  const doomed = new Set(clipsOf(ab, o.id).filter((x) => !c.clipId || x.id === c.clipId).map((x) => x.id));
-  ab.objects = ab.objects.filter((x) => !doomed.has(x.id));
-  return doomed.size;
+  const doomed = clipsOf(ab, o.id).filter((x) => !c.clipId || x.id === c.clipId).map((x) => x.id);
+  deleteObjects(ab, doomed);
+  return doomed.length;
 }
 
 // ---------------------------------------------------------------------------
@@ -1132,4 +1139,3 @@ function propNameOf(kp: CoreObj): string {
 }
 
 const round = (v: number) => Math.round(v * 100) / 100;
-

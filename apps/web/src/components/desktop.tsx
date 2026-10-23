@@ -29,16 +29,37 @@ interface Shell {
 }
 
 const STORAGE_KEY = 'openrive:desktop-control';
+let cachedShell: Shell | null = null;
+
+function parseShell(value: string): Shell | null {
+  try {
+    const shell = JSON.parse(value) as Partial<Shell>;
+    return typeof shell.port === 'string' && shell.port.length > 0 && typeof shell.token === 'string'
+      ? { port: shell.port, token: shell.token }
+      : null;
+  } catch {
+    return null;
+  }
+}
 
 function readShell(): Shell | null {
   if (typeof window === 'undefined') return null;
   const params = new URLSearchParams(window.location.search);
-  if (params.get('desktop') === '1') return { port: params.get('controlPort') ?? '', token: params.get('controlToken') ?? '' };
+  if (cachedShell) return cachedShell;
+  if (params.get('desktop') === '1') {
+    const port = params.get('controlPort') ?? '';
+    const token = params.get('controlToken') ?? '';
+    if (port) {
+      cachedShell = { port, token };
+      return cachedShell;
+    }
+  }
   try {
     const stored = sessionStorage.getItem(STORAGE_KEY);
-    return stored ? (JSON.parse(stored) as Shell) : null;
+    if (stored) cachedShell = parseShell(stored);
+    return cachedShell;
   } catch {
-    return null;
+    return cachedShell;
   }
 }
 
@@ -54,7 +75,8 @@ const useHydrated = () =>
 /** The desktop shell's control server, or null in a browser. */
 export function useDesktop(): Shell | null {
   const hydrated = useHydrated();
-  const { port = '', token = '' } = (hydrated ? readShell() : null) ?? {};
+  const shell = hydrated ? readShell() : null;
+  const { port = '', token = '' } = shell ?? {};
 
   useEffect(() => {
     if (!port) return;
@@ -72,15 +94,17 @@ export function useDesktop(): Shell | null {
     }
   }, [port, token]);
 
-  return port ? { port, token } : null;
+  return shell;
 }
 
 function shellFromStorage(): Shell | null {
+  if (cachedShell) return cachedShell;
   try {
     const stored = sessionStorage.getItem(STORAGE_KEY);
-    return stored ? (JSON.parse(stored) as Shell) : null;
+    if (stored) cachedShell = parseShell(stored);
+    return cachedShell;
   } catch {
-    return null;
+    return cachedShell;
   }
 }
 

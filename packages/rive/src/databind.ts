@@ -114,6 +114,43 @@ export interface ViewModelDoc {
   instanceIndex: number;
 }
 
+function matchesViewModel(vmRef: unknown, vm: { obj: CoreObj; index: number }): boolean {
+  if (typeof vmRef === 'string') return vmRef === vm.obj.id;
+  return Number(vmRef ?? 0) === vm.index;
+}
+
+function parseColorValue(v: unknown): number {
+  if (typeof v === 'number') return v >>> 0;
+  const s = String(v ?? '').trim();
+  if (!s) return 0;
+  const m = s.match(/^#?([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
+  if (m) {
+    let h = m[1]!;
+    if (h.length === 3) h = h.split('').map((c) => c + c).join('');
+    const rgb = parseInt(h.slice(0, 6), 16);
+    const a = h.length === 8 ? parseInt(h.slice(6, 8), 16) : 255;
+    return ((a << 24) | rgb) >>> 0;
+  }
+  const r = s.match(/^rgba?\(([^)]+)\)$/i);
+  if (r) {
+    const [cr, cg, cb, ca = '1'] = r[1]!.split(',').map((x) => x.trim());
+    return ((Math.round(Number(ca) * 255) << 24) | (Number(cr) << 16) | (Number(cg) << 8) | Number(cb)) >>> 0;
+  }
+  const hsl = s.match(/^hsla?\(([^)]+)\)$/i);
+  if (hsl) {
+    const [hs, ss, ls, as = '1'] = hsl[1]!.split(/[\s,/]+/).filter(Boolean);
+    const h = ((parseFloat(hs!) % 360) + 360) % 360;
+    const sat = parseFloat(ss!) / 100;
+    const l = parseFloat(ls!) / 100;
+    const a = as.endsWith('%') ? parseFloat(as) / 100 : Number(as);
+    const k = (n: number) => (n + h / 30) % 12;
+    const f = (n: number) => Math.round(255 * (l - sat * Math.min(l, 1 - l) * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1))));
+    return ((Math.round(a * 255) << 24) | (f(0) << 16) | (f(8) << 8) | f(4)) >>> 0;
+  }
+  const numeric = Number(s);
+  return Number.isFinite(numeric) ? numeric >>> 0 : 0;
+}
+
 // ---------------------------------------------------------------------------
 // Reading
 
@@ -148,7 +185,8 @@ export function viewModels(doc: RiveDoc): ViewModelDoc[] {
 
   // the first instance of a model holds the values the file plays with
   for (const inst of instances) {
-    const target = models[Number(inst.obj.props.viewModelId ?? 0)];
+    const vmRef = inst.obj.props.viewModelId;
+    const target = typeof vmRef === 'string' ? models.find((m) => m.obj.id === vmRef) : models[Number(vmRef ?? 0)];
     if (!target || target.instance) continue;
     target.instance = inst.obj;
     target.instanceIndex = inst.index;
@@ -163,7 +201,9 @@ export function viewModels(doc: RiveDoc): ViewModelDoc[] {
 /** The view model an artboard is bound to, if any. */
 export function artboardViewModel(doc: RiveDoc, ab: ArtboardDoc): ViewModelDoc | undefined {
   const id = ab.artboard.props.viewModelId;
-  return typeof id === 'number' ? viewModels(doc)[id] : undefined;
+  const models = viewModels(doc);
+  if (typeof id === 'string') return models.find((m) => m.obj.id === id);
+  return typeof id === 'number' ? models[id] : undefined;
 }
 
 /** The data binding properties an artboard exposes. */
@@ -208,24 +248,26 @@ function propertyInsertAt(doc: RiveDoc, vm: ViewModelDoc): number {
   return at;
 }
 
-/** Where the next instance value of this model goes in doc.top. */
-function valueInsertAt(doc: RiveDoc, vm: ViewModelDoc): number {
-  if (!vm.instance) return -1;
-  const start = doc.top.indexOf(vm.instance);
-  let at = start + 1;
-  while (at < doc.top.length && isA(doc.top[at]!.type, 'ViewModelInstanceValue')) at++;
-  return at;
+/** All instances of this model in doc.top, with their index in the file-level instance list. */
+function instancesOfModel(doc: RiveDoc, vm: ViewModelDoc): { obj: CoreObj; instanceIndex: number }[] {
+  const out: { obj: CoreObj; instanceIndex: number }[] = [];
+  let instanceIndex = 0;
+  for (const o of doc.top) {
+    if (o.type !== 'ViewModelInstance') continue;
+    if (matchesViewModel(o.props.viewModelId, vm)) out.push({ obj: o, instanceIndex });
+    instanceIndex++;
+  }
+  return out;
 }
 
 /** The artboard's view model, created (with its instance) when missing. */
 export function ensureViewModel(doc: RiveDoc, ab: ArtboardDoc, name?: string): ViewModelDoc {
   const existing = artboardViewModel(doc, ab);
   if (existing) return existing;
-  const index = viewModels(doc).length;
   const model = obj('ViewModel', { name: name ?? `${ab.artboard.props.name || 'Artboard'} Data` });
-  const instance = obj('ViewModelInstance', { viewModelId: index, name: 'Instance' });
+  const instance = obj('ViewModelInstance', { viewModelId: model.id, name: 'Instance' });
   doc.top.push(model, instance);
-  ab.artboard.props.viewModelId = index;
+  ab.artboard.props.viewModelId = model.id;
   return artboardViewModel(doc, ab)!;
 }
 
@@ -233,7 +275,7 @@ function coerce(type: PropertyType, value: PropertyValue | undefined): PropertyV
   if (value === undefined) return undefined;
   if (type === 'boolean') return !!value;
   if (type === 'string') return String(value);
-  if (type === 'color') return Number(value) >>> 0;
+  if (type === 'color') return parseColorValue(value);
   if (type === 'trigger') return undefined; // a trigger has no stored value
   return Number(value) || 0;
 }
@@ -247,17 +289,21 @@ export function addProperty(
   const vm = ensureViewModel(doc, ab, p.viewModelName);
   const info = TYPES[p.type];
   const index = vm.properties.length;
-  doc.top.splice(propertyInsertAt(doc, vm), 0, obj(info.property, { name: p.name }));
-  const at = valueInsertAt(doc, vm);
-  if (at >= 0) {
-    const value = coerce(p.type, p.value);
+  const propObj = obj(info.property, { name: p.name });
+  doc.top.splice(propertyInsertAt(doc, vm), 0, propObj);
+  const value = coerce(p.type, p.value);
+  for (const inst of instancesOfModel(doc, vm)) {
+    const start = doc.top.indexOf(inst.obj);
+    if (start < 0) continue;
+    let at = start + 1;
+    while (at < doc.top.length && isA(doc.top[at]!.type, 'ViewModelInstanceValue')) at++;
     doc.top.splice(at, 0, obj(info.instance, {
-      ...(vm.instanceIndex > 0 ? { parentId: vm.instanceIndex } : {}),
+      ...(inst.instanceIndex > 0 ? { parentId: inst.instanceIndex } : {}),
       viewModelPropertyId: index,
       ...(value !== undefined ? { propertyValue: value } : {}),
     }));
   }
-  return findProperty(doc, ab, p.name)!;
+  return findProperty(doc, ab, propObj.id)!;
 }
 
 /** Sets the value a property starts with. */
@@ -307,7 +353,13 @@ function dataBinds(doc: RiveDoc): { bind: CoreObj; owner: CoreObj }[] {
   };
   for (const ab of doc.artboards) {
     for (const sm of ab.stateMachines) walk(sm);
-    for (const o of ab.objects) walk(o);
+    for (const anim of ab.animations) walk(anim);
+    let currentOwner: CoreObj = ab.artboard;
+    for (const o of ab.objects) {
+      if (o.type === 'DataBindContext') out.push({ bind: o, owner: currentOwner });
+      else if (isA(o.type, 'Component')) currentOwner = o;
+      walk(o);
+    }
   }
   return out;
 }
@@ -344,17 +396,14 @@ export function removeProperty(doc: RiveDoc, ab: ArtboardDoc, ref: string) {
   // this model rather than editing only the default (first) instance.
   const valuesByInstance: CoreObj[][] = [];
   let instanceValues: CoreObj[] | undefined;
-  let instanceModel = -1;
   for (const object of doc.top) {
     if (object.type === 'ViewModelInstance') {
-      instanceModel = Number(object.props.viewModelId ?? -1);
-      instanceValues = instanceModel === vm.index ? [] : undefined;
+      instanceValues = matchesViewModel(object.props.viewModelId, vm) ? [] : undefined;
       if (instanceValues) valuesByInstance.push(instanceValues);
     } else if (isA(object.type, 'ViewModelInstanceValue') && instanceValues) {
       instanceValues.push(object);
     } else if (object.type === 'ViewModel' || isA(object.type, 'ViewModelProperty')) {
       instanceValues = undefined;
-      instanceModel = -1;
     }
   }
 
@@ -391,13 +440,26 @@ function dropBindingGroup(doc: RiveDoc, owner: CoreObj, bind: CoreObj) {
     for (const ab of doc.artboards) for (const sm of ab.stateMachines) walk(sm);
     return;
   }
+  for (const ab of doc.artboards) {
+    const flatIndex = ab.objects.indexOf(bind);
+    if (flatIndex >= 0) {
+      let from = flatIndex;
+      while (from > 0 && ab.objects[from - 1]!.type === 'DataBindContext') from--;
+      if (from > 0 && isA(ab.objects[from - 1]!.type, 'BindableProperty')) from--;
+      let to = flatIndex;
+      while (to + 1 < ab.objects.length && ab.objects[to + 1]!.type === 'DataBindContext') to++;
+      if (ab.objects[to + 1]?.type === 'ListenerViewModelChange') to++;
+      ab.objects.splice(from, to - from + 1);
+      return;
+    }
+  }
   const kids = owner.children ?? [];
   const at = kids.indexOf(bind);
   if (at < 0) return;
   // [bindable, …binds…, ListenerViewModelChange]
   let from = at;
-  while (from > 0 && !isA(kids[from - 1]!.type, 'BindableProperty')) from--;
-  if (from > 0) from--;
+  while (from > 0 && kids[from - 1]!.type === 'DataBindContext') from--;
+  if (from > 0 && isA(kids[from - 1]!.type, 'BindableProperty')) from--;
   let to = at;
   while (to + 1 < kids.length && kids[to + 1]!.type === 'DataBindContext') to++;
   if (kids[to + 1]?.type === 'ListenerViewModelChange') to++;
@@ -417,7 +479,7 @@ export function propertyCondition(p: PropertyDoc, op: ConditionOp = '==', value?
   if (p.type === 'boolean') literal.value = value === undefined ? true : !!value;
   else if (p.type === 'number') literal.value = Number(value ?? 0);
   else if (p.type === 'string') literal.value = String(value ?? '');
-  else if (p.type === 'color') literal.value = Number(value ?? 0) >>> 0;
+  else if (p.type === 'color') literal.value = parseColorValue(value ?? 0);
   return obj('TransitionViewModelCondition', opValue ? { opValue } : {}, [
     obj(info.bindable, {}),
     obj('DataBindContext', { propertyKey: info.propertyKey, sourcePathIds: pathTo(p) }),
@@ -496,9 +558,13 @@ export function convertInputsToProperties(doc: RiveDoc, ab: ArtboardDoc, stateMa
     for (const input of inputs) {
       if (blocked.has(input.id)) continue;
       const type = INPUT_TYPES[input.type]!;
-      const name = String(input.props.name ?? 'Property');
-      const existing = findProperty(doc, ab, name);
-      const p = existing?.type === type ? existing : addProperty(doc, ab, { name, type, value: input.props.value as PropertyValue | undefined });
+      const rawName = String(input.props.name ?? 'Property');
+      const existing = properties(doc, ab).find((candidate) => candidate.name === rawName && candidate.type === type);
+      let name = rawName;
+      if (!existing && findProperty(doc, ab, name)) {
+        name = `${rawName} (${type})`;
+      }
+      const p = existing ?? addProperty(doc, ab, { name, type, value: input.props.value as PropertyValue | undefined });
       byInput.set(input.id, p);
       if (!existing) result.properties.push(name);
     }

@@ -7,7 +7,12 @@ let storageInstance: Promise<ObjectStorage> | null = null;
 export const cloudEdition = () => env().OPENRIVE_EDITION === 'cloud';
 
 async function objectStorage(): Promise<ObjectStorage> {
-  return (storageInstance ??= Promise.resolve().then(() => createObjectStorage()));
+  return (storageInstance ??= Promise.resolve()
+    .then(() => createObjectStorage())
+    .catch((error) => {
+      storageInstance = null;
+      throw error;
+    }));
 }
 
 export async function closeProjectStorage(): Promise<void> {
@@ -27,12 +32,16 @@ export async function readProjectRiv(id: string): Promise<Uint8Array | null> {
     const key = legacyProjectRivKey(id);
     await (await objectStorage()).put(key, asset.riv, 'application/octet-stream');
     try {
-      await pointProjectRiv(id, key, asset.updatedAt);
+      await pointProjectRiv(id, key, asset.updatedAt, false);
       return asset.riv;
     } catch (error) {
       const latest = await getProjectAsset(id);
-      if (latest?.riv) return latest.riv;
-      if (latest?.rivStorageKey) {
+      if (!latest) {
+        await removeProjectRiv(key);
+        return null;
+      }
+      if (latest.riv) return latest.riv;
+      if (latest.rivStorageKey) {
         const current = await (await objectStorage()).get(latest.rivStorageKey);
         if (current) return current;
       }
@@ -50,8 +59,8 @@ export async function uploadProjectRiv(id: string, bytes: Uint8Array): Promise<s
   return key;
 }
 
-export async function pointProjectRiv(id: string, key: string, expectedUpdatedAt?: number): Promise<void> {
-  const updated = await updateProject(id, { riv: null, rivStorageKey: key }, { expectedUpdatedAt });
+export async function pointProjectRiv(id: string, key: string, expectedUpdatedAt?: number, touchUpdatedAt = true): Promise<void> {
+  const updated = await updateProject(id, { riv: null, rivStorageKey: key }, { expectedUpdatedAt, touchUpdatedAt });
   if (!updated) throw new Error('Project disappeared while saving its file');
 }
 
@@ -73,7 +82,4 @@ export async function objectStorageHealth(): Promise<'disabled' | 'ready'> {
 
 if (typeof process !== 'undefined') {
   process.once('beforeExit', () => void closeProjectStorage());
-  process.once('SIGTERM', () => {
-    void closeProjectStorage().finally(() => process.kill(process.pid, 'SIGTERM'));
-  });
 }

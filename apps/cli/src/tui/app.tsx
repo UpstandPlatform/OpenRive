@@ -1,6 +1,6 @@
 // The interactive terminal UI (OpenTUI), shown when `openrive` runs with no command.
 import { createCliRenderer, type SelectOption } from '@opentui/core';
-import { createRoot, useKeyboard } from '@opentui/react';
+import { createRoot, useKeyboard, useRenderer } from '@opentui/react';
 import type { ProjectMeta, User } from '@openrive/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { editorUrl } from '../commands';
@@ -52,7 +52,8 @@ export function App() {
   const [screen, setScreen] = useState<Screen>({ kind: 'projects' });
   const [index, setIndex] = useState(0);
   const [status, setStatus] = useState('');
-  const selected = projects[index];
+  const safeIndex = projects.length > 0 ? Math.min(index, projects.length - 1) : 0;
+  const selected = projects[safeIndex];
 
   const run = (label: string, task: Promise<unknown>) => {
     setStatus(`${label}…`);
@@ -64,8 +65,8 @@ export function App() {
       .catch((e: Error) => setStatus(`Error: ${e.message}`));
   };
 
-  useKeyboard((key) => {
-    if (key.name === 'q' || (key.name === 'c' && key.ctrl)) process.exit(0);
+  const renderer = useRenderer(); useKeyboard((key) => {
+    if (key.name === 'q' || (key.name === 'c' && key.ctrl)) { renderer?.destroy(); return; }
     if (screen.kind === 'projects') {
       if (key.name === 'r') refresh();
       if (key.name === 'n') setScreen({ kind: 'new' });

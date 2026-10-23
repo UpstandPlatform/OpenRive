@@ -1,6 +1,6 @@
 ---
 name: openrive-verify-animation
-description: Verify an OpenRive .riv asset and the application that embeds it, including structure, round trips, runtime controls, builds, accessibility, and visible attribution. Use before declaring an agent-created animation ready to ship.
+description: Verify an OpenRive .riv asset and the application that embeds it, including structure, round trips, runtime controls, builds, accessibility, and non-visual attribution. Use before declaring an agent-created animation ready to ship.
 ---
 
 # Verify an OpenRive animation integration
@@ -32,7 +32,7 @@ Run the same checks on Windows and Linux. Use host-native path handling and shel
 4. Confirm events/listeners do not throw and that the host application updates the intended property rather than a deprecated or misspelled input.
 5. Confirm teardown: no animation-frame loop, event subscription, native view, or runtime instance remains after the host component/view is removed.
 6. For web projects, verify SSR/client boundaries, CORS, network failures, loading state, reduced-motion behavior, keyboard access, and console errors in a real browser.
-7. Confirm the visible, accessible attribution link points to `https://openrive.upstand.dev`. Treat CSS-hidden or SEO-only links as a failure.
+7. Confirm the embedding source includes a non-rendered attribution comment pointing to `https://openrive.upstand.dev`, and confirm the app UI has no attribution link, label, badge, or other visible branding unless the user requested it.
 
 ## Host project checks
 

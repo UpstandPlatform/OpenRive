@@ -379,7 +379,7 @@ function diagnoseSource(bytes: Uint8Array) {
 }
 
 export async function users(args: string[], opts: Options) {
-  const list = authEnabled() ? await listAccounts() : await storage.listUsers();
+  const list = await listAccounts();
   const sub = args[0];
   if (!sub) {
     for (const u of list) console.log(`${pad(u.id, 14)}${pad(u.name, 24)}${u.role}`);
@@ -404,7 +404,7 @@ export async function users(args: string[], opts: Options) {
     if (!ref) throw new StoreError('Usage: users password <name|id> [--password <pw>]');
     const user = list.find((u) => u.id === ref || u.name.toLowerCase() === ref.toLowerCase());
     if (!user) throw new StoreError(`User "${ref}" not found`);
-    const email = ('email' in user && typeof user.email === 'string' ? user.email : null)
+    const email = (typeof opts.email === 'string' && opts.email.trim() ? opts.email.trim() : null) ?? ('email' in user && typeof user.email === 'string' ? user.email : null)
       ?? (authEnabled() ? (await prompt(`Email address for ${user.name}: `)).trim() : null);
     const password = typeof opts.password === 'string' ? opts.password : await prompt(`New password for ${user.name}: `);
     const problem = passwordProblem(password);
@@ -429,6 +429,7 @@ export async function users(args: string[], opts: Options) {
     const rest = list.filter((u) => u.id !== user.id && (!('disabled' in u) || !u.disabled));
     const heir = rest.find((u) => isAdministratorRole(u.role));
     if (!heir) throw new StoreError('Cannot remove the last admin');
+    if ((await storage.listOwnedOrganizationIds(user.id)).length) throw new StoreError('Transfer or delete owned workspaces before removing this user');
     if (authEnabled()) await deleteAccountAndTransferProjects(user.id, heir.id);
     else await deleteLocalUserAndTransferProjects(user.id, heir.id);
     console.log(`Removed ${user.name}; their files now belong to ${heir.name}`);

@@ -1,5 +1,6 @@
 'use client';
 import { exportRiv, type RiveDoc } from '@openrive/rive/document';
+import type { ViewModelInstance } from '@rive-app/canvas-advanced';
 import { loadRuntime } from '@/lib/runtime';
 
 export interface RenderedFrame { data: ImageData; }
@@ -42,13 +43,15 @@ export async function renderAnimationFrames(doc: RiveDoc, options: AnimationExpo
   const renderer = rive.makeRenderer(canvas);
   let artboard: ReturnType<typeof file.artboardByIndex> | null = null;
   let instance: InstanceType<typeof rive.LinearAnimationInstance> | null = null;
+  let vmi: ViewModelInstance | null = null;
   const frames: RenderedFrame[] = [];
   try {
     artboard = file.artboardByIndex(options.artboardIndex);
     const vm = file.viewModelCount() > 0 ? file.defaultArtboardViewModel(artboard) : null;
-    const vmi = vm && (vm.defaultInstance() ?? vm.instance());
+    vmi = (vm && (vm.defaultInstance() ?? vm.instance())) ?? null;
     if (vmi) artboard.bindViewModelInstance(vmi);
-    instance = new rive.LinearAnimationInstance(artboard.animationByIndex(options.animationIndex), artboard);
+    const animObj = artboard.animationByIndex(options.animationIndex);
+    instance = new rive.LinearAnimationInstance(animObj, artboard);
     const ratio = Math.min(width / Number(abDoc.artboard.props.width), height / Number(abDoc.artboard.props.height));
     for (let i = 0; i < total; i++) {
       renderer.clear();
@@ -67,6 +70,7 @@ export async function renderAnimationFrames(doc: RiveDoc, options: AnimationExpo
       if (i % 4 === 3) await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     }
   } finally {
+    vmi?.unref?.();
     instance?.delete();
     artboard?.delete();
     (renderer as { delete?: () => void }).delete?.();

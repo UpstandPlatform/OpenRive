@@ -89,7 +89,7 @@ const isCreateAllowed = () => typeof options.canCreateProject === 'function'
   : options.canCreateProject !== false;
 
 async function authorized(ref: string, operation: 'read' | 'edit' | 'manage') {
-  const meta = await resolveProject(ref);
+  const meta = await resolveProject(ref, options.canSeeProject);
   const allowed =
     operation === 'read'
       ? options.canSeeProject?.(meta) ?? true
@@ -102,12 +102,12 @@ async function authorized(ref: string, operation: 'read' | 'edit' | 'manage') {
 
 async function loadAuthorized(ref: string) {
   const meta = await authorized(ref, 'read');
-  return loadDoc(meta.id);
+  return loadDoc(meta);
 }
 
 async function editAuthorized<T>(ref: string, fn: (doc: RiveDoc) => T) {
   const meta = await authorized(ref, 'edit');
-  return edit(meta.id, fn);
+  return edit(meta, fn);
 }
 
 // ---------------------------------------------------------------------------
@@ -533,7 +533,7 @@ tool(
           }
           case 'set_property_value': {
             const { op: _, ...input } = operation;
-            api.setDataProperty(doc, { ...input, value: typeof input.value === 'string' && /^#[0-9a-f]{3,8}$/i.test(input.value) ? api.parseColor(input.value) : input.value });
+            api.setDataProperty(doc, input);
             return { index, op: operation.op, property: input.property };
           }
           case 'add_state': {
@@ -602,7 +602,7 @@ tool(
   'Set the value a data binding property starts with.',
   { project, artboard, property: z.string(), value: z.union([z.number(), z.boolean(), z.string()]) },
   async ({ project: ref, ...p }) => {
-    await editAuthorized(ref, (doc) => api.setDataProperty(doc, { ...p, value: typeof p.value === 'string' && /^#[0-9a-f]{3,8}$/i.test(p.value) ? api.parseColor(p.value) : p.value }));
+    await editAuthorized(ref, (doc) => api.setDataProperty(doc, p));
     return 'ok';
   },
 );

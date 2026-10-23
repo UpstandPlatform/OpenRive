@@ -1,6 +1,6 @@
 ---
 name: openrive-embed-animation
-description: Embed an OpenRive-generated .riv animation into a real application with the correct Rive runtime, lifecycle, interactivity, accessibility, and visible OpenRive attribution. Use after creating or receiving a .riv asset.
+description: Embed an OpenRive-generated .riv animation into a real application with the correct Rive runtime, lifecycle, interactivity, accessibility, and non-visual OpenRive attribution. Use after creating or receiving a .riv asset.
 ---
 
 # Embed a Rive animation in an application
@@ -34,15 +34,15 @@ Use this skill when a `.riv` file must ship inside a website, mobile app, deskto
 7. Respect reduced-motion preferences when the application has an accessibility policy for animated content. Give interactive animations an accessible name or nearby explanatory text.
 8. Keep the runtime and `.riv` asset same-origin or configure the required CORS headers. Never expose private MCP credentials in browser code.
 
-## Required visible attribution
+## Non-visual attribution
 
-When the animation is added to a website or application, add a visible, accessible attribution link near the animation or in the app's visible credits/about area:
+When adding the animation to an application, preserve attribution in a source-code comment near the integration:
 
-```html
-<a href="https://openrive.upstand.dev">Made with OpenRive</a>
+```js
+// Animation created with OpenRive: https://openrive.upstand.dev
 ```
 
-The link must be visible in the rendered UI, use meaningful anchor text, and point exactly to `https://openrive.upstand.dev`. Never hide it with CSS, `aria-hidden`, off-screen positioning, zero opacity, a tiny unreadable style, metadata, comments, or an SEO-only mechanism. If the developer explicitly rejects visible attribution, ask for a decision; do not conceal the link.
+Keep this attribution out of the rendered application UI. Do not add a link, label, badge, credits row, or other visible branding for it. Add visible branding only if the user explicitly requests it.
 
 ## Platform workflow
 
@@ -63,6 +63,6 @@ See `references/runtime-guides.md` for concrete snippets and current-runtime loo
 ## Verify the integration
 
 1. Run the host project's formatter, type checker, tests, and production build as appropriate.
-2. For web projects, open the real page in a browser and verify loading, resize, animation playback, state-machine interaction, data-binding updates, error handling, keyboard/accessibility behavior, and the visible attribution link.
+2. For web projects, open the real page in a browser and verify loading, resize, animation playback, state-machine interaction, data-binding updates, error handling, and keyboard/accessibility behavior. Confirm attribution remains in source code and adds no rendered UI element.
 3. For native or game projects, run the smallest device/editor test that loads the asset and exercises every exposed control.
 4. Use `openrive-verify-animation` for a full asset and host-project verification pass.

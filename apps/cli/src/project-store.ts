@@ -29,7 +29,13 @@ export class StoreError extends Error {}
 
 let objectStorage: Promise<ObjectStorage> | null = null;
 const cloudEdition = () => env().OPENRIVE_EDITION === 'cloud';
-const blobs = () => (objectStorage ??= Promise.resolve().then(() => createObjectStorage()));
+const blobs = () =>
+  (objectStorage ??= Promise.resolve()
+    .then(() => createObjectStorage())
+    .catch((error) => {
+      objectStorage = null;
+      throw error;
+    }));
 
 export async function closeProjectStore() {
   const client = await objectStorage?.catch(() => null);
@@ -39,11 +45,11 @@ export async function closeProjectStore() {
 }
 
 async function prepareProjectRiv(id: string, bytes: Uint8Array) {
-  if (!cloudEdition()) return { patch: { riv: bytes } as const, key: undefined, previousKey: undefined };
+  if (!cloudEdition()) return { patch: { riv: bytes } as const, key: undefined, previousKey: undefined, previousUpdatedAt: undefined };
   const previous = await storage.getProjectAsset(id);
   const key = projectRivKey(id);
   await (await blobs()).put(key, bytes, 'application/octet-stream');
-  return { patch: { riv: null, rivStorageKey: key } as const, key, previousKey: previous?.rivStorageKey };
+  return { patch: { riv: null, rivStorageKey: key } as const, key, previousKey: previous?.rivStorageKey, previousUpdatedAt: previous?.updatedAt };
 }
 
 async function createStoredProject(input: Parameters<typeof storage.createProject>[0], bytes: Uint8Array) {
@@ -53,7 +59,7 @@ async function createStoredProject(input: Parameters<typeof storage.createProjec
   try {
     key = projectRivKey(meta.id);
     await (await blobs()).put(key, bytes, 'application/octet-stream');
-    const pointed = await storage.updateProject(meta.id, { riv: null, rivStorageKey: key });
+    const pointed = await storage.updateProject(meta.id, { riv: null, rivStorageKey: key }, { touchUpdatedAt: false });
     if (!pointed) throw new StoreError(`Project "${meta.id}" disappeared while saving its file`);
     return pointed;
   } catch (error) {
@@ -69,7 +75,7 @@ export async function getProjectRiv(id: string): Promise<Uint8Array | null> {
   if (asset.riv && cloudEdition()) {
     const key = legacyProjectRivKey(id);
     await (await blobs()).put(key, asset.riv, 'application/octet-stream');
-    await storage.updateProject(id, { riv: null, rivStorageKey: key }, { expectedUpdatedAt: asset.updatedAt });
+    await storage.updateProject(id, { riv: null, rivStorageKey: key }, { expectedUpdatedAt: asset.updatedAt, touchUpdatedAt: false });
     return asset.riv;
   }
   if (asset.riv) return asset.riv;
@@ -115,8 +121,8 @@ export async function defaultOwner(): Promise<string> {
 }
 
 /** Finds a project by id or (case-insensitive) name. */
-export async function resolveProject(ref: string): Promise<ProjectMeta> {
-  const all = await storage.listProjects();
+export async function resolveProject(ref: string, filter?: (project: ProjectMeta) => boolean): Promise<ProjectMeta> {
+  const all = (await storage.listProjects()).filter((p) => (filter ? filter(p) : true));
   const byId = all.find((p) => p.id === ref);
   if (byId) return byId;
   const byName = all.filter((p) => p.name.toLowerCase() === ref.toLowerCase());
@@ -125,18 +131,20 @@ export async function resolveProject(ref: string): Promise<ProjectMeta> {
   throw new StoreError(`Project "${ref}" not found`);
 }
 
-export async function loadDoc(ref: string): Promise<{ meta: ProjectMeta; doc: RiveDoc }> {
-  const meta = await resolveProject(ref);
-  const project = await storage.getProject(meta.id);
-  if (!project?.doc) throw new StoreError(`Project "${ref}" has no document`);
-  return { meta, doc: parseDoc<RiveDoc>(project.doc) };
+export async function loadDoc(ref: string | ProjectMeta, filter?: (project: ProjectMeta) => boolean): Promise<{ meta: ProjectMeta; doc: RiveDoc }> {
+  const resolved = typeof ref === 'string' ? await resolveProject(ref, filter) : ref;
+  const label = typeof ref === 'string' ? ref : ref.id;
+  const project = await storage.getProject(resolved.id);
+  if (!project?.doc) throw new StoreError(`Project "${label}" has no document`);
+  return { meta: project.meta, doc: parseDoc<RiveDoc>(project.doc) };
 }
 
 export async function saveDoc(id: string, doc: RiveDoc, expectedUpdatedAt?: number) {
   const prepared = await prepareProjectRiv(id, exportRiv(doc));
+  const effectiveExpectedUpdatedAt = expectedUpdatedAt ?? prepared.previousUpdatedAt;
   let updated: ProjectMeta | null;
   try {
-    updated = await storage.updateProject(id, { doc: stringifyDoc(doc), ...stats(doc), ...prepared.patch }, { expectedUpdatedAt });
+    updated = await storage.updateProject(id, { doc: stringifyDoc(doc), ...stats(doc), ...prepared.patch }, { expectedUpdatedAt: effectiveExpectedUpdatedAt });
     if (!updated) throw new StoreError(`Project "${id}" changed while it was being saved; reload and try again`);
   } catch (error) {
     if (prepared.key) await (await blobs()).delete(prepared.key);
@@ -153,8 +161,8 @@ export async function saveDoc(id: string, doc: RiveDoc, expectedUpdatedAt?: numb
 }
 
 /** Loads a project, applies a change and saves it (an open editor picks the change up automatically). */
-export async function edit<T>(ref: string, fn: (doc: RiveDoc) => T): Promise<{ meta: ProjectMeta; result: T }> {
-  const { meta, doc } = await loadDoc(ref);
+export async function edit<T>(ref: string | ProjectMeta, fn: (doc: RiveDoc) => T, filter?: (project: ProjectMeta) => boolean): Promise<{ meta: ProjectMeta; result: T }> {
+  const { meta, doc } = await loadDoc(ref, filter);
   const result = fn(doc);
   const next = await saveDoc(meta.id, doc, meta.updatedAt);
   return { meta: next ?? meta, result };

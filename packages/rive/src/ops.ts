@@ -36,6 +36,11 @@ export function descendantIds(ab: ArtboardDoc, id: string): Set<string> {
       }
     }
   }
+  let ownerId: string = ab.artboard.id;
+  for (const o of ab.objects) {
+    if (isA(o.type, 'Component')) ownerId = o.id;
+    else if (isA(o.type, 'DataBind') && out.has(ownerId)) out.add(o.id);
+  }
   return out;
 }
 
@@ -70,7 +75,10 @@ export function insertObjects(ab: ArtboardDoc, objs: CoreObj[], beforeId?: strin
     const parent = ab.objects.findIndex((o) => o.id === parentId);
     if (parent >= 0 && isA(ab.objects[parent].type, 'Drawable') && (index < 0 || parent < index)) index = parent;
     // first child of a group: keep it next to the group instead of at the very end (the back)
-    if (index < 0 && parent >= 0) index = parent + 1;
+    if (index < 0 && parent >= 0) {
+      index = parent + 1;
+      while (index < ab.objects.length && isA(ab.objects[index]!.type, 'DataBind')) index++;
+    }
   }
   if (index < 0) ab.objects.push(...objs);
   else ab.objects.splice(index, 0, ...objs);
@@ -106,6 +114,24 @@ export function deleteObjects(ab: ArtboardDoc, ids: string[]) {
     if (id === ab.artboard.id) continue;
     for (const d of descendantIds(ab, id)) doomed.add(d);
   }
+  // Masks and targeted constraints cannot safely resolve a deleted component.
+  let cascaded = true;
+  while (cascaded) {
+    cascaded = false;
+    for (const object of ab.objects) {
+      if (doomed.has(object.id)) continue;
+      const badClip = object.type === 'ClippingShape' && doomed.has(String(object.props.sourceId));
+      const badConstraint = isA(object.type, 'TargetedConstraint') && doomed.has(String(object.props.targetId));
+      if (badClip || badConstraint) {
+        for (const d of descendantIds(ab, object.id)) {
+          if (!doomed.has(d)) {
+            doomed.add(d);
+            cascaded = true;
+          }
+        }
+      }
+    }
+  }
   // Tendons are runtime dependencies: leaving one pointed at a deleted bone prevents the artboard from loading.
   for (const skin of ab.objects.filter((object) => object.type === 'Skin')) {
     if (doomed.has(String(skin.props.parentId))) continue;
@@ -125,12 +151,6 @@ export function deleteObjects(ab: ArtboardDoc, ids: string[]) {
       }
     }
   }
-  // Masks and targeted constraints cannot safely resolve a deleted component.
-  ab.objects = ab.objects.filter((object) => {
-    if (object.type === 'ClippingShape' && doomed.has(String(object.props.sourceId))) return false;
-    if (['DistanceConstraint', 'IKConstraint', 'TransformConstraint'].includes(object.type) && doomed.has(String(object.props.targetId))) return false;
-    return true;
-  });
   const clearDanglingRefs = (object: CoreObj) => {
     for (const [name, value] of Object.entries(object.props)) {
       if (typeof value === 'string' && doomed.has(value) && refSpaceOf(object.type, name)) object.props[name] = -1;
@@ -264,34 +284,36 @@ export function groupObjects(ab: ArtboardDoc, ids: string[]): string | null {
 /** Deep clones subtrees (objects + their keyframes in every animation). */
 export function duplicateObjects(ab: ArtboardDoc, ids: string[]): string[] {
   const roots = ids.filter((id) => !ids.some((other) => other !== id && isAncestor(ab, other, id)));
-  const newRoots: string[] = [];
-  for (const rootId of roots) {
-    const all = descendantIds(ab, rootId);
-    const map = new Map<string, string>();
+  const perRoot = roots.map((rootId) => ({ rootId, all: descendantIds(ab, rootId) }));
+  const map = new Map<string, string>();
+  for (const { all } of perRoot) {
     for (const id of all) map.set(id, newId());
+  }
+  const newRoots: string[] = [];
+  for (const { rootId, all } of perRoot) {
     const clones: CoreObj[] = [];
     for (const o of ab.objects) {
       if (!all.has(o.id)) continue;
       const c = deepClone(o) as CoreObj;
       c.id = map.get(o.id)!;
-      // remap every reference inside the copied subtree (parentId, styleId, sourceId, ...)
+      // remap every reference inside the copied selection (parentId, styleId, sourceId, boneId, targetId, ...)
       for (const [k, v] of Object.entries(c.props)) if (typeof v === 'string' && map.has(v)) c.props[k] = map.get(v);
       if (c.id === map.get(rootId) && typeof c.props.name === 'string') c.props.name = `${c.props.name} Copy`;
       clones.push(c);
     }
     insertObjects(ab, clones, rootId);
-    for (const anim of ab.animations) {
-      const extra: CoreObj[] = [];
-      for (const ko of anim.children ?? []) {
-        if (ko.type !== 'KeyedObject' || typeof ko.props.objectId !== 'string' || !map.has(ko.props.objectId)) continue;
-        const c = deepClone(ko) as CoreObj;
-        walkTree(c, (n) => (n.id = newId()));
-        c.props.objectId = map.get(ko.props.objectId);
-        extra.push(c);
-      }
-      anim.children = [...(anim.children ?? []), ...extra];
-    }
     newRoots.push(map.get(rootId)!);
+  }
+  for (const anim of ab.animations) {
+    const extra: CoreObj[] = [];
+    for (const ko of anim.children ?? []) {
+      if (ko.type !== 'KeyedObject' || typeof ko.props.objectId !== 'string' || !map.has(ko.props.objectId)) continue;
+      const c = deepClone(ko) as CoreObj;
+      walkTree(c, (n) => (n.id = newId()));
+      c.props.objectId = map.get(ko.props.objectId);
+      extra.push(c);
+    }
+    anim.children = [...(anim.children ?? []), ...extra];
   }
   return newRoots;
 }
@@ -301,6 +323,7 @@ export function duplicateObjects(ab: ArtboardDoc, ids: string[]): string[] {
 
 export const KEYFRAME_TYPE: Record<string, string> = {
   double: 'KeyFrameDouble',
+  int: 'KeyFrameInt',
   color: 'KeyFrameColor',
   bool: 'KeyFrameBool',
   id: 'KeyFrameId',
@@ -457,8 +480,10 @@ export function pasteKeyframes(
   for (const entry of clip.entries) {
     const targetId = retarget ?? entry.objectId;
     const target = findObj(ab, targetId);
+    const pd = target ? propDef(target.type, propNameForKey(entry.propertyKey)) : undefined;
+    const kfType = pd ? KEYFRAME_TYPE[pd.type] : undefined;
     // the property must exist on the target (retargeting can cross object types)
-    if (!target || !propDef(target.type, propNameForKey(entry.propertyKey))) {
+    if (!target || !pd || !kfType || entry.type !== kfType) {
       skipped++;
       continue;
     }
@@ -470,13 +495,13 @@ export function pasteKeyframes(
       anim.children.push(ko);
     }
     ko.children ??= [];
-    let kp = ko.children.find((k) => k.props.propertyKey === entry.propertyKey);
+    let kp = ko.children.find((k) => k.props.propertyKey === pd.key);
     if (!kp) {
-      kp = obj('KeyedProperty', { propertyKey: entry.propertyKey }, []);
+      kp = obj('KeyedProperty', { propertyKey: pd.key }, []);
       ko.children.push(kp);
     }
     kp.children = (kp.children ?? []).filter((k) => prop(k, 'frame') !== frame);
-    const kf = obj(entry.type, { frame, value: entry.value, interpolationType: entry.interpolationType });
+    const kf = obj(kfType, { frame, value: entry.value, interpolationType: entry.interpolationType });
     kp.children.push(kf);
     kp.children.sort((a, b) => prop(a, 'frame') - prop(b, 'frame'));
     created.push(kf.id);
@@ -521,13 +546,14 @@ export function setInterpolation(
     } else {
       kf.props.interpolationType = 2;
       let interp = typeof kf.props.interpolatorId === 'string' ? findObj(ab, kf.props.interpolatorId) : undefined;
-      // don't mutate an interpolator shared with keys outside this selection
-      const shared =
-        interp &&
-        ab.animations.some((a) =>
-          allKeyframes(a).some(({ kf: other }) => other.props.interpolatorId === interp!.id && !kfs.includes(other)),
-        );
-      if (!interp || shared) {
+      // don't mutate a non-cubic interpolator or one shared with any other object/keyframe
+      let refs = 0;
+      if (interp) {
+        for (const o of ab.objects) if (o.props.interpolatorId === interp.id) refs++;
+        for (const a of ab.animations) walkTree(a, (o) => { if (o.props.interpolatorId === interp!.id) refs++; });
+        for (const s of ab.stateMachines) walkTree(s, (o) => { if (o.props.interpolatorId === interp!.id) refs++; });
+      }
+      if (!interp || interp.type !== 'CubicEaseInterpolator' || refs > 1) {
         interp = obj('CubicEaseInterpolator', {});
         ab.objects.push(interp);
         kf.props.interpolatorId = interp.id;
@@ -605,7 +631,7 @@ export function copyObjects(doc: RiveDoc, ab: ArtboardDoc, ids: string[]): Clipb
   for (const r of roots) for (const d of descendantIds(ab, r)) all.add(d);
   const objects = ab.objects.filter((o) => all.has(o.id)).map((o) => deepClone(o) as CoreObj);
   const fontIds = new Set(objects.map((o) => o.props.fontAssetId).filter((v): v is string => typeof v === 'string'));
-  const fonts = doc.top.filter((o) => fontIds.has(o.id)).map((o) => deepClone(o) as CoreObj);
+  const fonts = doc.top.filter((o) => o.type === 'FontAsset' && fontIds.has(o.id)).map((o) => deepClone(o) as CoreObj);
   return { kind: 'openrive/objects', objects, roots, fonts };
 }
 
@@ -620,7 +646,12 @@ export function pasteObjects(doc: RiveDoc, ab: ArtboardDoc, clip: ClipboardData,
     else {
       const copy = deepClone(f) as CoreObj;
       walkTree(copy, (n) => (n.id = newId()));
-      doc.top.splice(doc.top.findIndex((o) => o.type === 'Backboard') + 1, 0, copy);
+      const backboard = doc.top.findIndex((o) => o.type === 'Backboard');
+      let lastAsset = -1;
+      doc.top.forEach((o, i) => {
+        if (isA(o.type, 'Asset')) lastAsset = i;
+      });
+      doc.top.splice(Math.max(lastAsset, backboard) + 1, 0, copy);
       map.set(f.id, copy.id);
     }
   }
@@ -646,6 +677,34 @@ export function pasteObjects(doc: RiveDoc, ab: ArtboardDoc, clip: ClipboardData,
     if (bind) for (const [p, s] of Object.entries(bind)) if (!swatches.has(s)) delete bind[p];
     return c;
   });
-  insertObjects(ab, pasted);
-  return clip.roots.map((r) => map.get(r)!);
+  const pastedIds = new Set(pasted.map((o) => o.id));
+  const validComponent = (id: unknown): id is string => typeof id === 'string' && (pastedIds.has(id) || !!findObj(ab, id));
+  const topTreeIds = new Set<string>();
+  for (const t of doc.top) walkTree(t, (n) => topTreeIds.add(n.id));
+  const dropped = new Set<string>();
+  for (const c of pasted) {
+    if (c.type === 'ClippingShape' && !validComponent(c.props.sourceId)) dropped.add(c.id);
+    if (isA(c.type, 'TargetedConstraint') && !validComponent(c.props.targetId)) dropped.add(c.id);
+    if (c.type === 'DataBindContext') {
+      const path = c.props.sourcePathIds;
+      if (Array.isArray(path) && path.some((id) => typeof id === 'string' && !topTreeIds.has(id))) dropped.add(c.id);
+    }
+    if (c.type === 'Skin') {
+      const tendons = pasted.filter((t) => t.type === 'Tendon' && t.props.parentId === c.id);
+      if (tendons.some((t) => !validComponent(t.props.boneId))) {
+        dropped.add(c.id);
+        for (const t of tendons) dropped.add(t.id);
+        const pathId = c.props.parentId;
+        const vertexIds = new Set(pasted.filter((v) => isA(v.type, 'Vertex') && v.props.parentId === pathId).map((v) => v.id));
+        for (const w of pasted) {
+          if ((w.type === 'Weight' || w.type === 'CubicWeight') && typeof w.props.parentId === 'string' && vertexIds.has(w.props.parentId)) {
+            dropped.add(w.id);
+          }
+        }
+      }
+    }
+  }
+  const filtered = pasted.filter((c) => !dropped.has(c.id));
+  insertObjects(ab, filtered);
+  return clip.roots.map((r) => map.get(r)!).filter((id) => !dropped.has(id));
 }

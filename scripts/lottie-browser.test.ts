@@ -94,7 +94,16 @@ try {
 }
 
 function watchPageErrors(page: Page): void {
-  page.on('pageerror', (error) => pageErrors.push(error.message));
+  page.on('pageerror', (error) => {
+    pageErrors.push(error.message);
+    console.error(`[browser] page error: ${error.message}`);
+  });
+  page.on('console', (message) => {
+    if (message.type() === 'error' && /RuntimeError: (?:memory access|function signature|null function|table index)/.test(message.text())) {
+      pageErrors.push(message.text());
+      console.error(`[browser] runtime error: ${message.text()}`);
+    }
+  });
 }
 
 async function importThroughDashboard(page: Page, fixture: string): Promise<string> {
@@ -105,7 +114,12 @@ async function importThroughDashboard(page: Page, fixture: string): Promise<stri
   const chooser = await chooserPromise;
   await chooser.setFiles(path.resolve(fixture));
   await page.waitForURL(/\/editor\/[^/]+$/);
-  await page.waitForFunction(() => !!window.__riveEditor?.getState().doc);
+  try {
+    await page.waitForFunction(() => !!window.__riveEditor?.getState().doc);
+  } catch (error) {
+    console.error(`Editor did not load ${path.basename(fixture)}: ${await page.locator('body').innerText()}`);
+    throw error;
+  }
   const contents = await page.evaluate(() => {
     const artboard = window.__riveEditor.getState().doc?.artboards[0];
     return {

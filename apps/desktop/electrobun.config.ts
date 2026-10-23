@@ -4,7 +4,7 @@ export default {
   app: {
     name: 'OpenRive',
     identifier: 'dev.openrive.app',
-    version: '0.2.4',
+    version: '0.2.5',
     description: 'Local-first editor for Rive (.riv) animations',
   },
   build: {

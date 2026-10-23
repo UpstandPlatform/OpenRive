@@ -4,7 +4,7 @@ import { use, useEffect, useState } from 'react';
 import { Editor, setKnownUpdatedAt } from '@/components/editor/Editor';
 import { RiveDoc } from '@openrive/rive/document';
 import { parseDoc } from '@openrive/shared/serialize';
-import { canEdit, useCurrentUser, useSession } from '@/lib/client/session';
+import { canEdit, localUserHeaders, useCurrentUser, useSession } from '@/lib/client/session';
 import { useEditor } from '@/lib/store/editor';
 import type { ProjectMeta } from '@openrive/shared';
 import { recordProjectOpen } from '@/lib/client/projectActivity';
@@ -25,7 +25,7 @@ export default function EditorPage({ params }: PageProps<'/editor/[id]'>) {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/projects/${id}`, { cache: 'no-store' });
+        const res = await fetch(`/api/projects/${id}`, { headers: localUserHeaders(), cache: 'no-store' });
         if (!res.ok) throw new Error(res.status === 404 ? 'This file does not exist.' : `Failed to load (${res.status})`);
         const { meta, doc } = parseDoc<{ meta: ProjectMeta; doc: RiveDoc | null }>(await res.text());
         if (!doc) throw new Error('This file has no document data.');

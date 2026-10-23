@@ -8,7 +8,8 @@ import { convertLottie } from '@openrive/lottie';
 const fixturesRoot = process.argv[2] ?? process.env.LOTTIE_FIXTURES_DIR;
 const telegramTgsRoot = process.argv[3] ?? process.env.TELEGRAM_TGS_FIXTURES_DIR;
 if (!fixturesRoot) {
-  throw new Error('Pass the dotlottie-web fixtures directory as an argument or set LOTTIE_FIXTURES_DIR.');
+  console.log('Skipping Lottie corpus test: pass dotlottie-web fixtures directory or set LOTTIE_FIXTURES_DIR.');
+  process.exit(0);
 }
 const fallbackFont = {
   name: 'Inter',

@@ -2,7 +2,7 @@
 // Plays a .riv file with the official runtime: the first (or chosen) artboard,
 // running its state machine (with pointer input) or first timeline.
 import { useEffect, useRef, useState } from 'react';
-import type { Artboard, File as RiveFile, LinearAnimationInstance, StateMachineInstance, ViewModelInstance } from '@rive-app/canvas-advanced';
+import type { Artboard, File as RiveFile, LinearAnimationInstance, StateMachineInstance, ViewModelInstance, WrappedRenderer } from '@rive-app/canvas-advanced';
 import { loadRuntime } from '@/lib/runtime';
 
 export interface PlayerInput {
@@ -70,30 +70,72 @@ export function RivePlayer({
     const canvas = canvasRef.current!;
     let disposed = false;
     let raf = 0;
+    let rive: Awaited<ReturnType<typeof loadRuntime>> | null = null;
+    let renderer: WrappedRenderer | null = null;
     let file: RiveFile | null = null;
     let artboard: Artboard | null = null;
     let sm: StateMachineInstance | null = null;
     let anim: LinearAnimationInstance | null = null;
     let extra: LinearAnimationInstance[] = [];
     let vmi: ViewModelInstance | null = null;
-    let cleanup = () => {};
+    let removePointerListeners: (() => void) | null = null;
+    const cleanup = () => {
+      const frameId = raf;
+      raf = 0;
+      try { if (frameId && rive) rive.cancelAnimationFrame(frameId); } catch { /* a runtime may already have stopped */ }
+      const removeListeners = removePointerListeners;
+      removePointerListeners = null;
+      try { removeListeners?.(); } catch { /* best-effort cleanup */ }
+      if (apiRef) apiRef.current = null;
+      const stateMachine = sm;
+      sm = null;
+      try { stateMachine?.delete(); } catch { /* best-effort cleanup */ }
+      const animation = anim;
+      anim = null;
+      try { animation?.delete(); } catch { /* best-effort cleanup */ }
+      const otherAnimations = extra;
+      extra = [];
+      try { otherAnimations.forEach((a) => a.delete()); } catch { /* best-effort cleanup */ }
+      const viewModelInstance = vmi;
+      vmi = null;
+      try { viewModelInstance?.unref?.(); } catch { /* best-effort cleanup */ }
+      const activeArtboard = artboard;
+      artboard = null;
+      try { activeArtboard?.delete(); } catch { /* best-effort cleanup */ }
+      const activeRenderer = renderer;
+      renderer = null;
+      try { (activeRenderer as { delete?: () => void } | null)?.delete?.(); } catch { /* best-effort cleanup */ }
+      const activeFile = file;
+      file = null;
+      try { activeFile?.unref?.(); } catch { /* best-effort cleanup */ }
+    };
 
     (async () => {
       try {
-        const rive = await loadRuntime();
+        rive = await loadRuntime();
         if (disposed) return;
-        const renderer = rive.makeRenderer(canvas);
+        const activeRive = rive;
+        const activeRenderer = activeRive.makeRenderer(canvas);
+        renderer = activeRenderer;
         file = await rive.load(bytes, undefined, false);
-        if (disposed) return;
+        if (disposed) {
+          cleanup();
+          return;
+        }
         artboard = artboardName ? file.artboardByName(artboardName) : null;
         if (!artboard) artboard = file.artboardByIndex(Math.min(artboardIndex, file.artboardCount() - 1));
         if (stateMachineIndex >= 0 && artboard.stateMachineCount() > stateMachineIndex) {
-          sm = new rive.StateMachineInstance(artboard.stateMachineByIndex(stateMachineIndex), artboard);
+          const smSource = artboard.stateMachineByIndex(stateMachineIndex);
+          sm = new rive.StateMachineInstance(smSource, artboard);
         } else if (artboard.animationCount() > 0) {
-          anim = new rive.LinearAnimationInstance(artboard.animationByIndex(Math.max(0, animationIndex)), artboard);
+          const animSource = artboard.animationByIndex(Math.max(0, animationIndex));
+          anim = new rive.LinearAnimationInstance(animSource, artboard);
           if (mixAll) {
             for (let i = 0; i < artboard.animationCount(); i++) {
-              if (i !== Math.max(0, animationIndex)) extra.push(new rive.LinearAnimationInstance(artboard.animationByIndex(i), artboard));
+              if (i !== Math.max(0, animationIndex)) {
+                const extraSource = artboard.animationByIndex(i);
+                extra.push(new rive.LinearAnimationInstance(extraSource, artboard));
+              }
             }
           }
         }
@@ -111,6 +153,7 @@ export function RivePlayer({
             }
           }
         } catch {
+          vmi?.unref?.();
           vmi = null;
         }
         const readProperties = () => {
@@ -145,7 +188,7 @@ export function RivePlayer({
           const out: PlayerInput[] = [];
           for (let i = 0; i < sm.inputCount(); i++) {
             const input = sm.input(i);
-            const type = input.type === rive.SMIInput.bool ? 'bool' : input.type === rive.SMIInput.number ? 'number' : 'trigger';
+            const type = input.type === activeRive.SMIInput.bool ? 'bool' : input.type === activeRive.SMIInput.number ? 'number' : 'trigger';
             out.push({ name: input.name, type, value: type === 'trigger' ? false : (input.value as number | boolean) });
           }
           onInputs(out);
@@ -159,8 +202,8 @@ export function RivePlayer({
               for (let i = 0; i < sm.inputCount(); i++) {
                 const input = sm.input(i);
                 if (input.name !== name) continue;
-                if (input.type === rive.SMIInput.trigger) input.asTrigger().fire();
-                else if (input.type === rive.SMIInput.bool) input.asBool().value = !!value;
+                if (input.type === activeRive.SMIInput.trigger) input.asTrigger().fire();
+                else if (input.type === activeRive.SMIInput.bool) input.asBool().value = !!value;
                 else input.asNumber().value = Number(value);
               }
               readInputs();
@@ -211,18 +254,18 @@ export function RivePlayer({
         canvas.addEventListener('pointermove', move);
         canvas.addEventListener('pointerup', up);
         canvas.addEventListener('pointerleave', leave);
-        cleanup = () => {
+        removePointerListeners = () => {
           canvas.removeEventListener('pointerdown', down);
           canvas.removeEventListener('pointermove', move);
           canvas.removeEventListener('pointerup', up);
           canvas.removeEventListener('pointerleave', leave);
-          (renderer as { delete?: () => void }).delete?.();
         };
 
         let last = 0;
         let poll = 0;
         const frame = (t: number) => {
           if (disposed) return;
+          try {
           const dt = last ? Math.min(0.1, (t - last) / 1000) : 0;
           last = t;
           const step = pausedRef.current ? 0 : dt;
@@ -247,33 +290,28 @@ export function RivePlayer({
             artboard!.advance(step);
           }
           const { scale, ox, oy } = layout();
-          renderer.clear();
-          renderer.save();
-          (renderer as unknown as { transform: (...m: number[]) => void }).transform(scale, 0, 0, scale, ox, oy);
-          artboard!.draw(renderer);
-          renderer.restore();
-          raf = rive.requestAnimationFrame(frame);
+          activeRenderer.clear();
+          activeRenderer.save();
+          (activeRenderer as unknown as { transform: (...m: number[]) => void }).transform(scale, 0, 0, scale, ox, oy);
+          artboard!.draw(activeRenderer);
+          activeRenderer.restore();
+          raf = activeRive.requestAnimationFrame(frame);
+          } catch (e) {
+            disposed = true;
+            cleanup();
+            setError((e as Error)?.message ?? String(e));
+          }
         };
-        raf = rive.requestAnimationFrame(frame);
-        cleanup = ((prev) => () => {
-          prev();
-          rive.cancelAnimationFrame(raf);
-        })(cleanup);
+        raf = activeRive.requestAnimationFrame(frame);
       } catch (e) {
-        setError((e as Error)?.message ?? String(e));
+        cleanup();
+        if (!disposed) setError((e as Error)?.message ?? String(e));
       }
     })();
 
     return () => {
       disposed = true;
       cleanup();
-      sm?.delete();
-      anim?.delete();
-      extra.forEach((a) => a.delete());
-      extra = [];
-      vmi?.unref?.();
-      artboard?.delete();
-      file?.unref?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bytes, artboardIndex, artboardName, mixAll, stateMachineIndex, animationIndex, restartKey]);

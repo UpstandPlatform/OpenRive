@@ -17,6 +17,7 @@ const objects = artboard.objects;
 const textRuns = objects.filter((object) => object.type === 'TextValueRun');
 const feathers = objects.filter((object) => object.type === 'Feather');
 
+assert.equal(artboard.stateMachines.length, 0, 'Lottie imports should run as timelines without the starter state machine.');
 assert.ok(objects.filter((object) => object.type === 'Shape').length >= 100, 'The supplied animation should retain its vector artwork.');
 assert.ok(textRuns.some((object) => object.props.text === 'Tap to flip'), 'The supplied animation text should remain editable.');
 assert.equal(feathers.length, 1, 'The sample Gaussian Blur should become a Rive Feather.');

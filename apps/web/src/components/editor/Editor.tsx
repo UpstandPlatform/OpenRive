@@ -6,7 +6,7 @@ import { exportSource } from '@openrive/rive/source';
 import { artboardPos, prop } from '@openrive/rive/scene';
 import { downloadBytes, docStats } from '@/lib/client/projects';
 import { parseDoc, stringifyDoc, toBase64 } from '@openrive/shared/serialize';
-import { api } from '@/lib/client/session';
+import { api, localUserHeaders } from '@/lib/client/session';
 import { usePrefs } from '@/lib/client/prefs';
 import { useEditor } from '@/lib/store/editor';
 import type { ProjectMeta } from '@openrive/shared';
@@ -35,6 +35,7 @@ export function Editor() {
   const mode = useEditor((s) => s.mode);
   const version = useEditor((s) => s.version);
   const savedVersion = useEditor((s) => s.savedVersion);
+  const gestureStart = useEditor((s) => s.gestureStart);
   const readOnly = useEditor((s) => s.readOnly);
   const leftTab = useEditor((s) => s.leftTab);
   const codeOpen = useEditor((s) => s.codeOpen);
@@ -161,7 +162,7 @@ export function Editor() {
   const reloadFromDisk = useCallback(async () => {
     const s = useEditor.getState();
     if (!s.projectId) return;
-    const res = await fetch(`/api/projects/${s.projectId}`, { cache: 'no-store' });
+    const res = await fetch(`/api/projects/${s.projectId}`, { headers: localUserHeaders(), cache: 'no-store' });
     if (!res.ok) return;
     const { meta, doc } = parseDoc<{ meta: ProjectMeta; doc: RiveDoc | null }>(await res.text());
     if (!doc) return;
@@ -185,7 +186,7 @@ export function Editor() {
 
   // autosave
   useEffect(() => {
-    if (readOnly || version === savedVersion || externalChange) return;
+    if (readOnly || version === savedVersion || externalChange || gestureStart) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       if (!useEditor.getState().gestureStart) save();
@@ -193,7 +194,7 @@ export function Editor() {
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
-  }, [version, savedVersion, readOnly, save, externalChange]);
+  }, [version, savedVersion, gestureStart, readOnly, save, externalChange]);
 
   // pick up changes made on disk by the CLI, MCP tools or another window
   useEffect(() => {
@@ -229,7 +230,7 @@ export function Editor() {
       if (!id) return;
       writing = true;
       api
-        .json<ProjectMeta>(`/api/projects/${id}`, { method: 'PUT', body: JSON.stringify({ name: (e as CustomEvent).detail }) })
+        .json<ProjectMeta>(`/api/projects/${id}`, { method: 'PUT', body: JSON.stringify({ name: (e as CustomEvent).detail, expectedUpdatedAt: knownUpdatedAt || undefined }) })
         .then((m) => (knownUpdatedAt = m.updatedAt))
         .finally(() => (writing = false));
     };
@@ -254,14 +255,14 @@ export function Editor() {
       // Illustrator and the system clipboard can be imported before falling
       // back to OpenRive's internal object clipboard.
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') return;
-      if (dialog) return;
+      if (dialog || healthReport || svgImportWarnings || quickStartStep !== null) return;
       // buttons keep focus after clicks; don't let Enter/Space re-click them
       if (t.tagName === 'BUTTON' && (e.key === 'Enter' || e.key === ' ')) t.blur();
       handleKey(e);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [dialog]);
+  }, [dialog, healthReport, svgImportWarnings, quickStartStep]);
 
   const saveState = saving
     ? 'Saving…'

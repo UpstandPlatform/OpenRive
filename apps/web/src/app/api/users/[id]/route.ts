@@ -1,4 +1,5 @@
-import { deleteLocalUserAndTransferProjects, listUsers, updateLocalUser } from '@openrive/db';
+import { deleteAccountAndTransferProjects } from '@openrive/auth';
+import { deleteLocalUserAndTransferProjects, listOwnedOrganizationIds, listUsers, updateLocalUser } from '@openrive/db';
 import { isAdministratorRole, updateUserSchema } from '@openrive/shared';
 import { body, fail, handler, json, notFound, routeId } from '@/lib/server/route';
 import { authEnabled, requireAdmin } from '@/lib/server/auth';
@@ -34,11 +35,20 @@ export const DELETE = handler(async (request: Request, ctx: RouteContext<'/api/u
   const user = users.find((u) => u.id === id);
   if (!user) return notFound();
   if (isAdministratorRole(user.role) && users.filter((u) => isAdministratorRole(u.role)).length === 1) return fail('Cannot delete the last admin');
+  if ((await listOwnedOrganizationIds(id)).length) {
+    return fail('Transfer or delete owned workspaces before removing this user', 409);
+  }
   const remaining = users.filter((u) => u.id !== id);
   const transferTo = new URL(request.url).searchParams.get('transferTo');
   const heir = remaining.find((u) => u.id === transferTo) ?? remaining.find((u) => isAdministratorRole(u.role))!;
   if (!heir) return fail('A remaining user is required to receive the files', 409);
-  const deleted = await deleteLocalUserAndTransferProjects(id, heir.id);
-  if (!deleted) return notFound();
-  return json({ ok: true });
+  try {
+    const deleted = authEnabled()
+      ? await deleteAccountAndTransferProjects(id, heir.id)
+      : await deleteLocalUserAndTransferProjects(id, heir.id);
+    if (!deleted) return notFound();
+    return json({ ok: true });
+  } catch (e) {
+    return fail((e as Error).message, 409);
+  }
 });

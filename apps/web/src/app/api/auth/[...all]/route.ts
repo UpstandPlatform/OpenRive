@@ -5,9 +5,16 @@
 // embedded PostgreSQL), so the handler awaits it instead of being created at
 // import time.
 import { auth } from '@openrive/auth';
+import { notFound } from '@/lib/server/route';
 
 export const dynamic = 'force-dynamic';
 
-const handle = async (request: Request) => (await auth()).handler(request);
+const handle = async (request: Request) => {
+  const pathname = new URL(request.url).pathname;
+  // MCP API keys are managed through /api/mcp/keys so key count limits and
+  // fixed permissions cannot be bypassed via direct plugin endpoints.
+  if (pathname.startsWith('/api/auth/api-key/')) return notFound();
+  return (await auth()).handler(request);
+};
 
 export { handle as GET, handle as POST };

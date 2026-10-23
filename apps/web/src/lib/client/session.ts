@@ -94,6 +94,7 @@ export const useSession = create<SessionState>((set, get) => ({
     if (get().authEnabled) return;
     try {
       localStorage.setItem(KEY, id);
+      document.cookie = `${KEY}=${encodeURIComponent(id)}; path=/; SameSite=Lax`;
     } catch {
       /* storage unavailable */
     }
@@ -127,11 +128,17 @@ export function canSee(user: User | null, project: ProjectMeta): boolean {
 
 export { canCreateProject };
 
+export function localUserHeaders(): Record<string, string> {
+  const { authEnabled, currentId } = useSession.getState();
+  if (!authEnabled && currentId) return { 'x-openrive-user-id': currentId };
+  return {};
+}
+
 export const api = {
   async json<T>(url: string, init?: RequestInit): Promise<T> {
     const res = await fetch(url, {
       ...init,
-      headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
+      headers: { 'content-type': 'application/json', ...localUserHeaders(), ...(init?.headers ?? {}) },
       cache: 'no-store',
     });
     const data = await res.json().catch(() => ({}));

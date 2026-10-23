@@ -133,11 +133,11 @@ class RedisInfrastructureImpl implements RedisInfrastructure {
       key: redisKey,
       release: async () => {
         if (released) return false;
-        released = true;
         const result = await this.client.eval(RELEASE_LOCK, {
           keys: [redisKey],
           arguments: [token],
         });
+        released = true;
         return Number(result) === 1;
       },
     };
@@ -161,14 +161,22 @@ export async function createRedisInfrastructure(options: RedisInfrastructureOpti
   if (!Number.isInteger(connectTimeoutMs) || connectTimeoutMs <= 0) {
     throw new RangeError('Redis connection timeout must be a positive integer');
   }
+  let initialConnected = false;
   const client = createClient({
     url: options.url,
-    socket: { connectTimeout: connectTimeoutMs },
+    socket: {
+      connectTimeout: connectTimeoutMs,
+      reconnectStrategy: (retries) => {
+        if (!initialConnected) return new Error('Redis initial connection failed');
+        return Math.min(retries * 100, 3_000);
+      },
+    },
   });
   client.on('error', (error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
     console.error('[redis] connection error', message);
   });
   await client.connect();
+  initialConnected = true;
   return new RedisInfrastructureImpl(client, namespace);
 }
