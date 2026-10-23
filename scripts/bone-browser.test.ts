@@ -23,9 +23,10 @@ const port = portProbe.port!;
 portProbe.stop(true);
 const origin = `http://127.0.0.1:${port}`;
 const server = Bun.spawn(
-  // Use the app's normal script so Next selects its supported Node runtime.
-  // Forcing its CLI through Bun bypasses Turbopack's external-package require hooks on Linux.
-  [process.execPath, 'run', 'dev', '--port', String(port), '--hostname', '127.0.0.1'],
+  // Use the app's Webpack dev script so Next selects its supported Node runtime.
+  // This browser test exercises editor interactions, not Turbopack's HMR; the
+  // latter can repeatedly reload a cold editor route while its lazy chunks compile in CI.
+  [process.execPath, 'run', 'dev:webpack', '--port', String(port), '--hostname', '127.0.0.1'],
   {
     cwd: path.resolve(import.meta.dir, '../apps/web'),
     detached: process.platform !== 'win32',
