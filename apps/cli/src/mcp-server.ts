@@ -361,7 +361,7 @@ tool(
   },
 );
 
-tool('delete_objects', 'Delete objects (and their children and keyframes).', { project, objects: z.array(z.string()) }, async ({ project: ref, objects }) => {
+tool('delete_objects', 'Delete objects (and their children and keyframes), artboards, timelines (and the states that play them) or state machines, by id or name.', { project, objects: z.array(z.string()) }, async ({ project: ref, objects }) => {
   await editAuthorized(ref, (doc) => api.deleteObjectsByRef(doc, objects));
   return `Deleted ${objects.length} object(s)`;
 }, destructiveAnnotations);
@@ -472,14 +472,20 @@ const planOperation = z.discriminatedUnion('op', [
 
 tool(
   'apply_edit_plan',
-  'Apply a sequence of up to 100 design, animation and interaction operations with one project save. All operations succeed together or none are saved. Within the plan, later steps can reference objects and timelines by the names assigned in earlier steps.',
+  'Apply a sequence of up to 100 design, animation and interaction operations with one project save. All operations succeed together or none are saved. Within the plan, later steps can reference objects and timelines by the names assigned in earlier steps, and steps after add_artboard default to the new artboard.',
   { project, operations: z.array(planOperation).min(1).max(100) },
   async ({ project: ref, operations }) => {
-    const { result } = await editAuthorized(ref, (doc) => operations.map((operation, index) => {
+    // After add_artboard, later steps without an explicit artboard target the
+    // new one rather than the file's first artboard.
+    let planArtboard: string | undefined;
+    const { result } = await editAuthorized(ref, (doc) => operations.map((step, index) => {
+      const takesArtboard = !['add_artboard', 'set_properties', 'delete_objects'].includes(step.op);
+      const operation = planArtboard && takesArtboard && !(step as { artboard?: string }).artboard ? ({ ...step, artboard: planArtboard } as typeof step) : step;
       try {
         switch (operation.op) {
           case 'add_artboard': {
             const created = api.addArtboard(doc, operation);
+            planArtboard = created.id;
             return { index, op: operation.op, id: created.id, name: created.artboard.props.name };
           }
           case 'add_shape': {

@@ -1,7 +1,7 @@
 // Database connection. With DATABASE_URL it connects to PostgreSQL; without one
 // it starts PGlite, the embedded PostgreSQL build, inside OPENRIVE_DATA_DIR — so
 // `bun dev` needs no database server, and self-hosting uses a real one.
-import { mkdirSync } from 'node:fs';
+import { closeSync, mkdirSync, openSync, readFileSync, rmSync, writeSync } from 'node:fs';
 import path from 'node:path';
 import { dataDir as resolveDataDir, env } from '@openrive/shared/env';
 import { sql } from 'drizzle-orm';
@@ -77,15 +77,73 @@ async function connect() {
   const [{ PGlite }, { drizzle }] = await Promise.all([import('@electric-sql/pglite'), import('drizzle-orm/pglite')]);
   const pgdata = path.join(dataDir, 'pgdata');
   mkdirSync(pgdata, { recursive: true }); // PGlite does not create parent folders
-  const client = new PGlite(pgdata);
-  const db = drizzle(client, { schema });
-  await applyMigrations(db);
-  return {
-    db,
-    backend: 'embedded' as const,
-    where: path.join(dataDir, 'pgdata'),
-    close: () => client.close(),
-  };
+  const unlock = lockDataDir(dataDir);
+  try {
+    const client = new PGlite(pgdata);
+    const db = drizzle(client, { schema });
+    await applyMigrations(db);
+    return {
+      db,
+      backend: 'embedded' as const,
+      where: path.join(dataDir, 'pgdata'),
+      close: async () => {
+        try {
+          await client.close();
+        } finally {
+          unlock();
+        }
+      },
+    };
+  } catch (e) {
+    unlock();
+    throw e;
+  }
+}
+
+/**
+ * PGlite is single-process: it reads the data folder into memory at start and
+ * writes it back on its own schedule, so a second process (the editor server,
+ * the CLI and the stdio MCP server all open it) works on a stale copy and the
+ * last writer silently wins. An exclusive lock file turns that into an error.
+ */
+function lockDataDir(dataDir: string): () => void {
+  const file = path.join(dataDir, 'pgdata.lock');
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const fd = openSync(file, 'wx');
+      writeSync(fd, String(process.pid));
+      closeSync(fd);
+      let released = false;
+      const release = () => {
+        if (released) return;
+        released = true;
+        process.off('exit', release);
+        rmSync(file, { force: true });
+      };
+      process.on('exit', release);
+      return release;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+      const holder = Number(readFileSync(file, 'utf8').trim());
+      if (holder && holder !== process.pid && isAlive(holder)) {
+        throw new Error(
+          `the embedded database in ${dataDir} is in use by process ${holder} (for example \`openrive serve\` or the MCP server). ` +
+            'Only one process can open it: stop that process, use its /api/mcp endpoint instead of a second stdio server, or set DATABASE_URL to share a PostgreSQL server.',
+        );
+      }
+      rmSync(file, { force: true }); // left behind by a process that died
+    }
+  }
+  throw new Error(`Could not lock the embedded database in ${dataDir}`);
+}
+
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === 'EPERM';
+  }
 }
 
 /** The shared connection; the first call creates it and applies migrations. */
