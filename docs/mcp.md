@@ -23,26 +23,34 @@ The repo includes `.mcp.json`. Open the project in Claude Code and approve the *
 
 ### Claude Desktop, Cursor, Windsurf, VS Code and others
 
-Add a server entry (adjust the path):
+For a local checkout, use the editor-backed bridge so the editor and MCP agent
+share one process and one embedded database (adjust the path):
 
 ```json
 {
   "mcpServers": {
     "openrive": {
       "command": "bun",
-      "args": ["/path/to/OpenRive/apps/cli/src/mcp-server.ts"],
+      "args": ["/path/to/OpenRive/apps/cli/src/index.ts", "mcp"],
       "env": { "OPENRIVE_DATA_DIR": "/path/to/openrive/data" }
     }
   }
 }
 ```
 
-With PostgreSQL, set `DATABASE_URL` in `env` instead of `OPENRIVE_DATA_DIR`.
+The bridge connects to `OPENRIVE_URL` when set, or `http://localhost:3000` by default.
+If that loopback server is not running, it starts one and stops it when the client disconnects.
+In a source checkout it uses Next.js development mode when no production build exists.
+The bridge uses the HTTP MCP endpoint, so file imports and exports use base64 and follow its request-size limits.
+Use `mcp --standalone` with the editor closed when a local file path or a file larger than the HTTP limit is needed.
+
+With PostgreSQL, set `DATABASE_URL` in `env` instead of `OPENRIVE_DATA_DIR`. To run a standalone stdio server,
+use `openrive mcp --standalone` and ensure no other process is using the same embedded database.
 
 Using Docker? Run it inside the container:
 
 ```json
-{ "command": "docker", "args": ["compose", "-f", "/path/to/OpenRive/docker-compose.yml", "exec", "-T", "openrive", "openrive", "mcp"] }
+{ "command": "docker", "args": ["compose", "-f", "/path/to/OpenRive/docker-compose.yml", "exec", "-T", "openrive", "openrive", "mcp", "--standalone"] }
 ```
 
 ## Cloud and self-hosted HTTP MCP

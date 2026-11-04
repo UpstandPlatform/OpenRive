@@ -1,9 +1,12 @@
 {
   "name": "openrive",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "private": true,
   "type": "module",
   "packageManager": "bun@1.4.2",
+  "overrides": {
+    "@better-auth/core": "1.7.7"
+  },
   "workspaces": {
     "packages": [
       "apps/*",
@@ -32,7 +35,7 @@
     "start": "turbo run start -F @openrive/web",
     "check-types": "turbo run check-types",
     "lint": "turbo run lint",
-    "test": "bun scripts/roundtrip.test.ts && bun scripts/svg.test.ts && bun scripts/pen.test.ts && bun scripts/assets.test.ts && bun scripts/bundle.test.ts && bun scripts/databind.test.ts && bun scripts/ops.test.ts && bun scripts/artboard-ops.test.ts && bun scripts/rigging.test.ts && bun scripts/bone-editor.test.ts && bun scripts/source.test.ts && bun scripts/cli-workflow.test.ts && bun scripts/auth.test.ts && bun scripts/permissions.test.ts && bun scripts/edition.test.ts && bun scripts/route.test.ts && bun scripts/snap.test.ts && bun scripts/skills.test.ts && bun scripts/desktop-version.test.ts",
+    "test": "bun scripts/roundtrip.test.ts && bun scripts/svg.test.ts && bun scripts/pen.test.ts && bun scripts/assets.test.ts && bun scripts/bundle.test.ts && bun scripts/databind.test.ts && bun scripts/ops.test.ts && bun scripts/artboard-ops.test.ts && bun scripts/db-lock.test.ts && bun scripts/rigging.test.ts && bun scripts/bone-editor.test.ts && bun scripts/source.test.ts && bun scripts/cli-workflow.test.ts && bun scripts/auth.test.ts && bun scripts/permissions.test.ts && bun scripts/edition.test.ts && bun scripts/route.test.ts && bun scripts/snap.test.ts && bun scripts/skills.test.ts && bun scripts/desktop-version.test.ts",
     "test:skills": "bun scripts/skills.test.ts",
     "test:corpus": "bun scripts/corpus.test.ts",
     "test:lottie": "bun scripts/lottie-text.test.ts && bun scripts/lottie-compound.test.ts && bun scripts/lottie-sample.test.ts && bun scripts/lottie-corpus.test.ts",
@@ -44,10 +47,11 @@
     "db:up": "docker compose -f docker-compose.dev.yml up -d",
     "db:down": "docker compose -f docker-compose.dev.yml down",
     "cli": "bun apps/cli/src/index.ts",
-    "mcp": "bun apps/cli/src/mcp-server.ts",
+    "mcp": "bun apps/cli/src/index.ts mcp",
+    "mcp:standalone": "bun apps/cli/src/index.ts mcp --standalone",
     "desktop": "bun run --cwd apps/desktop dev",
     "wiki": "bun scripts/build-wiki.mjs",
-    "test:mcp": "bun scripts/mcp-smoke.test.ts",
+    "test:mcp": "bun scripts/mcp-smoke.test.ts && bun scripts/mcp-bridge-smoke.test.ts",
     "test:browser": "bun scripts/bone-browser.test.ts",
     "rive:status": "bun scripts/rive-sdk.ts status",
     "rive:init": "bun scripts/rive-sdk.ts init",

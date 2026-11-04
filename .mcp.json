@@ -2,7 +2,7 @@
   "mcpServers": {
     "openrive": {
       "command": "bun",
-      "args": ["apps/cli/src/mcp-server.ts"]
+      "args": ["apps/cli/src/index.ts", "mcp"]
     }
   }
 }

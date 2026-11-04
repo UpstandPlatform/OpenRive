@@ -1,7 +1,8 @@
 // Database connection. With DATABASE_URL it connects to PostgreSQL; without one
 // it starts PGlite, the embedded PostgreSQL build, inside OPENRIVE_DATA_DIR — so
 // `bun dev` needs no database server, and self-hosting uses a real one.
-import { closeSync, mkdirSync, openSync, readFileSync, rmSync, writeSync } from 'node:fs';
+import { closeSync, mkdirSync, openSync, readFileSync, realpathSync, rmSync, statSync, writeSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { dataDir as resolveDataDir, env } from '@openrive/shared/env';
 import { sql } from 'drizzle-orm';
@@ -12,7 +13,13 @@ export type Db = Awaited<ReturnType<typeof connect>>['db'];
 
 export type Backend = 'postgres' | 'embedded';
 
-let connection: Promise<{ db: Db; backend: Backend; close: () => Promise<void>; where: string }> | null = null;
+type Connection = { db: Db; backend: Backend; close: () => Promise<void>; where: string };
+type ConnectionRegistry = { connection: Promise<Connection> | null };
+const connectionKey = Symbol.for('@openrive/db/connection');
+const globalWithRegistry = globalThis as typeof globalThis & { [key: symbol]: ConnectionRegistry | undefined };
+// Next can load this workspace package into more than one route module in the
+// same server process. Share one connection and its file lock across bundles.
+const connectionRegistry = (globalWithRegistry[connectionKey] ??= { connection: null });
 
 /**
  * Errors that mean "the server is still starting", worth waiting out. Drivers
@@ -75,9 +82,13 @@ async function connect() {
   }
   const dataDir = resolveDataDir();
   const [{ PGlite }, { drizzle }] = await Promise.all([import('@electric-sql/pglite'), import('drizzle-orm/pglite')]);
-  const pgdata = path.join(dataDir, 'pgdata');
-  mkdirSync(pgdata, { recursive: true }); // PGlite does not create parent folders
-  const unlock = lockDataDir(dataDir);
+  const configuredPgdata = path.join(dataDir, 'pgdata');
+  mkdirSync(configuredPgdata, { recursive: true }); // PGlite does not create parent folders
+  // Normalize symlink/junction aliases so the same physical folder has one
+  // lock path regardless of how the process reached it.
+  const canonicalDataDir = realpathSync(dataDir);
+  const pgdata = path.join(canonicalDataDir, 'pgdata');
+  const unlock = await lockDataDir(canonicalDataDir);
   try {
     const client = new PGlite(pgdata);
     const db = drizzle(client, { schema });
@@ -106,35 +117,73 @@ async function connect() {
  * the CLI and the stdio MCP server all open it) works on a stale copy and the
  * last writer silently wins. An exclusive lock file turns that into an error.
  */
-function lockDataDir(dataDir: string): () => void {
+async function lockDataDir(dataDir: string): Promise<() => void> {
   const file = path.join(dataDir, 'pgdata.lock');
-  for (let attempt = 0; attempt < 2; attempt++) {
+  while (true) {
     try {
       const fd = openSync(file, 'wx');
-      writeSync(fd, String(process.pid));
+      const token = `${process.pid}:${randomUUID()}`;
+      try {
+        writeSync(fd, token);
+      } catch (e) {
+        closeSync(fd);
+        rmSync(file, { force: true });
+        throw e;
+      }
       closeSync(fd);
       let released = false;
       const release = () => {
         if (released) return;
         released = true;
         process.off('exit', release);
-        rmSync(file, { force: true });
+        try {
+          if (readFileSync(file, 'utf8') === token) rmSync(file);
+        } catch (e) {
+          if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+        }
       };
       process.on('exit', release);
       return release;
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
-      const holder = Number(readFileSync(file, 'utf8').trim());
-      if (holder && holder !== process.pid && isAlive(holder)) {
+      let contents: string;
+      try {
+        contents = readFileSync(file, 'utf8');
+      } catch (readError) {
+        if ((readError as NodeJS.ErrnoException).code === 'ENOENT') continue;
+        throw readError;
+      }
+      const match = /^(\d+)(?::[a-f0-9-]+)?$/i.exec(contents.trim());
+      const holder = match ? Number(match[1]) : 0;
+      if (Number.isSafeInteger(holder) && holder > 0 && isAlive(holder)) {
         throw new Error(
           `the embedded database in ${dataDir} is in use by process ${holder} (for example \`openrive serve\` or the MCP server). ` +
-            'Only one process can open it: stop that process, use its /api/mcp endpoint instead of a second stdio server, or set DATABASE_URL to share a PostgreSQL server.',
+            'Only one process can open it: use the editor-backed MCP bridge, stop the other process, or set DATABASE_URL to share PostgreSQL.',
         );
       }
-      rmSync(file, { force: true }); // left behind by a process that died
+      if (!match || !Number.isSafeInteger(holder) || holder < 1) {
+        let age = 0;
+        try {
+          age = Date.now() - statSync(file).mtimeMs;
+        } catch (statError) {
+          if ((statError as NodeJS.ErrnoException).code === 'ENOENT') continue;
+          throw statError;
+        }
+        // Another process creates the file before writing its PID. Give that
+        // short initialization window time to complete before treating it as
+        // an orphan left by a crashed process.
+        if (age < 1000) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          continue;
+        }
+      }
+      try {
+        if (readFileSync(file, 'utf8') === contents) rmSync(file);
+      } catch (removeError) {
+        if ((removeError as NodeJS.ErrnoException).code !== 'ENOENT') throw removeError;
+      }
     }
   }
-  throw new Error(`Could not lock the embedded database in ${dataDir}`);
 }
 
 function isAlive(pid: number): boolean {
@@ -142,14 +191,15 @@ function isAlive(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (e) {
-    return (e as NodeJS.ErrnoException).code === 'EPERM';
+    const code = (e as NodeJS.ErrnoException).code;
+    return code === 'EPERM' || code === 'EACCES';
   }
 }
 
 /** The shared connection; the first call creates it and applies migrations. */
 export function database() {
-  return (connection ??= connect().catch((e) => {
-    connection = null;
+  return (connectionRegistry.connection ??= connect().catch((e) => {
+    connectionRegistry.connection = null;
     throw new Error(`Could not open the database: ${(e as Error).message}`);
   }));
 }
@@ -159,9 +209,9 @@ export async function db(): Promise<Db> {
 }
 
 export async function closeDatabase() {
-  if (!connection) return;
-  const current = await connection.catch(() => null);
-  connection = null;
+  if (!connectionRegistry.connection) return;
+  const current = await connectionRegistry.connection.catch(() => null);
+  connectionRegistry.connection = null;
   await current?.close();
 }
 

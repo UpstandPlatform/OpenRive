@@ -12,7 +12,8 @@
   "scripts": {
     "check-types": "tsc --noEmit",
     "start": "bun src/index.ts",
-    "mcp": "bun src/mcp-server.ts"
+    "mcp": "bun src/index.ts mcp",
+    "mcp:standalone": "bun src/index.ts mcp --standalone"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.6 - 2026-11-05
+
+### Editor, animation and MCP reliability
+
+- Address artboards, timelines and state machines by name or id, reject ambiguous delete names, and clean references when deleting targets.
+- Start the first animation or blend state in a layer automatically, while allowing an explicit unconditional entry transition to replace it.
+- Protect embedded PGlite data with an exclusive process lock and give clear errors when another process is using it.
+- Route local stdio MCP through the running editor, with safe loopback startup and cross-platform shutdown.
+- Update Better Auth, body-parser and Zod to patched releases; the high and critical dependency audit is clear.
+
 ## 0.2.5 - 2026-10-23
 
 ### MCP and cloud reliability

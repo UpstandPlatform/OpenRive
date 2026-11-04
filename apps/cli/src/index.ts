@@ -14,7 +14,8 @@ Usage:
 
 Server
   serve [--port 3000] [--host 0.0.0.0] [--dev]     Start the editor
-  mcp                                              Start the MCP server (stdio) for AI assistants
+  mcp                                              Connect stdio MCP to the running editor (starts it if needed)
+  mcp --standalone                                 Start a separate stdio MCP server
 
 Projects
   list                                             List projects
@@ -55,7 +56,7 @@ Projects can be referenced by id or name.`;
 export function parseArgs(argv: string[]) {
   const positional: string[] = [];
   const options: commands.Options = {};
-  const booleans = new Set(['bundle', 'cdn', 'dev', 'help', 'json']);
+  const booleans = new Set(['bundle', 'cdn', 'dev', 'help', 'json', 'standalone']);
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
     if (arg.startsWith('--')) {
@@ -90,7 +91,9 @@ async function main() {
     case 'serve':
       return commands.serve(options);
     case 'mcp':
-      return (await import('./mcp-server')).startMcpServer();
+      return options.standalone
+        ? (await import('./mcp-server')).startMcpServer()
+        : (await import('./mcp-bridge')).startMcpBridge();
     case 'list':
       return commands.listProjects();
     case 'templates':

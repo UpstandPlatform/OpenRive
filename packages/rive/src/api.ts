@@ -1,7 +1,7 @@
 // High-level document operations with friendly inputs (names or ids, CSS
 // colors, seconds or frames). Used by templates, the CLI and the MCP server,
 // so humans and AI agents build files through the same code as the editor.
-import { ArtboardDoc, CoreObj, RiveDoc } from './document';
+import { ArtboardDoc, CoreObj, refSpaceOf, RiveDoc } from './document';
 import { newAnimation, newArtboard, newLayer, newParametricShape, newPenShape, obj, PenPoint, ShapeKind, solidFill, solidStroke } from './factory';
 import { childrenOf, cleanupInterpolators, deleteObjects, detachSkin, EASE_PRESETS, findObj, insertObjects, isAncestor, isAnimatable, parentIdOf, reparent, setInterpolation, upsertKeyframe } from './ops';
 import { apply, artboardPos, buildScene, Mat, prop, vertexControls, vertexWorldMatrix } from './scene';
@@ -84,13 +84,21 @@ export function getArtboard(doc: RiveDoc, ref?: string): ArtboardDoc {
 /** Finds a component by id or name (optionally scoped to an artboard). */
 export function getObject(doc: RiveDoc, ref: string, artboardRef?: string): { ab: ArtboardDoc; o: CoreObj } {
   const abs = artboardRef ? [getArtboard(doc, artboardRef)] : doc.artboards;
+  const byId: { ab: ArtboardDoc; o: CoreObj }[] = [];
   for (const ab of abs) {
-    const o = findObj(ab, ref) ?? ab.objects.find((x) => x.props.name === ref);
-    if (o) return { ab, o };
+    const o = findObj(ab, ref);
+    if (o) byId.push({ ab, o });
   }
-  // artboards are addressable by name too (their ids are found by findObj)
-  const board = abs.find((ab) => ab.artboard.props.name === ref);
-  if (board) return { ab: board, o: board.artboard };
+  if (byId.length === 1) return byId[0]!;
+  if (byId.length > 1) throw new ApiError(`Id "${ref}" is duplicated; repair the file before editing it.`);
+
+  const byName: { ab: ArtboardDoc; o: CoreObj }[] = [];
+  for (const ab of abs) {
+    if (ab.artboard.props.name === ref) byName.push({ ab, o: ab.artboard });
+    for (const o of ab.objects) if (o.props.name === ref) byName.push({ ab, o });
+  }
+  if (byName.length === 1) return byName[0]!;
+  if (byName.length > 1) throw new ApiError(`"${ref}" matches multiple objects or artboards; use an id to identify the target.`);
   throw new ApiError(`Object "${ref}" not found`);
 }
 
@@ -552,57 +560,126 @@ export function setProperties(doc: RiveDoc, ref: string, props: Record<string, u
  */
 export function deleteObjectsByRef(doc: RiveDoc, refs: string[]) {
   for (const ref of refs) {
-    const owner = doc.artboards.find((ab) => ab.animations.some((a) => a.id === ref) || ab.stateMachines.some((m) => m.id === ref));
-    const object = owner ? null : findAnyObject(doc, ref);
-    if (object && object.o.type !== 'Artboard') {
-      deleteObjects(object.ab, [object.o.id]);
-    } else if (object) {
-      deleteArtboard(doc, object.ab);
-    } else {
-      const ab = owner ?? doc.artboards.find((x) => x.animations.some((a) => a.props.name === ref) || x.stateMachines.some((m) => m.props.name === ref));
-      if (!ab) throw new ApiError(`Object "${ref}" not found`);
-      const timeline = ab.animations.find((a) => a.id === ref) ?? ab.animations.find((a) => a.props.name === ref);
-      const machine = ab.stateMachines.find((m) => m.id === ref) ?? (timeline ? undefined : ab.stateMachines.find((m) => m.props.name === ref));
-      if (timeline) deleteTimeline(ab, timeline);
-      else if (machine) ab.stateMachines = ab.stateMachines.filter((m) => m !== machine);
+    const target = resolveDeleteTarget(doc, ref);
+    switch (target.kind) {
+      case 'object':
+        deleteObjects(target.ab, [target.object.id]);
+        break;
+      case 'artboard':
+        deleteArtboard(doc, target.ab);
+        break;
+      case 'timeline':
+        deleteTimeline(doc, target.ab, target.object);
+        break;
+      case 'stateMachine': {
+        const removedIds = idsInTree(target.object);
+        target.ab.stateMachines = target.ab.stateMachines.filter((machine) => machine !== target.object);
+        if (target.ab.artboard.props.defaultStateMachineId === target.object.id) {
+          target.ab.artboard.props.defaultStateMachineId = target.ab.stateMachines[0]?.id ?? -1;
+        }
+        clearReferencesTo(rootsInDoc(doc), removedIds);
+        cleanupInterpolators(target.ab);
+        break;
+      }
     }
   }
 }
 
-function findAnyObject(doc: RiveDoc, ref: string): { ab: ArtboardDoc; o: CoreObj } | null {
-  try {
-    return getObject(doc, ref);
-  } catch (e) {
-    if (e instanceof ApiError) return null;
-    throw e;
+type DeleteTarget =
+  | { kind: 'object'; ab: ArtboardDoc; object: CoreObj }
+  | { kind: 'artboard'; ab: ArtboardDoc }
+  | { kind: 'timeline' | 'stateMachine'; ab: ArtboardDoc; object: CoreObj };
+
+function resolveDeleteTarget(doc: RiveDoc, ref: string): DeleteTarget {
+  const candidates: DeleteTarget[] = [];
+  for (const ab of doc.artboards) {
+    if (ab.artboard.id === ref) candidates.push({ kind: 'artboard', ab });
+    for (const object of ab.objects) if (object.id === ref) candidates.push({ kind: 'object', ab, object });
+    for (const object of ab.animations) if (object.id === ref) candidates.push({ kind: 'timeline', ab, object });
+    for (const object of ab.stateMachines) if (object.id === ref) candidates.push({ kind: 'stateMachine', ab, object });
   }
+  if (!candidates.length) {
+    for (const ab of doc.artboards) {
+      if (ab.artboard.props.name === ref) candidates.push({ kind: 'artboard', ab });
+      for (const object of ab.objects) if (object.props.name === ref) candidates.push({ kind: 'object', ab, object });
+      for (const object of ab.animations) if (object.props.name === ref) candidates.push({ kind: 'timeline', ab, object });
+      for (const object of ab.stateMachines) if (object.props.name === ref) candidates.push({ kind: 'stateMachine', ab, object });
+    }
+  }
+  if (candidates.length > 1) throw new ApiError(`"${ref}" matches more than one item; use its id to delete the intended item.`);
+  const target = candidates[0];
+  if (!target) throw new ApiError(`Object "${ref}" not found`);
+  return target;
 }
 
 function deleteArtboard(doc: RiveDoc, ab: ArtboardDoc) {
   if (doc.artboards.length < 2) throw new ApiError('A file needs at least one artboard; add another before deleting this one.');
   const nestedBy = doc.artboards.find((other) => other !== ab && other.objects.some((o) => o.props.artboardId === ab.id));
   if (nestedBy) throw new ApiError(`Artboard "${ab.artboard.props.name}" is nested in "${nestedBy.artboard.props.name}"; remove that nested artboard first.`);
+  clearReferencesTo(rootsInDoc(doc, ab), new Set([ab.id]));
   doc.artboards = doc.artboards.filter((x) => x !== ab);
 }
 
 /** Removes a timeline and the states that play it (with transitions into them). */
-function deleteTimeline(ab: ArtboardDoc, timeline: CoreObj) {
+function deleteTimeline(doc: RiveDoc, ab: ArtboardDoc, timeline: CoreObj) {
+  const removedIds = new Set([timeline.id]);
   ab.animations = ab.animations.filter((a) => a !== timeline);
   for (const sm of ab.stateMachines) {
     for (const layer of (sm.children ?? []).filter((c) => isA(c.type, 'StateMachineLayer'))) {
       const states = layer.children ?? [];
       const doomed = new Set(states.filter((st) => st.type === 'AnimationState' && st.props.animationId === timeline.id).map((st) => st.id));
-      for (const st of states) {
-        if (st.type.startsWith('BlendState')) st.children = (st.children ?? []).filter((b) => b.props.animationId !== timeline.id);
+      for (const state of states) {
+        if (state.type.startsWith('BlendState')) {
+          const children = state.children ?? [];
+          const kept = children.filter((child) => child.props.animationId !== timeline.id);
+          for (const child of children) if (!kept.includes(child)) removedIds.add(child.id);
+          if (kept.length !== children.length) state.children = kept;
+          if (kept.length === 0 && kept.length !== children.length) doomed.add(state.id);
+        }
       }
+      for (const id of doomed) removedIds.add(id);
       if (!doomed.size) continue;
       layer.children = states.filter((st) => !doomed.has(st.id));
       for (const st of layer.children) {
         st.children = (st.children ?? []).filter((t) => !(isA(t.type, 'StateTransition') && doomed.has(String(t.props.stateToId))));
       }
+      ensureEntryTransition(layer);
     }
   }
+  clearReferencesTo(rootsInDoc(doc), removedIds);
   cleanupInterpolators(ab);
+}
+
+function idsInTree(root: CoreObj): Set<string> {
+  const ids = new Set<string>();
+  const visit = (object: CoreObj) => {
+    ids.add(object.id);
+    object.children?.forEach(visit);
+  };
+  visit(root);
+  return ids;
+}
+
+function rootsInDoc(doc: RiveDoc, except?: ArtboardDoc): CoreObj[] {
+  return [
+    ...doc.top,
+    ...doc.artboards
+      .filter((ab) => ab !== except)
+      .flatMap((ab) => [ab.artboard, ...ab.objects, ...ab.animations, ...ab.stateMachines]),
+  ];
+}
+
+function clearReferencesTo(roots: CoreObj[], removedIds: Set<string>) {
+  const visited = new Set<CoreObj>();
+  const visit = (object: CoreObj) => {
+    if (visited.has(object)) return;
+    visited.add(object);
+    for (const [name, value] of Object.entries(object.props)) {
+      if (typeof value === 'string' && removedIds.has(value) && refSpaceOf(object.type, name)) object.props[name] = -1;
+    }
+    object.children?.forEach(visit);
+  };
+  roots.forEach(visit);
 }
 
 // ---------------------------------------------------------------------------
@@ -768,16 +845,30 @@ export function addState(doc: RiveDoc, s: { artboard?: string; stateMachine?: st
   const anim = getAnimation(ab, s.animation);
   const st = obj('AnimationState', { animationId: anim.id }, []);
   if (s.x !== undefined) st.ui = { x: s.x, y: s.y ?? 0 };
-  (layer.children ??= []).push(st);
-  // The first state of a layer whose entry leads nowhere becomes its start
-  // state; otherwise the layer would play nothing.
-  const entry = layer.children.find((c) => c.type === 'EntryState');
+  return addLayerState(layer, st);
+}
+
+function addLayerState(layer: CoreObj, state: CoreObj): CoreObj {
+  const children = (layer.children ??= []);
   const special = ['EntryState', 'AnyState', 'ExitState'];
-  const firstState = layer.children.every((c) => c === st || special.includes(c.type) || !isA(c.type, 'LayerState'));
-  if (entry && firstState && !(entry.children ?? []).some((c) => isA(c.type, 'StateTransition'))) {
-    (entry.children ??= []).push(obj('StateTransition', { stateToId: st.id }, []));
+  const isFirstState = !children.some((child) => isA(child.type, 'LayerState') && !special.includes(child.type));
+  children.push(state);
+  if (isFirstState) ensureEntryTransition(layer);
+  return state;
+}
+
+function ensureEntryTransition(layer: CoreObj) {
+  const children = layer.children ?? [];
+  const special = ['EntryState', 'AnyState', 'ExitState'];
+  const entry = children.find((child) => child.type === 'EntryState');
+  const start = children.find((child) => isA(child.type, 'LayerState') && !special.includes(child.type));
+  // A first state whose entry leads nowhere becomes the layer's start state.
+  const hasUnconditionalEntry = (entry?.children ?? []).some(
+    (child) => isA(child.type, 'StateTransition') && !(child.children ?? []).length,
+  );
+  if (entry && start && !hasUnconditionalEntry) {
+    (entry.children ??= []).push(obj('StateTransition', { stateToId: start.id }, []));
   }
-  return st;
 }
 
 /** Adds a 1D blend state driven by a numeric state-machine parameter. */
@@ -804,8 +895,7 @@ export function addBlendState(
   });
   const state = obj('BlendState1DInput', { inputId: input.id }, children);
   if (s.x !== undefined) state.ui = { x: s.x, y: s.y ?? 0 };
-  (layer.children ??= []).push(state);
-  return state;
+  return addLayerState(layer, state);
 }
 
 export interface ConditionInput {

@@ -44,7 +44,8 @@ Scripts and pipes still get plain commands: with no TTY, `openrive` prints its h
 | Command | Description |
 | --- | --- |
 | `serve [--port 3000] [--host 0.0.0.0] [--dev]` | Start the editor |
-| `mcp` | Start the [MCP server](mcp.md) on stdio |
+| `mcp` | Connect stdio to the editor's MCP endpoint, starting a local server if needed |
+| `mcp --standalone` | Run the [MCP server](mcp.md) directly; use this when the editor is closed |
 
 ### Projects
 

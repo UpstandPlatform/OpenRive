@@ -2,7 +2,7 @@
 // Lets AI assistants (Claude Code, Claude Desktop, Cursor, ...) create and edit
 // Rive files through the same document API the editor uses.
 //
-//   bun run mcp          (stdio transport)
+//   bun run mcp:standalone   (stdio transport without the editor bridge)
 //
 // Changes are saved straight to the database; an open editor tab reloads them
 // automatically.

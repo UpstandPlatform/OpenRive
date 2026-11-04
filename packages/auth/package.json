@@ -11,11 +11,11 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@better-auth/api-key": "^1.7.6",
+    "@better-auth/api-key": "1.7.7",
     "@openrive/db": "workspace:*",
     "@openrive/redis": "workspace:*",
     "@openrive/shared": "workspace:*",
-    "better-auth": "1.7.6",
+    "better-auth": "1.7.7",
     "drizzle-orm": "catalog:",
     "nanoid": "catalog:",
     "nodemailer": "^10.1.0",

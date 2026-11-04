@@ -83,7 +83,8 @@ can create accounts; the first account is still the administrator. Set it to `fi
 The web MCP endpoint is `POST/GET/DELETE /api/mcp`. Authenticated self-hosted and cloud instances use Better Auth
 MCP API keys; create one with `POST /api/mcp/keys` from a signed-in browser session and pass it as a Bearer token.
 The local desktop app exposes the same endpoint on its per-run `127.0.0.1` origin and does not require a key by
-default. Remote `.riv` imports use base64 bytes over MCP, while local stdio MCP may use file paths.
+default. The editor-backed stdio bridge uses the HTTP MCP request limits and base64 file transport; standalone local
+stdio MCP can use file paths when the editor is closed.
 
 The CLI also accepts `--data <dir>` and `--db <url>` on any command.
 

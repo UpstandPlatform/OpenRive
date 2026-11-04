@@ -19,7 +19,7 @@ and rendering; the server only stores documents.
                        │ REST + zod (apps/web/src/app/api)
                  ┌─────▼──────── server / tools ──────────────┐
                  │ @openrive/db  (Drizzle → PostgreSQL)       │◄── CLI + TUI (apps/cli)
-                 │   embedded PGlite, or DATABASE_URL         │◄── MCP server (apps/cli/src/mcp-server.ts)
+                 │   embedded PGlite, or DATABASE_URL         │◄── MCP HTTP route ← stdio bridge
                  └────────────────────────────────────────────┘◄── desktop (apps/desktop)
 ```
 

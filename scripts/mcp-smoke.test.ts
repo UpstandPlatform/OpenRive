@@ -7,15 +7,16 @@ import path from 'path';
 import { importRiv } from '@openrive/rive/document';
 
 (async () => {
+  const dataDirectory = mkdtempSync(path.join(tmpdir(), 'openrive-mcp-smoke-data-'));
+  const outputDirectory = mkdtempSync(path.join(tmpdir(), 'openrive-mcp-smoke-output-'));
   const transport = new StdioClientTransport({
     command: 'bun',
     args: ['apps/cli/src/mcp-server.ts'],
-    env: { ...process.env, OPENRIVE_DATA_DIR: process.env.OPENRIVE_DATA_DIR ?? './data' } as Record<string, string>,
+    env: { ...process.env, OPENRIVE_DATA_DIR: dataDirectory } as Record<string, string>,
   });
   const client = new Client({ name: 'smoke', version: '1.0.0' });
-  await client.connect(transport);
-  const outputDirectory = mkdtempSync(path.join(tmpdir(), 'openrive-mcp-smoke-'));
   try {
+  await client.connect(transport);
   const tools = await client.listTools();
   console.log('tools:', tools.tools.length, tools.tools.map((t) => t.name).join(', '));
   if (tools.tools.length !== 50) throw new Error(`Expected 50 MCP tools, found ${tools.tools.length}`);
@@ -49,6 +50,22 @@ import { importRiv } from '@openrive/rive/document';
   if (!rejectedPlan.isError) throw new Error('An invalid MCP edit plan should fail');
   const rolledBackOutline = JSON.parse(await call('get_project', { project: p }));
   if (rolledBackOutline.artboards[0].children.some((object: { name: string }) => object.name === 'Must Roll Back')) throw new Error('A failed MCP edit plan partially saved its earlier steps');
+  const artboardPlan = JSON.parse(await call('apply_edit_plan', {
+    project: p,
+    operations: [
+      { op: 'add_artboard', name: 'Plan Board', width: 320, height: 240 },
+      { op: 'add_shape', kind: 'rectangle', name: 'Plan Board Shape', x: 40, y: 40, width: 20, height: 20 },
+    ],
+  }));
+  if (!artboardPlan.saved || artboardPlan.operations.length !== 2) throw new Error('The artboard edit plan did not save both operations');
+  const artboardOutline = JSON.parse(await call('get_project', { project: p }));
+  const planBoard = artboardOutline.artboards.find((artboard: { name: string }) => artboard.name === 'Plan Board');
+  if (!planBoard?.children.some((object: { name: string }) => object.name === 'Plan Board Shape')) {
+    throw new Error('Steps after add_artboard should default to the new artboard');
+  }
+  if (artboardOutline.artboards[0].children.some((object: { name: string }) => object.name === 'Plan Board Shape')) {
+    throw new Error('A step after add_artboard was incorrectly applied to the first artboard');
+  }
   await call('define_theme_color', { project: p, name: 'Brand', color: '#7c5cff' });
   await call('add_shape', { project: p, kind: 'ellipse', name: 'Dot', x: 250, y: 250, width: 120, height: 120 });
   const rootBone = JSON.parse(await call('add_bone', { project: p, name: 'Root', x: 80, y: 80, length: 60 }));
@@ -140,7 +157,9 @@ import { importRiv } from '@openrive/rive/document';
   await call('delete_project', { project: p });
   await client.close();
   } finally {
+    await client.close().catch(() => {});
     rmSync(outputDirectory, { recursive: true, force: true });
+    rmSync(dataDirectory, { recursive: true, force: true });
   }
 })().catch((e) => {
   console.error(e);
