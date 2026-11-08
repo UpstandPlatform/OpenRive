@@ -20,3 +20,4 @@ description: Add a new command to the OpenRive editor (action registry entry, de
 4. **Check** with `bun run check-types`. Then, in the browser: run it via the shortcut, the context menu and the
    shortcuts dialog (`?`), undo it, and make sure it's disabled for Viewers.
 5. **Document** the shortcut in `docs/shortcuts.md`, and in `docs/user-guide.md` if it's a notable feature.
+6. If this work exposes a reproducible OpenRive defect outside the action being added, follow `openrive-report-issue` automatically. Fix failures caused by the current change as part of the task instead of filing them as upstream bugs.

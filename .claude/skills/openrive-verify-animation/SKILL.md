@@ -51,3 +51,4 @@ Use a scratch project for browser checks. Do not modify or delete another person
 ## Failure report
 
 Report failures with the asset path, host platform, runtime version, exact inspected name, reproduction steps, and the smallest safe fix. Distinguish asset corruption, wrong-name wiring, runtime API mismatch, lifecycle leaks, host build failure, and visual/layout failure. Never mark the animation ready because only the TypeScript build passed.
+When a failure is reproducibly caused by OpenRive, follow `openrive-report-issue` automatically and include the issue or duplicate link in the verification report. Do not publish the asset or private host project data without explicit authorization.

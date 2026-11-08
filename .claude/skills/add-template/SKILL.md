@@ -19,3 +19,4 @@ description: Create a new OpenRive starter template end to end (build with the O
 5. Open the printed editor link. Check the stage and **Preview**, and interact with every input and listener.
 6. Delete the check project (`bun run cli delete "Template check"`).
 7. Add a row to `docs/templates.md`.
+8. If template creation or verification exposes a reproducible OpenRive defect, follow `openrive-report-issue` automatically. Do not report an issue caused by the template itself; fix it as part of the task.

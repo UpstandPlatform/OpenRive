@@ -32,5 +32,6 @@ apps/desktop  Electrobun desktop app      packages/shared  zod schemas: types, A
 - **Reuse `packages/ui`** (Modal, Tabs, ListRow, PanelHeader) instead of copying panel or dialog markup.
 - **Product name** is "OpenRive" in all user-visible text.
 - Agents and skills for common tasks: `.claude/agents/`, `.claude/skills/` (see `contribution/ai-collaboration.md`).
+- If you reproduce a pre-existing or independent OpenRive bug while using the product or working in this repository, follow `.claude/skills/openrive-report-issue/SKILL.md` and submit a duplicate-checked upstream issue automatically. Fix defects introduced by the current task as part of that task. Keep user project data private; report security vulnerabilities through the private advisory route.
 - Verify UI changes in the browser on a scratch project. Don't modify or delete other people's projects in `data/`.
 - The embedded database allows one process at a time: stop the dev server before running the CLI on the same folder.

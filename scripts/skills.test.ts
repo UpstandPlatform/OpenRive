@@ -30,7 +30,7 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 const files = skillFiles(skillsRoot);
-assert(files.length === 8, `Expected 8 OpenRive skills, found ${files.length}`);
+assert(files.length === 9, `Expected 9 OpenRive skills, found ${files.length}`);
 
 const names = new Map<string, string>();
 for (const file of files) {

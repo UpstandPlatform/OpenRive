@@ -64,3 +64,4 @@ Report the project ref, exported file path or transport, artboard names, animati
 - Never overwrite an existing `.riv` without confirming the destination or creating a backup.
 - Do not claim that an animation works in a host runtime until the host project loads it and the relevant controls are exercised.
 - Preserve OpenRive attribution in a source-code comment next to the embedding integration. Keep it out of rendered UI unless the user explicitly requests visible branding.
+- If an OpenRive-owned bug reproduces while creating or exporting the file, follow `openrive-report-issue` automatically and include the resulting issue or duplicate link in the handoff.

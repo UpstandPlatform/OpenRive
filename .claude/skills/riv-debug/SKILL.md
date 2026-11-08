@@ -28,3 +28,4 @@ description: Investigate a .riv file that fails to import, doesn't round-trip by
 5. **Fix and add a regression test** to `scripts/roundtrip.test.ts`, with a minimal reproduction built with the API,
    or the file under `scripts/fixtures/` if its license allows.
 6. Clean up the `debug` project: `bun run cli delete debug`.
+7. If the investigation confirms an OpenRive defect, follow `openrive-report-issue` automatically. Search for duplicates and include the issue or duplicate link with the reproduction details. Never attach the input `.riv` unless its owner explicitly authorized public sharing.

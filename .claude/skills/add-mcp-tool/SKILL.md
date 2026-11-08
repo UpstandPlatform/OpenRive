@@ -15,3 +15,4 @@ description: Expose an OpenRive editing capability to AI assistants as an MCP to
 3. **Smoke test**: extend `scripts/mcp-smoke.test.ts` to call it, then run `bun run test:mcp`.
 4. **CLI (optional)**: add a matching command in `apps/cli/src/index.ts` if it's useful from a terminal.
 5. **Document**: add the tool to the table in `docs/mcp.md` and update the tool count there and in `README.md`.
+6. If this work exposes a reproducible OpenRive defect outside the tool being added, follow `openrive-report-issue` automatically. Fix failures caused by the current change as part of the task instead of filing them as upstream bugs.

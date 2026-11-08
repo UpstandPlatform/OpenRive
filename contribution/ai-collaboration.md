@@ -24,6 +24,7 @@ Install only the product workflow skills, or target specific agents:
 
 ```bash
 npx skills add UpstandPlatform/OpenRive --skill openrive-create-animation --skill openrive-embed-animation --skill openrive-verify-animation
+npx skills add UpstandPlatform/OpenRive --skill openrive-report-issue
 npx skills add UpstandPlatform/OpenRive --agent claude-code --agent codex --agent cursor
 ```
 
@@ -34,6 +35,7 @@ The product skills are:
 | `openrive-create-animation` | Create, inspect, edit and export `.riv` files through OpenRive MCP or CLI |
 | `openrive-embed-animation` | Put a `.riv` file into web, React/Next.js, Flutter, Android/Kotlin, iOS/Swift, React Native, Unity, Unreal or C++ projects |
 | `openrive-verify-animation` | Verify the asset, runtime controls, host lifecycle, builds, accessibility and attribution |
+| `openrive-report-issue` | Search for duplicates and automatically report reproducible OpenRive bugs or task-blocking feature gaps |
 
 Update installed skills with:
 
@@ -70,6 +72,11 @@ just describe the task.
 | `add-mcp-tool` | Exposes an `api.ts` function as an MCP tool and CLI option, with tests |
 | `verify-change` | Runs the right checks for the files you changed, including browser verification |
 | `riv-debug` | Investigates a `.riv` that doesn't round-trip or render correctly |
+
+When a product or repository workflow exposes a reproducible OpenRive issue, agents should load
+`openrive-report-issue`, search open and closed upstream issues, and file the appropriate report without asking for
+confirmation. The skill keeps private assets and logs out of public reports, and sends security vulnerabilities to
+the private advisory route.
 
 The contributor skills above are for working on the OpenRive repository. The `openrive-*` skills are for developers
 using OpenRive as an animation authoring and delivery tool.

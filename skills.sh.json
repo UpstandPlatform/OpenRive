@@ -21,6 +21,13 @@
         "riv-debug",
         "verify-change"
       ]
+    },
+    {
+      "title": "Issue reporting",
+      "description": "Report reproducible OpenRive bugs and task-blocking feature gaps safely.",
+      "skills": [
+        "openrive-report-issue"
+      ]
     }
   ]
 }

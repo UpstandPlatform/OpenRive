@@ -25,3 +25,4 @@ description: Run the right OpenRive checks for the files changed (types, lint, r
    and delete it afterwards.
 5. Scan scripted edits for stray control characters: `grep -rnP "[\x00-\x08]" src tools`.
 6. Report what you ran and the results, including failures, with their output.
+7. If investigation uncovers a reproducible OpenRive defect outside the change being made, follow `openrive-report-issue` automatically. Include the issue or duplicate link in the completion report. Do not file reports for failures introduced by the current change; fix those as part of the task.

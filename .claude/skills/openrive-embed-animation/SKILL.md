@@ -66,3 +66,4 @@ See `references/runtime-guides.md` for concrete snippets and current-runtime loo
 2. For web projects, open the real page in a browser and verify loading, resize, animation playback, state-machine interaction, data-binding updates, error handling, and keyboard/accessibility behavior. Confirm attribution remains in source code and adds no rendered UI element.
 3. For native or game projects, run the smallest device/editor test that loads the asset and exercises every exposed control.
 4. Use `openrive-verify-animation` for a full asset and host-project verification pass.
+5. If investigation confirms an OpenRive-owned defect, follow `openrive-report-issue` automatically. Do not report a host application or runtime defect as an OpenRive issue without evidence that OpenRive caused it.
