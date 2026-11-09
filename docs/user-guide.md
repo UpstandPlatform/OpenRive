@@ -34,7 +34,7 @@ or another tab) changes the file while it's open, a banner lets you reload or ke
 | Rectangle, Ellipse, Triangle, Polygon, Star | `R` `O` `Y` `Shift R` `Shift O` | Drag to draw: the preview shows the real shape and its size. Hold `Shift` for equal sides, `Alt` to draw from the center, `Esc` to cancel. |
 | Pen | `P` | Click to add points, drag for curves, click the first point to close |
 | Text | `T` | Click to add text, then type. Double-click text to edit it later. |
-| Bone | `B` | Drag to add a root bone. Select an existing bone first to extend the skeleton from its tip. |
+| Bone | `B` | Drag to add a root bone. The tool stays active, so dragging from the new bone's tip adds the next bone in the chain; `Esc` or `V` finishes. Select an existing bone first to extend from its tip. |
 | Hand | `H` / hold `Space` | Pan. Scroll with `Ctrl` to zoom. |
 
 - **Groups**: `Ctrl G` / `Ctrl Shift G`. A new group takes the place of its front-most member, so draw order does not change.

@@ -153,4 +153,13 @@ pickParent.props.drawableFlags = 1;
 assert.equal(hitBone(pickAb, buildScene(pickAb), 70, 20, { x: 0, y: 0 }, (x, y) => [x, y]), null);
 pickParent.props.drawableFlags = 2;
 assert.equal(hitBone(pickAb, buildScene(pickAb), 70, 20, { x: 0, y: 0 }, (x, y) => [x, y]), null);
-console.log('✓ 27 bone editor scenarios: hierarchy, positioning, linking, scaled/mirrored tip edits, handle offsets, animated picking, hidden/locked bones and creation edge cases');
+// 28. Zoomed out, a short bone must keep a grabbable shaft: its tip and base grab zones shrink instead of covering it all.
+const shortDoc = newDoc('Short bone');
+const shortAb = shortDoc.artboards[0]!;
+const shortBone = addBone(shortDoc, { x: 0, y: 20, length: 20 });
+const shortScene = buildScene(shortAb);
+const identity = (x: number, y: number): [number, number] => [x, y];
+assert.deepEqual(hitBone(shortAb, shortScene, 10, 20, { x: 0, y: 0 }, identity, shortBone.id), { id: shortBone.id, handle: 'shaft' });
+assert.deepEqual(hitBone(shortAb, shortScene, 20, 20, { x: 0, y: 0 }, identity, shortBone.id), { id: shortBone.id, handle: 'tip' });
+assert.deepEqual(hitBone(shortAb, shortScene, 0, 20, { x: 0, y: 0 }, identity, shortBone.id), { id: shortBone.id, handle: 'base' });
+console.log('✓ 28 bone editor scenarios: hierarchy, positioning, linking, scaled/mirrored tip edits, handle offsets, animated picking, hidden/locked bones and creation edge cases');

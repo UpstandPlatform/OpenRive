@@ -720,7 +720,9 @@ function parseShapeItems(items: unknown[], parentId: string, path: string, conte
     geometry.splice(0, geometry.length, { shape: sharedShape, painted: false });
   }
 
-  for (const paint of paints) {
+  // Lottie draws a group's first style on top; Rive draws a shape's first paint underneath. Create the paints
+  // in reverse so a stroke listed before its fill still ends up above it.
+  for (const paint of [...paints].reverse()) {
     for (const item of geometry) {
       if (paint.type === 'fill') addFill(context, item.shape, paint.style, paint.path);
       else if (paint.type === 'stroke') addStroke(context, item.shape, paint.style, paint.path);

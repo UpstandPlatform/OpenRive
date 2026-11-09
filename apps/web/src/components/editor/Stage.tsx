@@ -1420,7 +1420,9 @@ export function Stage() {
           setTimeout(() => useEditor.getState().select([objs[0].id]));
         });
       }
-      s.set('tool', 'select');
+      // shapes are one-shot, but a skeleton is drawn as a chain: stay on the Bone tool so the next drag from the
+      // new bone's tip extends it (Esc or V leaves the tool)
+      if (drag.tool !== 'bone') s.set('tool', 'select');
     } else if (drag.kind === 'move' && !drag.moved && !e.shiftKey && doc) {
       // click on already-selected item within a multi-selection: select just it
       const ab = findArtboard(doc, drag.abId);
