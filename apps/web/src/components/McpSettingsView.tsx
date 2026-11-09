@@ -113,7 +113,7 @@ export function McpSettingsView({
 
         <section className="bg-bg1 border border-line rounded-xl overflow-hidden mb-5" aria-labelledby="mcp-connection-heading">
           <div className="p-5 border-b border-line flex items-start gap-3">
-            <div className="w-9 h-9 rounded-lg bg-[#18334b] text-accent flex items-center justify-center shrink-0"><Bot size={18} /></div>
+            <div className="w-9 h-9 rounded-lg bg-[#18334b] text-editor-accent flex items-center justify-center shrink-0"><Bot size={18} /></div>
             <div className="min-w-0">
               <h2 id="mcp-connection-heading" className="text-[15px] font-semibold">{copy.title}</h2>
               <p className="text-t2 mt-1 max-w-[680px]">{copy.description}</p>

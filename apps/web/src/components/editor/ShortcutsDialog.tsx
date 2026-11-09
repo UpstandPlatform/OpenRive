@@ -97,7 +97,7 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
                         <input
                           autoFocus
                           readOnly
-                          className="field h-6 w-36 text-center text-accent"
+                          className="field h-6 w-36 text-center text-editor-accent"
                           value="Press keys…"
                           onKeyDown={(e) => record(e, a.id)}
                           onBlur={() => setRecording(null)}
@@ -110,7 +110,7 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
                         >
                           {keys.length ? (
                             keys.map((k) => (
-                              <span key={k} className={`kbd ${custom ? 'text-accent' : ''}`}>
+                              <span key={k} className={`kbd ${custom ? 'text-editor-accent' : ''}`}>
                                 {formatCombo(k)}
                               </span>
                             ))

@@ -5,6 +5,7 @@ import { McpSettingsView, type McpConnectionMode } from './McpSettingsView';
 import { useDesktop } from './desktop';
 import { useMcpSettings } from '@/lib/client/useMcpSettings';
 import { useSession } from '@/lib/client/session';
+import { confirmDialog } from '@openrive/ui';
 
 const subscribe = () => () => {};
 
@@ -24,8 +25,14 @@ export function McpSettingsController() {
   const endpoint = origin ? `${origin}/api/mcp` : '/api/mcp';
   const mode: McpConnectionMode = authEnabled ? 'remote' : desktop ? 'desktop' : 'local';
 
-  const revoke = (key: Parameters<typeof settings.revoke>[0]) => {
-    if (window.confirm(`Revoke “${key.name || 'this API key'}”? Connected AI tools will stop working immediately.`)) void settings.revoke(key);
+  const revoke = async (key: Parameters<typeof settings.revoke>[0]) => {
+    const confirmed = await confirmDialog({
+      title: 'Revoke API key?',
+      description: `Revoke “${key.name || 'this API key'}”? Connected AI tools will stop working immediately.`,
+      confirmLabel: 'Revoke key',
+      destructive: true,
+    });
+    if (confirmed) await settings.revoke(key);
   };
 
   return (

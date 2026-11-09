@@ -7,7 +7,7 @@ import { findArtboard } from '@openrive/rive/ops';
 import { registerImageSizes } from '@openrive/rive/scene';
 import { useEditor } from '@/lib/store/editor';
 import { importSvgMarkup } from '@/lib/client/svgImport';
-import { ListRow } from '@openrive/ui';
+import { confirmDialog, ListRow } from '@openrive/ui';
 import { openContextMenu, sep } from './ContextMenu';
 import { toast } from '@/lib/client/toast';
 
@@ -122,9 +122,14 @@ export function AssetsPanel() {
 
   const place = (asset: CoreObj) => placeAssetOnArtboard(asset.id);
 
-  const remove = (asset: CoreObj) => {
+  const remove = async (asset: CoreObj) => {
     const users = assetUsers(doc, asset.id);
-    if (users.length && !confirm(`"${asset.props.name}" is used by ${users.length} object(s). Delete it and remove the images using it?`)) return;
+    if (users.length && !(await confirmDialog({
+      title: 'Delete a used asset?',
+      description: `“${asset.props.name}” is used by ${users.length} object(s). Delete it and remove the images using it?`,
+      confirmLabel: 'Delete asset',
+      destructive: true,
+    }))) return;
     let ok = true;
     s.commit((d) => {
       ok = removeAsset(d, asset.id);
@@ -168,7 +173,7 @@ export function AssetsPanel() {
 
   return (
     <div
-      className={`flex-1 overflow-auto flex flex-col ${dragOver ? 'outline outline-2 outline-accent -outline-offset-2' : ''}`}
+      className={`flex-1 overflow-auto flex flex-col ${dragOver ? 'outline outline-2 outline-editor-accent -outline-offset-2' : ''}`}
       onDragOver={(e) => {
         if (readOnly || !e.dataTransfer.types.includes('Files')) return;
         e.preventDefault();

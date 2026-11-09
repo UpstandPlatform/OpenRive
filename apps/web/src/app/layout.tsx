@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { AuthGate } from '@/components/AuthGate';
+import { DialogProvider, DirectionProvider, TooltipProvider } from '@openrive/ui';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -9,9 +10,15 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<'/'>) {
   return (
-    <html lang="en" className="h-full antialiased">
+    <html lang="en" dir="ltr" className="h-full antialiased dark">
       <body className="h-full">
-        <AuthGate>{children}</AuthGate>
+        <AuthGate>
+          <DirectionProvider direction="ltr">
+            <TooltipProvider>
+              <DialogProvider>{children}</DialogProvider>
+            </TooltipProvider>
+          </DirectionProvider>
+        </AuthGate>
       </body>
     </html>
   );

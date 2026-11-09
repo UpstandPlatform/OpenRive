@@ -2042,7 +2042,7 @@ export function Stage() {
         <div className="absolute top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-bg3 text-t1 text-[11px]">
           Inside <b className="text-t0">{String(findObj(activeAb, selectionContext)?.props.name ?? 'group')}</b>. Clicks select its contents.{' '}
           <button
-            className="text-accent ml-1"
+            className="text-editor-accent ml-1"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={() => useEditor.getState().set('selectionContext', null)}
           >
@@ -2053,7 +2053,7 @@ export function Stage() {
       {editPathId && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-bg3 text-t1 text-[11px]">
           Editing vertices. Drag points and handles.{' '}
-          <button className="text-accent ml-1" onPointerDown={(e) => e.stopPropagation()} onClick={() => useEditor.getState().set('editPathId', null)}>
+          <button className="text-editor-accent ml-1" onPointerDown={(e) => e.stopPropagation()} onClick={() => useEditor.getState().set('editPathId', null)}>
             Done
           </button>
         </div>
@@ -2243,7 +2243,7 @@ function InlineTextEditor({
         if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) close();
       }}
       spellCheck={false}
-      className="absolute bg-[#57a5e01a] outline outline-1 outline-accent text-transparent caret-white resize-none overflow-hidden"
+      className="absolute bg-[#57a5e01a] outline outline-1 outline-editor-accent text-transparent caret-white resize-none overflow-hidden"
       style={{
         left: sx,
         top: sy,

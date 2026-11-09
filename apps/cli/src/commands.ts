@@ -30,7 +30,7 @@ import {
 export const pad = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s.padEnd(n));
 
 /** Reads a line from the terminal without echoing it, for passwords. */
-async function prompt(question: string): Promise<string> {
+async function askInput(question: string): Promise<string> {
   process.stdout.write(question);
   const stdin = process.stdin;
   if (!stdin.isTTY) throw new StoreError('Pass --password when there is no terminal to type into');
@@ -405,8 +405,8 @@ export async function users(args: string[], opts: Options) {
     const user = list.find((u) => u.id === ref || u.name.toLowerCase() === ref.toLowerCase());
     if (!user) throw new StoreError(`User "${ref}" not found`);
     const email = (typeof opts.email === 'string' && opts.email.trim() ? opts.email.trim() : null) ?? ('email' in user && typeof user.email === 'string' ? user.email : null)
-      ?? (authEnabled() ? (await prompt(`Email address for ${user.name}: `)).trim() : null);
-    const password = typeof opts.password === 'string' ? opts.password : await prompt(`New password for ${user.name}: `);
+      ?? (authEnabled() ? (await askInput(`Email address for ${user.name}: `)).trim() : null);
+    const password = typeof opts.password === 'string' ? opts.password : await askInput(`New password for ${user.name}: `);
     const problem = passwordProblem(password);
     if (problem) throw new StoreError(problem);
     await updateAccount(user.id, { ...(email ? { email } : {}), password });

@@ -57,7 +57,7 @@ export function InviteController({ invitationId }: { invitationId: string }) {
   if (!account) return (
     <main className="min-h-screen flex items-center justify-center px-5">
       <section className="panel max-w-md w-full p-6 text-center">
-        <Building2 size={26} className="mx-auto text-accent mb-3" />
+        <Building2 size={26} className="mx-auto text-editor-accent mb-3" />
         <h1 className="text-xl font-semibold">You’re invited to OpenRive</h1>
         <p className="text-sm text-t2 mt-2">Sign in or create an account to review this workspace invitation.</p>
         <div className="flex justify-center gap-2 mt-5"><Link className="btn btn-primary" href={`/login?next=${encodeURIComponent(next)}`}>Sign in</Link><Link className="btn" href={`/signup?next=${encodeURIComponent(next)}`}>Create account</Link></div>
@@ -97,7 +97,7 @@ export function InviteController({ invitationId }: { invitationId: string }) {
   return (
     <main className="min-h-screen flex items-center justify-center px-5">
       <section className="panel max-w-md w-full p-6">
-        <Building2 size={25} className="text-accent mb-3" />
+        <Building2 size={25} className="text-editor-accent mb-3" />
         <h1 className="text-xl font-semibold">Workspace invitation</h1>
         {!error && account.emailVerified && !invitation ? <p className="text-sm text-t2 mt-3">Loading invitation…</p> : invitation && <div className="mt-3 text-sm text-t1">
           <p>You were invited to join <strong>{invitation.organizationName}</strong> as a {invitation.role}.</p>

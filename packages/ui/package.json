@@ -5,15 +5,40 @@
   "type": "module",
   "exports": {
     ".": "./src/index.tsx",
-    "./*": "./src/*.tsx"
+    "./components/*": "./src/components/*.tsx",
+    "./hooks/*": "./src/hooks/*.ts",
+    "./lib/highlighter": "./src/lib/highlighter.tsx",
+    "./lib/*": "./src/lib/*.ts",
+    "./styles/globals.css": "./src/styles/globals.css",
+    "./styles/*.css": "./src/styles/*.css"
+  },
+  "imports": {
+    "#components/*": "./src/components/*.tsx",
+    "#hooks/*": "./src/hooks/*.ts",
+    "#lib/highlighter": "./src/lib/highlighter.tsx",
+    "#lib/*": "./src/lib/*.ts"
   },
   "scripts": {
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
     "lucide-react": "catalog:",
+    "@base-ui/react": "^1.9.0",
+    "@shadcn/react": "^0.3.1",
+    "class-variance-authority": "^0.7.1",
+    "cmdk": "^1.1.1",
+    "cn": "^0.5.2",
+    "date-fns": "^4.4.0",
+    "embla-carousel-react": "^8.6.0",
+    "input-otp": "^1.5.0",
+    "react-day-picker": "^10.0.2",
     "react": "catalog:",
-    "react-dom": "catalog:"
+    "react-dom": "catalog:",
+    "react-resizable-panels": "^4.21.0",
+    "recharts": "3.8.0",
+    "shadcn": "^4.23.0",
+    "shiki": "^4.6.0",
+    "tw-animate-css": "^1.4.0"
   },
   "devDependencies": {
     "@openrive/config": "workspace:*",

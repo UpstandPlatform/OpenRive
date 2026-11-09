@@ -1,9 +1,9 @@
 'use client';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { Copy, Palette, Plus, Trash2 } from 'lucide-react';
 import { colorCss } from '@openrive/rive/ops';
 import { activeTheme, addSwatch, addTheme, applyTheme, countBindings, removeSwatch, removeTheme, renameSwatch, setSwatchColor } from '@openrive/rive/theme';
-import { Popover } from '@openrive/ui';
+import { Button, Popover, PopoverContent, PopoverTrigger, promptDialog } from '@openrive/ui';
 import { useEditor } from '@/lib/store/editor';
 import { ColorPicker } from './controls';
 import { openContextMenu, sep } from './ContextMenu';
@@ -48,11 +48,11 @@ export function ThemePanel() {
           {(meta?.themes ?? []).map((t) => (
             <button
               key={t.id}
-              className={`px-2.5 h-6 rounded text-[11px] ${t.id === theme?.id ? 'bg-accent text-white' : 'bg-bg3 text-t1 hover:text-t0'}`}
+              className={`px-2.5 h-6 rounded text-[11px] ${t.id === theme?.id ? 'bg-editor-accent text-white' : 'bg-bg3 text-t1 hover:text-t0'}`}
               onClick={() => s.commit((d) => applyTheme(d, t.id))}
-              onDoubleClick={() => {
+              onDoubleClick={async () => {
                 if (readOnly) return;
-                const name = prompt('Theme name', t.name);
+                const name = await promptDialog({ title: 'Rename theme', label: 'Theme name', defaultValue: t.name, confirmLabel: 'Rename' });
                 if (name) s.commit((d) => void (d.editor!.themes.find((x) => x.id === t.id)!.name = name));
               }}
               onContextMenu={(e) =>
@@ -61,8 +61,8 @@ export function ThemePanel() {
                   {
                     label: 'Rename…',
                     disabled: readOnly,
-                    run: () => {
-                      const name = prompt('Theme name', t.name);
+                    run: async () => {
+                      const name = await promptDialog({ title: 'Rename theme', label: 'Theme name', defaultValue: t.name, confirmLabel: 'Rename' });
                       if (name) s.commit((d) => void (d.editor!.themes.find((x) => x.id === t.id)!.name = name));
                     },
                   },
@@ -135,9 +135,8 @@ interface SwatchRowProps {
 
 function SwatchRow({ swatch: sw, color: c, uses, readOnly, editing, renaming, setEditing, setRenaming }: SwatchRowProps) {
   const s = useEditor.getState();
-  const triggerRef = useRef<HTMLButtonElement>(null);
   return (
-            <div className="relative">
+            <Popover open={editing && !readOnly} onOpenChange={(open) => setEditing(open ? sw.id : null)}>
               <div
                 className="flex items-center gap-2 h-8 px-1.5 rounded hover:bg-bg2"
                 onContextMenu={(e) =>
@@ -149,14 +148,11 @@ function SwatchRow({ swatch: sw, color: c, uses, readOnly, editing, renaming, se
                   ])
                 }
               >
-                <button
-                  ref={triggerRef}
-                  className="w-6 h-6 rounded checker overflow-hidden border border-line2 shrink-0"
-                  onClick={() => setEditing(editing ? null : sw.id)}
-                  title="Edit color"
+                <PopoverTrigger
+                  render={<button type="button" className="w-6 h-6 rounded checker overflow-hidden border border-line2 shrink-0" title="Edit color" />}
                 >
                   <span className="block w-full h-full" style={{ background: colorCss(c) }} />
-                </button>
+                </PopoverTrigger>
                 {renaming ? (
                   <input
                     autoFocus
@@ -182,16 +178,22 @@ function SwatchRow({ swatch: sw, color: c, uses, readOnly, editing, renaming, se
                   <Trash2 size={12} />
                 </button>
               </div>
-              {editing && !readOnly && (
-                <Popover anchorRef={triggerRef} align="start" onClose={() => setEditing(null)}>
+              {!readOnly && (
+                <PopoverContent
+                  align="start"
+                  side="right"
+                  sideOffset={6}
+                  className="w-auto gap-2 p-2"
+                  onKeyDown={(event) => event.stopPropagation()}
+                >
                   <ColorPicker value={c} onChange={(v, t) => s.commit((d) => setSwatchColor(d, sw.id, v), t)} hideSwatches />
                   <div className="flex justify-end px-2 pb-1">
-                    <button className="btn h-6 px-2" onClick={() => setEditing(null)}>
+                    <Button variant="outline" size="xs" onClick={() => setEditing(null)}>
                       Done
-                    </button>
+                    </Button>
                   </div>
-                </Popover>
+                </PopoverContent>
               )}
-            </div>
+            </Popover>
   );
 }

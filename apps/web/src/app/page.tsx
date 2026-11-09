@@ -12,7 +12,7 @@ import type { RiveDoc } from '@openrive/rive/document';
 import { importSource, isOpenRiveSource } from '@openrive/rive/source';
 import { convertLottie, MAX_LOTTIE_INPUT_BYTES, MAX_TGS_COMPRESSED_BYTES } from '@openrive/lottie';
 import { canAccessProject, canCreateProject, type ProjectMeta } from '@openrive/shared';
-import { Modal } from '@openrive/ui';
+import { confirmDialog, Modal } from '@openrive/ui';
 import { getProjectActivity, setProjectFavorite } from '@/lib/client/projectActivity';
 
 type Filter = 'mine' | 'shared' | 'workspace' | 'all' | 'recent' | 'favorites';
@@ -180,7 +180,12 @@ export default function Dashboard() {
     } catch (e) { setError((e as Error).message || 'Could not duplicate file'); }
   };
   const remove = async (p: ProjectMeta) => {
-    if (!confirm(`Delete "${p.name}"? This removes it from disk.`)) return;
+    if (!(await confirmDialog({
+      title: `Delete “${p.name}”?`,
+      description: 'This permanently removes the project file from disk.',
+      confirmLabel: 'Delete file',
+      destructive: true,
+    }))) return;
     try {
       await api.json(`/api/projects/${p.id}`, { method: 'DELETE' });
       await load();
@@ -264,7 +269,7 @@ export default function Dashboard() {
               <button
                 onClick={newFile}
                 disabled={busy}
-                className="aspect-[4/3.2] rounded-xl border border-dashed border-line2 hover:border-accent hover:bg-bg1 flex flex-col items-center justify-center gap-2 text-t1"
+                className="aspect-[4/3.2] rounded-xl border border-dashed border-line2 hover:border-editor-accent hover:bg-bg1 flex flex-col items-center justify-center gap-2 text-t1"
               >
                 <Plus size={28} />
                 <span className="font-medium">New file</span>
@@ -324,7 +329,7 @@ export default function Dashboard() {
                         setActivityByUser((previous) => ({ ...previous, [user!.id]: next }));
                       }}
                     >
-                      <Star size={15} fill={activity.favorites.includes(p.id) ? 'currentColor' : 'none'} className={activity.favorites.includes(p.id) ? 'text-accent' : ''} />
+                      <Star size={15} fill={activity.favorites.includes(p.id) ? 'currentColor' : 'none'} className={activity.favorites.includes(p.id) ? 'text-editor-accent' : ''} />
                     </button>
                     <button
                       className="icon-btn"
@@ -390,7 +395,7 @@ export default function Dashboard() {
       )}
 
       {dragOver && (
-        <div className="fixed inset-0 z-50 bg-[#57a5e0]/10 border-2 border-dashed border-accent flex items-center justify-center pointer-events-none">
+        <div className="fixed inset-0 z-50 bg-[#57a5e0]/10 border-2 border-dashed border-editor-accent flex items-center justify-center pointer-events-none">
           <div className="text-[16px] font-medium bg-bg2 px-5 py-3 rounded-lg">Drop .riv, .oriv, .json, or .tgs files to import</div>
         </div>
       )}

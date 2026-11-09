@@ -186,7 +186,7 @@ function AnimationList({ ab }: { ab: ArtboardDoc }) {
           ])
         }
       >
-        <span className={isSM ? 'text-accent' : 'text-anim'}>{isSM ? <Workflow size={13} /> : <Film size={13} />}</span>
+        <span className={isSM ? 'text-editor-accent' : 'text-anim'}>{isSM ? <Workflow size={13} /> : <Film size={13} />}</span>
         {renaming === o.id ? (
           <input
             autoFocus
@@ -525,7 +525,7 @@ function TimelineView({ ab }: { ab: ArtboardDoc }) {
               <div
                 key={t.key}
                 className={`h-6 flex items-center gap-1 pr-2 truncate cursor-default ${
-                  selection.includes(t.objId) && t.isGroup ? 'text-accent' : t.isGroup ? 'text-t0' : 'text-t1'
+                  selection.includes(t.objId) && t.isGroup ? 'text-editor-accent' : t.isGroup ? 'text-t0' : 'text-t1'
                 }`}
                 style={{ paddingLeft: 6 + t.depth * 16 }}
                 onClick={() => t.isGroup && s.select([t.objId])}
@@ -564,7 +564,7 @@ function TimelineView({ ab }: { ab: ArtboardDoc }) {
                 {ticks}
                 {workStart !== null && workEnd !== null && (
                   <div
-                    className="absolute bottom-0 h-1.5 bg-accent/60"
+                    className="absolute bottom-0 h-1.5 bg-editor-accent/60"
                     style={{ left: xOf(workStart), width: (workEnd - workStart) * ppf }}
                   />
                 )}
@@ -615,7 +615,7 @@ function TimelineView({ ab }: { ab: ArtboardDoc }) {
                             <path
                               d="M5 0.5 9.5 5 5 9.5 0.5 5Z"
                               fill={sel ? '#fff' : t.isGroup ? '#8a8a8a' : 'var(--key)'}
-                              stroke={sel ? 'var(--accent)' : '#111'}
+                              stroke={sel ? 'var(--editor-accent)' : '#111'}
                               strokeWidth="1"
                             />
                           </svg>
@@ -626,7 +626,7 @@ function TimelineView({ ab }: { ab: ArtboardDoc }) {
                 ))}
                 {marquee && (
                   <div
-                    className="absolute border border-accent bg-accent/10 z-20 pointer-events-none"
+                    className="absolute border border-editor-accent bg-editor-accent/10 z-20 pointer-events-none"
                     style={{
                       left: Math.min(marquee.x0, marquee.x1),
                       top: Math.min(marquee.y0, marquee.y1) - 28,
@@ -639,8 +639,8 @@ function TimelineView({ ab }: { ab: ArtboardDoc }) {
               {/* duration end + playhead */}
               <div className="absolute top-0 bottom-0 w-px bg-line2 pointer-events-none" style={{ left: xOf(f.duration) }} />
               <div className="absolute top-0 bottom-0 pointer-events-none z-20" style={{ left: xOf(frame) }}>
-                <div className="absolute top-0 -translate-x-1/2 w-2.5 h-3 bg-accent rounded-b-sm" />
-                <div className="absolute top-0 bottom-0 w-px bg-accent" />
+                <div className="absolute top-0 -translate-x-1/2 w-2.5 h-3 bg-editor-accent rounded-b-sm" />
+                <div className="absolute top-0 bottom-0 w-px bg-editor-accent" />
               </div>
             </div>
           </div>
@@ -771,7 +771,7 @@ function KeyframeInspector({ ab, anim, kfs }: { ab: ArtboardDoc; anim: CoreObj; 
           <button
             key={m}
             disabled={readOnly}
-            className={`flex-1 h-6 rounded capitalize ${mode === m ? 'bg-accent text-white' : 'text-t1'}`}
+            className={`flex-1 h-6 rounded capitalize ${mode === m ? 'bg-editor-accent text-white' : 'text-t1'}`}
             onClick={() => apply(m, bez)}
           >
             {m}

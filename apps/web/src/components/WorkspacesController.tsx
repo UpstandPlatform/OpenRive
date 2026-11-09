@@ -5,6 +5,7 @@ import { AlertTriangle, Building2, Check, Crown, LoaderCircle, MailPlus, Plus, R
 import { authClient, authError } from '@/lib/client/auth';
 import { api, useSession } from '@/lib/client/session';
 import { canCreateWorkspace, canDeleteWorkspace, canManageWorkspace, canRenameWorkspace, canAssignWorkspaceAdministrators, workspaceRoleForDisplay } from '@openrive/shared';
+import { confirmDialog } from '@openrive/ui';
 
 type Organization = { id: string; name: string; slug: string; createdAt: Date | string };
 type Member = { id: string; organizationId: string; userId: string; role: string; user?: { name: string; email?: string | null; image?: string | null } };
@@ -181,7 +182,13 @@ export function WorkspacesController() {
   }
 
   async function removeMember(member: Member) {
-    if (!active || !confirm(`Remove ${member.user?.name ?? member.user?.email ?? 'this member'} from ${active.name}?`)) return;
+    const memberName = member.user?.name ?? member.user?.email ?? 'this member';
+    if (!active || !(await confirmDialog({
+      title: 'Remove workspace member?',
+      description: `Remove ${memberName} from ${active.name}?`,
+      confirmLabel: 'Remove member',
+      destructive: true,
+    }))) return;
     await runAction(async () => {
       const result = await authClient.organization.removeMember({ memberIdOrEmail: member.id, organizationId: active.id });
       if (result.error) throw new Error(authError(result.error, 'Could not remove member'));
@@ -199,7 +206,13 @@ export function WorkspacesController() {
   }
 
   async function transferOwnership(member: Member) {
-    if (!active || !confirm(`Transfer ownership of ${active.name} to ${member.user?.name ?? member.user?.email ?? 'this member'}? You will become a workspace administrator.`)) return;
+    const memberName = member.user?.name ?? member.user?.email ?? 'this member';
+    if (!active || !(await confirmDialog({
+      title: 'Transfer workspace ownership?',
+      description: `Transfer ownership of ${active.name} to ${memberName}? You will become a workspace administrator.`,
+      confirmLabel: 'Transfer ownership',
+      destructive: true,
+    }))) return;
     await runAction(async () => {
       await api.json(`/api/workspaces/${active.id}/ownership`, { method: 'POST', body: JSON.stringify({ userId: member.userId }) });
       setNotice('Workspace ownership transferred.');
@@ -235,7 +248,7 @@ export function WorkspacesController() {
   return (
     <main className="max-w-5xl w-full mx-auto px-6 py-8">
       <div className="flex items-center gap-3 mb-7">
-        <Building2 size={21} className="text-accent" />
+        <Building2 size={21} className="text-editor-accent" />
         <div><h1 className="text-xl font-semibold">Workspaces</h1><p className="text-sm text-t2">Organize projects and control teammate access.</p></div>
         <button className="btn ml-auto" disabled={loading || busy} onClick={() => { setLoading(true); setError(null); void load(activeOrganizationId); }} aria-label="Refresh workspaces"><RefreshCw size={14} /></button>
       </div>

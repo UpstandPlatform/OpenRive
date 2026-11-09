@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.8 - 2026-11-09
+
+### Shared UI and editor interactions
+
+- Adopt the shadcn base-luma preset and shared light/dark OKLCH theme, with the full component set exported from `@openrive/ui`.
+- Migrate shared dialogs, tabs, list rows, panel headers, popovers and notifications to shadcn primitives.
+- Replace browser-native alerts, confirmations and prompts with accessible shared Dialog and AlertDialog flows.
+
 ## 0.2.6 - 2026-11-05
 
 ### Editor, animation and MCP reliability

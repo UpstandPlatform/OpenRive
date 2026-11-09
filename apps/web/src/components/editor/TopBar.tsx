@@ -261,7 +261,7 @@ export function TopBar({ onSave, onExport, onExportSource, onExportAnimation, on
         {(['design', 'animate'] as const).map((m) => (
           <button
             key={m}
-            className={`px-3 h-7 rounded capitalize font-medium ${mode === m ? (m === 'animate' ? 'bg-anim text-white' : 'bg-accent-2 bg-[#3d8bd0] text-white') : 'text-t1'}`}
+            className={`px-3 h-7 rounded capitalize font-medium ${mode === m ? (m === 'animate' ? 'bg-anim text-white' : 'bg-editor-accent-strong bg-[#3d8bd0] text-white') : 'text-t1'}`}
             onClick={() => s.setMode(m)}
             title={`${m === 'design' ? 'Design' : 'Animate'} mode (Tab)`}
           >

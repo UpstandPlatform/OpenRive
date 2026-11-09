@@ -4,7 +4,7 @@ import { colorAlpha, colorCss, colorToHex, hexToColor } from '@openrive/rive/ops
 import { useEditor } from '@/lib/store/editor';
 import { addSwatch } from '@openrive/rive/theme';
 import { Link2, Unlink } from 'lucide-react';
-import { Popover } from '@openrive/ui';
+import { Popover, PopoverContent, PopoverTrigger, promptDialog } from '@openrive/ui';
 
 type KeyState = 'none' | 'animated' | 'keyed';
 
@@ -318,9 +318,14 @@ export function ColorPicker({
           <div className="flex items-center">
             <span className="label flex-1">Theme colors</span>
             <button
-              className="text-accent text-[11px]"
-              onClick={() => {
-                const name = prompt('Theme color name', `Color ${themeColors.length + 1}`);
+              className="text-editor-accent text-[11px]"
+              onClick={async () => {
+                const name = await promptDialog({
+                  title: 'Save theme color',
+                  label: 'Color name',
+                  defaultValue: `Color ${themeColors.length + 1}`,
+                  confirmLabel: 'Save color',
+                });
                 if (!name) return;
                 let id = '';
                 useEditor.getState().commit((d) => {
@@ -390,20 +395,27 @@ export function ColorSwatch({
 }) {
   const boundName = useEditor((st) => (boundSwatch ? st.doc?.editor?.swatches.find((x) => x.id === boundSwatch)?.name : undefined));
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
 
   return (
-    <div className="relative flex items-center gap-2 flex-1 min-w-0" ref={ref}>
-      <button
-        ref={triggerRef}
-        className="w-6 h-6 rounded checker overflow-hidden shrink-0 border border-line2"
-        onClick={() => setOpen((v) => !v)}
-      >
-        <span className="block w-full h-full" style={{ background: colorCss(value) }} />
-      </button>
+    <div className="flex items-center gap-2 flex-1 min-w-0">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger
+          render={<button type="button" className="size-6 shrink-0 overflow-hidden rounded border border-line2 checker" aria-label="Choose color" />}
+        >
+          <span className="block size-full" style={{ background: colorCss(value) }} />
+        </PopoverTrigger>
+        <PopoverContent
+          align="end"
+          side="bottom"
+          sideOffset={6}
+          className="w-auto max-w-[calc(100vw-1rem)] gap-2 p-2"
+          onKeyDown={(event) => event.stopPropagation()}
+        >
+          <ColorPicker value={value} onChange={onChange} boundSwatch={boundSwatch} />
+        </PopoverContent>
+      </Popover>
       {boundName ? (
-        <span className="flex items-center gap-1 min-w-0 text-[11px] text-accent" title="Linked to a theme color">
+        <span className="flex items-center gap-1 min-w-0 text-[11px] text-editor-accent" title="Linked to a theme color">
           <Link2 size={11} className="shrink-0" />
           <span className="truncate">{boundName}</span>
           <button className="text-t2 hover:text-t0 shrink-0" title="Detach from theme color" onClick={() => onChange(value, false, null)}>
@@ -419,11 +431,6 @@ export function ColorSwatch({
           </span>
           <span className="text-t2 text-[11px]">{Math.round(colorAlpha(value) * 100)}%</span>
         </>
-      )}
-      {open && (
-        <Popover anchorRef={triggerRef} onClose={() => setOpen(false)}>
-          <ColorPicker value={value} onChange={onChange} boundSwatch={boundSwatch} />
-        </Popover>
       )}
     </div>
   );

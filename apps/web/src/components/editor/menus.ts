@@ -5,6 +5,7 @@ import { prop } from '@openrive/rive/scene';
 import { isA } from '@openrive/rive/schema';
 import { addSwatch, bindingOf, swatchColor } from '@openrive/rive/theme';
 import { getActive, Tool, useEditor } from '@/lib/store/editor';
+import { promptDialog } from '@openrive/ui';
 import { act, MenuItem, sep } from './ContextMenu';
 
 function themeColorMenu(): MenuItem[] {
@@ -30,8 +31,13 @@ function themeColorMenu(): MenuItem[] {
         ...(swatches.length ? [sep] : []),
         {
           label: 'Save fill as new theme color…',
-          run: () => {
-            const name = prompt('Theme color name', `Color ${swatches.length + 1}`);
+          run: async () => {
+            const name = await promptDialog({
+              title: 'Save theme color',
+              label: 'Color name',
+              defaultValue: `Color ${swatches.length + 1}`,
+              confirmLabel: 'Save color',
+            });
             if (!name) return;
             let id = '';
             s.commit((d) => {

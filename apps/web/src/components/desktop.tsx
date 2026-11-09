@@ -270,11 +270,11 @@ export function UpdateMenuSection({ onDone }: { onDone?: () => void }) {
       {!state.supported ? (
         <div className="px-2.5 pb-1.5 text-t3 text-[11px]">Updates are managed outside the app in this build.</div>
       ) : state.ready ? (
-        <button className="menu-item text-accent" onClick={() => void install()}>
+        <button className="menu-item text-editor-accent" onClick={() => void install()}>
           <RefreshCw size={13} /> Restart to install {state.newVersion ?? 'the update'}
         </button>
       ) : state.available ? (
-        <button className="menu-item text-accent" disabled={state.downloading} onClick={() => void download()}>
+        <button className="menu-item text-editor-accent" disabled={state.downloading} onClick={() => void download()}>
           <Download size={13} /> {state.downloading ? 'Downloading…' : `Download ${state.newVersion ?? 'update'}`}
         </button>
       ) : (

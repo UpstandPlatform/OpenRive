@@ -1,7 +1,7 @@
 'use client';
-// A selectable row with hover actions, shared by the assets list, the script
-// list and other small panel lists.
 import type { ReactNode } from 'react';
+import { Item, ItemActions, ItemContent, ItemMedia } from './components/item';
+import { cn } from './lib/utils';
 
 export interface ListRowProps {
   selected?: boolean;
@@ -18,15 +18,25 @@ export interface ListRowProps {
   onDragStart?: (e: React.DragEvent) => void;
 }
 
-export function ListRow({ selected, actions, icon, className = '', children, ...rest }: ListRowProps) {
+export function ListRow({ selected, actions, icon, className, children, ...rest }: ListRowProps) {
   return (
-    <div
-      className={`group flex items-center gap-2 px-1 h-7 rounded cursor-pointer ${selected ? 'bg-bg3 text-t0' : 'text-t1 hover:bg-bg2'} ${className}`}
+    <Item
+      size="xs"
+      variant={selected ? 'muted' : 'default'}
+      className={cn(
+        'group/list-row h-7 min-w-0 flex-nowrap gap-2 rounded-md border-transparent px-1 py-0 text-[11px]',
+        selected ? 'text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+        className,
+      )}
       {...rest}
     >
-      {icon}
-      <div className="flex-1 min-w-0">{children}</div>
-      {actions && <div className={`flex items-center gap-1 ${selected ? '' : 'opacity-0 group-hover:opacity-100'}`}>{actions}</div>}
-    </div>
+      {icon && <ItemMedia className="size-4">{icon}</ItemMedia>}
+      <ItemContent className="min-w-0 flex-1 gap-0">{children}</ItemContent>
+      {actions && (
+        <ItemActions className={cn('gap-1 transition-opacity', selected ? '' : 'opacity-0 group-hover/list-row:opacity-100 group-focus-within/list-row:opacity-100')}>
+          {actions}
+        </ItemActions>
+      )}
+    </Item>
   );
 }

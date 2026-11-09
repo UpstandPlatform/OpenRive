@@ -26,7 +26,7 @@ import {
 } from '@openrive/rive/databind';
 import { toast } from '@/lib/client/toast';
 import { useActiveArtboard, useEditor } from '@/lib/store/editor';
-import { Tabs } from '@openrive/ui';
+import { promptDialog, TabStrip } from '@openrive/ui';
 import { NumberField, Row, Select, TextField } from './controls';
 import { displayName } from './Hierarchy';
 import { engineRef } from './engineRef';
@@ -350,7 +350,7 @@ export function StateMachineGraph() {
     <div className="flex-1 flex min-w-0">
       {/* inputs & listeners */}
       <div className="w-[230px] shrink-0 border-r border-line flex flex-col">
-        <Tabs
+        <TabStrip
           items={[
             { id: 'data', label: 'Data' },
             { id: 'listeners', label: 'Listeners' },
@@ -563,9 +563,9 @@ export function StateMachineGraph() {
               key={l.id}
               className={`px-2.5 h-6 rounded ${l.id === layer?.id ? 'bg-bg3 text-t0' : 'text-t2 hover:text-t0'}`}
               onClick={() => s.set('layerId', l.id)}
-              onDoubleClick={() => {
+              onDoubleClick={async () => {
                 if (readOnly) return;
-                const name = prompt('Layer name', String(l.props.name ?? ''));
+                const name = await promptDialog({ title: 'Rename layer', label: 'Layer name', defaultValue: String(l.props.name ?? ''), confirmLabel: 'Rename' });
                 if (name) editSM(ab.id, sm.id, (m) => void (m.children!.find((c) => c.id === l.id)!.props.name = name));
               }}
             >
@@ -816,7 +816,7 @@ export function StateMachineGraph() {
                 </span>
                 {!readOnly && st.type !== 'ExitState' && (
                   <div
-                    className="absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-accent border-2 border-bg1 opacity-0 group-hover:opacity-100 cursor-crosshair"
+                    className="absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-editor-accent border-2 border-bg1 opacity-0 group-hover:opacity-100 cursor-crosshair"
                     title="Drag to another state to add a transition"
                     onPointerDown={(e) => startLink(e, st)}
                   />
@@ -1322,8 +1322,8 @@ function PropertyRow({
           {
             label: 'Rename…',
             disabled: readOnly,
-            run: () => {
-              const name = prompt('Property name', property.name);
+            run: async () => {
+              const name = await promptDialog({ title: 'Rename property', label: 'Property name', defaultValue: property.name, confirmLabel: 'Rename' });
               if (name) onEdit((d, ab) => void renameProperty(d, ab, property.obj.id, name));
             },
           },

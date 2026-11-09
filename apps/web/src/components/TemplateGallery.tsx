@@ -141,7 +141,7 @@ export function TemplateGallery({ onCreate, disabled, firstRun = false }: { onCr
       )}
       <button className="flex items-center gap-2 mb-3 text-[14px] font-semibold" onClick={toggle}>
         {collapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
-        <GraduationCap size={16} className="text-accent" /> Start from a template
+        <GraduationCap size={16} className="text-editor-accent" /> Start from a template
         <span className="text-t2 font-normal text-[12px]">Beginner-friendly files that each teach a Rive idea</span>
       </button>
       {!collapsed && (
@@ -179,7 +179,7 @@ export function NewFileDialog({ onClose, onCreate }: { onClose: () => void; onCr
               {[...TEMPLATES, ...EXAMPLES].map((t) => (
                 <button
                   key={t.id}
-                  className={`text-left p-2.5 rounded-lg border ${templateId === t.id ? 'border-accent bg-[#57a5e01a]' : 'border-line hover:border-line2'}`}
+                  className={`text-left p-2.5 rounded-lg border ${templateId === t.id ? 'border-editor-accent bg-[#57a5e01a]' : 'border-line hover:border-line2'}`}
                   onClick={() => {
                     setTemplateId(t.id);
                     if (name === 'Untitled' || [...TEMPLATES, ...EXAMPLES].some((x) => x.name === name)) setName(t.id === 'blank' ? 'Untitled' : t.name);

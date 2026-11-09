@@ -834,7 +834,7 @@ function TrimPathRow({ ab, paint, b }: { ab: ArtboardDoc; paint: CoreObj; b: Bin
   if (!trim) {
     return (
       <button
-        className="text-left text-accent text-[11px] px-1"
+        className="text-left text-editor-accent text-[11px] px-1"
         disabled={b.readOnly}
         onClick={() =>
           commit((d) => {
@@ -949,7 +949,7 @@ function GradientEditor({ ab, g, b }: { ab: ArtboardDoc; g: CoreObj; b: Binding 
         </div>
       ))}
       <button
-        className="text-left text-accent text-[11px] px-1"
+        className="text-left text-editor-accent text-[11px] px-1"
         disabled={b.readOnly}
         onClick={() =>
           commit((d) => {

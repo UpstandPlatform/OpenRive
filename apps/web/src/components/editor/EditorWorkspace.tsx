@@ -1,7 +1,7 @@
 'use client';
 
 import { FileImage, GripVertical, Layers, Palette, PanelLeftClose, PanelRightClose, PanelRightOpen } from 'lucide-react';
-import { Tabs } from '@openrive/ui';
+import { TabStrip } from '@openrive/ui';
 import { useEditorLayoutController } from '@/lib/client/useEditorLayout';
 import { AssetsPanel } from './AssetsPanel';
 import { CodePanel } from './CodePanel';
@@ -70,7 +70,7 @@ export function EditorWorkspace({ mode, leftTab, codeOpen, onLeftTabChange }: Ed
         {leftOpen ? (
           <>
             <div className="editor-panel-tabs">
-              <Tabs items={leftTabs} value={leftTab} onChange={selectTab} className="flex-1 min-w-0" />
+              <TabStrip items={leftTabs} value={leftTab} onChange={selectTab} className="flex-1 min-w-0" />
             </div>
             {leftPanel}
           </>

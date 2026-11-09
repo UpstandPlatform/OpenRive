@@ -4,7 +4,7 @@
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { KeyRound, LogOut, Plus, RefreshCw, Trash2, UserCog } from 'lucide-react';
-import { Modal } from '@openrive/ui';
+import { confirmDialog, Modal } from '@openrive/ui';
 import { canManageAccounts, ROLE_INFO, type Role } from '@openrive/shared';
 import { AppHeader } from '@/components/AppHeader';
 import { Avatar } from '@/components/Avatar';
@@ -210,7 +210,12 @@ export default function AdminPage() {
             void load();
           }}
           onDelete={async () => {
-            if (!confirm(`Delete ${editing.name}? Their files move to an administrator.`)) return;
+            if (!(await confirmDialog({
+              title: `Delete ${editing.name}?`,
+              description: 'Their project files will move to an administrator account.',
+              confirmLabel: 'Delete account',
+              destructive: true,
+            }))) return;
             await api.json(`/api/admin/users/${editing.id}`, { method: 'DELETE' });
             setEditing(null);
             void load();

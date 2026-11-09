@@ -1,7 +1,8 @@
 'use client';
-// The editor's two tab strips: underlined panel tabs (Layers / Theme / Assets)
-// and small pill tabs inside panels (Scripts / Embed / Rive scripting).
+
 import type { ReactNode } from 'react';
+import { Tabs, TabsList, TabsTrigger } from './components/tabs';
+import { cn } from './lib/utils';
 
 export interface TabItem<T extends string> {
   id: T;
@@ -10,7 +11,7 @@ export interface TabItem<T extends string> {
   title?: string;
 }
 
-export interface TabsProps<T extends string> {
+export interface TabStripProps<T extends string> {
   items: readonly TabItem<T>[];
   value: T;
   onChange: (id: T) => void;
@@ -18,30 +19,32 @@ export interface TabsProps<T extends string> {
   className?: string;
 }
 
-export function Tabs<T extends string>({ items, value, onChange, variant = 'underline', className = '' }: TabsProps<T>) {
+export function TabStrip<T extends string>({ items, value, onChange, variant = 'underline', className }: TabStripProps<T>) {
   const underline = variant === 'underline';
+
   return (
-    <div className={`${underline ? 'h-8 flex items-stretch border-b border-line' : 'flex items-center gap-1'} ${className}`} role="tablist">
-      {items.map((item) => {
-        const active = item.id === value;
-        return (
-          <button
+    <Tabs value={value} onValueChange={(next) => onChange(next as T)} className={cn('min-w-0', className)}>
+      <TabsList
+        variant={underline ? 'line' : 'default'}
+        className={cn(
+          underline ? 'h-8 w-full justify-stretch gap-0 rounded-none p-0' : 'h-6 gap-1 rounded-md p-0.5',
+        )}
+      >
+        {items.map((item) => (
+          <TabsTrigger
             key={item.id}
-            role="tab"
-            aria-selected={active}
+            value={item.id}
             title={item.title}
-            className={
-              underline
-                ? `flex-1 flex items-center justify-center gap-1.5 text-[11px] font-semibold ${active ? 'text-t0 border-b-2 border-accent' : 'text-t2 hover:text-t1'}`
-                : `px-2 h-6 rounded text-[11px] font-semibold inline-flex items-center gap-1 ${active ? 'bg-bg3 text-t0' : 'text-t2 hover:text-t1'}`
-            }
-            onClick={() => onChange(item.id)}
+            className={cn(
+              'min-w-0 gap-1.5 text-[11px] font-semibold',
+              underline ? 'h-full flex-1 rounded-none px-2' : 'h-full flex-none rounded-sm px-2',
+            )}
           >
             {item.icon}
             {item.label}
-          </button>
-        );
-      })}
-    </div>
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
   );
 }

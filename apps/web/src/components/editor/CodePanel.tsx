@@ -10,7 +10,7 @@ import { findArtboard } from '@openrive/rive/ops';
 import { properties as dataProperties } from '@openrive/rive/databind';
 import { isA } from '@openrive/rive/schema';
 import { ensureEditorMeta } from '@openrive/rive/theme';
-import { ListRow, Tabs } from '@openrive/ui';
+import { ListRow, TabStrip } from '@openrive/ui';
 import { useEditor } from '@/lib/store/editor';
 
 // ---------------------------------------------------------------------------
@@ -540,7 +540,7 @@ export function CodePanel() {
       <div className="h-8 flex items-center gap-1 px-2 border-b border-line">
         <Braces size={13} className="text-t2" />
         <span className="panel-title mr-2">Code</span>
-        <Tabs
+        <TabStrip
           variant="pill"
           items={[
             { id: 'scripts', label: 'Scripts' },

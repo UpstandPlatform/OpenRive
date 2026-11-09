@@ -241,9 +241,9 @@ export function Hierarchy() {
             } ${hidden ? 'opacity-50' : ''}`}
             style={{ paddingLeft: 6 + depth * 14 }}
           >
-            {dropHere && drop.pos === 'before' && <div className="absolute left-0 right-0 top-0 h-0.5 bg-accent" />}
-            {dropHere && drop.pos === 'after' && <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-accent" />}
-            {dropHere && drop.pos === 'inside' && <div className="absolute inset-0 border border-accent rounded pointer-events-none" />}
+            {dropHere && drop.pos === 'before' && <div className="absolute left-0 right-0 top-0 h-0.5 bg-editor-accent" />}
+            {dropHere && drop.pos === 'after' && <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-editor-accent" />}
+            {dropHere && drop.pos === 'inside' && <div className="absolute inset-0 border border-editor-accent rounded pointer-events-none" />}
             <button
               className={`w-4 h-4 flex items-center justify-center text-t2 ${hasKids ? '' : 'invisible'}`}
               onClick={(e) => {

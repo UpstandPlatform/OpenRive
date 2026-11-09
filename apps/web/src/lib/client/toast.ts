@@ -1,17 +1,6 @@
-'use client';
-import { create } from 'zustand';
+import { toast as shadcnToast } from '@openrive/ui/components/toast';
 
-interface Toast {
-  id: number;
-  text: string;
-}
-
-export const useToasts = create<{ toasts: Toast[] }>(() => ({ toasts: [] }));
-
-let next = 1;
-/** Shows a short message at the bottom of the screen. */
+/** Shows a short message using the shared shadcn toast primitive. */
 export function toast(text: string, ms = 3500) {
-  const id = next++;
-  useToasts.setState((s) => ({ toasts: [...s.toasts.slice(-3), { id, text }] }));
-  setTimeout(() => useToasts.setState((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })), ms);
+  shadcnToast.add({ title: text, timeout: ms });
 }

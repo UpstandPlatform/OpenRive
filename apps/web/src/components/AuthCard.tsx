@@ -67,7 +67,7 @@ export function AuthField({
 }
 
 export const AuthLink = ({ href, children }: { href: string; children: React.ReactNode }) => (
-  <Link href={href} className="text-accent hover:underline">
+  <Link href={href} className="text-editor-accent hover:underline">
     {children}
   </Link>
 );
