@@ -116,6 +116,9 @@ export function boneCreationStart(
   return { x: stageX, y: stageY };
 }
 
+/** Screen pixels around a bone's tip or base that grab the handle. */
+const HANDLE_REACH = 10;
+
 export function hitBone(
   ab: ArtboardDoc,
   scene: Scene,
@@ -131,23 +134,22 @@ export function hitBone(
     if (!node) return [];
     const [baseX, baseY] = apply(node.world, 0, 0);
     const [tipX, tipY] = apply(node.world, prop(bone, 'length', scene.overrides), 0);
-    return [{
-      id: bone.id,
-      root: bone.type === 'RootBone',
-      base: toScreen(baseX + artboardOffset.x, baseY + artboardOffset.y),
-      tip: toScreen(tipX + artboardOffset.x, tipY + artboardOffset.y),
-    }];
+    const base = toScreen(baseX + artboardOffset.x, baseY + artboardOffset.y);
+    const tip = toScreen(tipX + artboardOffset.x, tipY + artboardOffset.y);
+    // a zoomed-out bone can be shorter than two grab zones: shrink them so its shaft stays grabbable (to rotate it)
+    const reach = Math.min(HANDLE_REACH, Math.max(3, Math.hypot(tip[0] - base[0], tip[1] - base[1]) / 3));
+    return [{ id: bone.id, root: bone.type === 'RootBone', base, tip, reach }];
   });
 
   const selectedTip = endpoints.find((endpoint) => endpoint.id === selectedId);
-  if (selectedTip && distance(screenX, screenY, selectedTip.tip) <= 10) return { id: selectedTip.id, handle: 'tip' };
+  if (selectedTip && distance(screenX, screenY, selectedTip.tip) <= selectedTip.reach) return { id: selectedTip.id, handle: 'tip' };
   const selectedBase = endpoints.find((endpoint) => endpoint.id === selectedId && endpoint.root);
-  if (selectedBase && distance(screenX, screenY, selectedBase.base) <= 10) return { id: selectedBase.id, handle: 'base' };
+  if (selectedBase && distance(screenX, screenY, selectedBase.base) <= selectedBase.reach) return { id: selectedBase.id, handle: 'base' };
   for (const endpoint of [...endpoints].reverse()) {
-    if (distance(screenX, screenY, endpoint.tip) <= 10) return { id: endpoint.id, handle: 'tip' };
+    if (distance(screenX, screenY, endpoint.tip) <= endpoint.reach) return { id: endpoint.id, handle: 'tip' };
   }
   for (const endpoint of [...endpoints].reverse()) {
-    if (endpoint.root && distance(screenX, screenY, endpoint.base) <= 10) return { id: endpoint.id, handle: 'base' };
+    if (endpoint.root && distance(screenX, screenY, endpoint.base) <= endpoint.reach) return { id: endpoint.id, handle: 'base' };
   }
 
   let closest: { id: string; distance: number } | null = null;
