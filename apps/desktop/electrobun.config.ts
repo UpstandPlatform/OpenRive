@@ -48,8 +48,9 @@ export default {
   },
   // the updater reads <baseUrl>/<platform>-update.json and the archives beside
   // it; GitHub's "latest" redirect always points at the newest release
-  // seals the macOS bundle before it is packaged (no-op on Windows and Linux)
-  scripts: { postWrap: 'scripts/sign-macos.ts' },
+  // seals the macOS bundles: the app before it goes into the update archive, and the installer wrapper before the
+  // DMG is made (no-op on Windows and Linux)
+  scripts: { postBuild: 'scripts/sign-macos.ts', postWrap: 'scripts/sign-macos.ts' },
   release: { baseUrl: 'https://github.com/UpstandPlatform/OpenRive/releases/latest/download' },
   runtime: { exitOnLastWindowClosed: true },
 } satisfies ElectrobunConfig;

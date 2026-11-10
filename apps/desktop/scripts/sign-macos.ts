@@ -1,13 +1,16 @@
-// Electrobun `scripts.postWrap` hook: runs right after the macOS .app is wrapped and before the update bundle, the
-// delta patches and the DMG are made from it, so everything shipped carries the same signature.
+// Electrobun build hook (`scripts.postBuild` and `scripts.postWrap`) that seals the macOS .app bundles.
 //
 // Without it only Contents/MacOS/launcher is signed (ad-hoc, by the linker). The bundle's Info.plist and
 // Resources are then not covered, `codesign --verify` fails, and Gatekeeper reports the app as damaged with no
 // "Open Anyway" button. Sealing the whole bundle ad-hoc makes the signature valid, so macOS shows the normal
 // "unidentified developer" prompt instead (see docs/signing.md).
 //
+// Electrobun makes two bundles: the app itself, which goes into the update archive and the delta patches, and the
+// wrapper that is installed from the DMG. The hook runs at both points and seals every .app it finds, so each
+// artifact carries a valid signature. Sealing twice is harmless.
+//
 // OPENRIVE_MAC_SIGNING selects the mode (set by electrobun.config.ts and the Desktop workflow):
-//   adhoc (default)  seal the bundle with an ad-hoc signature
+//   adhoc (default)  seal the bundles with an ad-hoc signature
 //   developer-id     Electrobun signs and notarizes with the Developer ID certificate, nothing to do here
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, statSync } from 'node:fs';
@@ -20,24 +23,35 @@ if (process.env.OPENRIVE_MAC_SIGNING === 'developer-id') {
   process.exit(0);
 }
 
-/** The .app Electrobun just wrapped: the path it passes to hooks, else the first .app under the build folder. */
-function findBundle(): string | null {
+// what Electrobun tells the hook, for the build log (names only, plus the path-like values)
+const names = Object.keys(process.env).filter((key) => key.startsWith('ELECTROBUN_')).sort();
+const pathish = ['ELECTROBUN_BUILD_DIR', 'ELECTROBUN_WRAPPER_BUNDLE_PATH', 'ELECTROBUN_ARTIFACT_DIR'];
+console.log(`sign-macos: hook environment: ${names.join(', ') || '(none)'}`);
+for (const key of pathish) if (process.env[key]) console.log(`sign-macos: ${key}=${process.env[key]}`);
+
+/** Every .app the build has made so far: the one Electrobun names plus any under the build folder. */
+function findBundles(): string[] {
+  const found = new Set<string>();
   const given = process.env.ELECTROBUN_WRAPPER_BUNDLE_PATH;
-  if (given && existsSync(given)) return given;
-  const root = process.env.ELECTROBUN_BUILD_DIR ?? path.resolve('build');
-  const walk = (dir: string, depth: number): string | null => {
-    if (depth > 3 || !existsSync(dir)) return null;
+  if (given && existsSync(given)) found.add(path.resolve(given));
+  const roots = [process.env.ELECTROBUN_BUILD_DIR, path.resolve('build')].filter((dir): dir is string => !!dir && existsSync(dir));
+  const walk = (dir: string, depth: number) => {
+    if (depth > 4) return;
     for (const name of readdirSync(dir)) {
       const full = path.join(dir, name);
-      if (name.endsWith('.app') && statSync(full).isDirectory()) return full;
-      if (statSync(full).isDirectory() && !name.endsWith('.app')) {
-        const found = walk(full, depth + 1);
-        if (found) return found;
+      let isDirectory = false;
+      try {
+        isDirectory = statSync(full).isDirectory();
+      } catch {
+        continue; // a broken symlink
       }
+      if (!isDirectory) continue;
+      if (name.endsWith('.app')) found.add(path.resolve(full));
+      else walk(full, depth + 1);
     }
-    return null;
   };
-  return walk(root, 0);
+  for (const root of roots) walk(root, 0);
+  return [...found];
 }
 
 const run = (args: string[]) => {
@@ -47,16 +61,19 @@ const run = (args: string[]) => {
   return result.status === 0;
 };
 
-const bundle = findBundle();
-if (!bundle) {
-  console.error('sign-macos: could not find the .app bundle to sign (ELECTROBUN_WRAPPER_BUNDLE_PATH / ELECTROBUN_BUILD_DIR)');
-  process.exit(1);
+const bundles = findBundles();
+if (!bundles.length) {
+  // an early hook can run before any bundle exists: nothing to seal yet
+  console.log('sign-macos: no .app bundle exists yet, nothing to seal at this point');
+  process.exit(0);
 }
 
-console.log(`sign-macos: sealing ${bundle} with an ad-hoc signature`);
-if (!run(['--force', '--deep', '--timestamp=none', '--sign', '-', bundle])) process.exit(1);
-if (!run(['--verify', '--deep', '--strict', '--verbose=2', bundle])) {
-  console.error('sign-macos: the bundle still fails codesign --verify');
-  process.exit(1);
+for (const bundle of bundles) {
+  console.log(`sign-macos: sealing ${bundle} with an ad-hoc signature`);
+  if (!run(['--force', '--deep', '--timestamp=none', '--sign', '-', bundle])) process.exit(1);
+  if (!run(['--verify', '--deep', '--strict', '--verbose=2', bundle])) {
+    console.error(`sign-macos: ${bundle} still fails codesign --verify`);
+    process.exit(1);
+  }
+  console.log(`sign-macos: ${bundle} signature verified`);
 }
-console.log('sign-macos: bundle signature verified');
