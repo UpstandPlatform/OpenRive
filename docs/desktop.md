@@ -62,18 +62,15 @@ same components are safe in the shared header and toolbar.
 ## Updates
 
 A packaged app updates itself from this project's GitHub releases — `release.baseUrl` in `electrobun.config.ts`
-points at `releases/latest/download`, and the release carries the `update.json`, `.tar.zst` and `.patch` files the
-updater needs (delta patches first, the full bundle as a fallback).
+points at `releases/latest/download`, and the release carries the platform update manifest, compressed bundle and
+optional delta patches used by Electrobun's updater.
 
-The app checks quietly a few seconds after launch. Whatever it finds is shown in the **user menu** (and in the
-editor's **OpenRive menu**), under the running version:
-
-1. **Check for updates** — check now, if the quiet check has not run yet.
-2. **Download _x.y.z_** — appears once a newer version exists.
-3. **Restart to install _x.y.z_** — quits, swaps the app in place and starts the new version.
-
-Nothing is downloaded or installed without being asked for. Builds made from source report `Updates are managed
-outside the app in this build`, because only the `stable` and `canary` channels have a release to update from.
+The app makes one quiet update check shortly after startup. When a newer version is available, a compact notice
+appears in the bottom-right corner. **Update now** downloads the patch or full bundle and restarts OpenRive to apply
+it; **Skip this version** saves that choice in the app's user data and suppresses its automatic notice on later
+launches. Closing the notice hides it for the current launch. The user menu and editor's **OpenRive menu** also keep
+manual check, download and restart actions. Builds made from source report `Updates are managed outside the app in
+this build`, because only the `stable` and `canary` channels have a release to update from.
 
 ## How it works
 

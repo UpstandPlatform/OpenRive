@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { AuthGate } from '@/components/AuthGate';
+import { UpdateNotice } from '@/components/desktop';
 import { DialogProvider, DirectionProvider, TooltipProvider } from '@openrive/ui';
 import './globals.css';
 
@@ -15,7 +16,10 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
         <AuthGate>
           <DirectionProvider direction="ltr">
             <TooltipProvider>
-              <DialogProvider>{children}</DialogProvider>
+              <DialogProvider>
+                {children}
+                <UpdateNotice />
+              </DialogProvider>
             </TooltipProvider>
           </DirectionProvider>
         </AuthGate>
