@@ -15,6 +15,17 @@ Every release has installers attached, built on GitHub Actions:
 
 Builds for a branch or pull request are available as workflow artifacts from the **Desktop** workflow run.
 
+### First launch
+
+The installers are not signed with a developer certificate yet, so macOS and Windows ask you to approve the app once:
+
+- **macOS:** right-click the app → **Open**, or **System Settings → Privacy & Security → Open Anyway**. If macOS says
+  the app is *damaged* and shows no button (installers up to 0.2.7), run
+  `xattr -dr com.apple.quarantine /Applications/OpenRive.app` once.
+- **Windows:** **SmartScreen → More info → Run anyway**.
+
+See [Signing the desktop app](signing.md) for the details and for how maintainers turn on real signing and notarization.
+
 ## Releasing (maintainers)
 
 Releases are made from the **Desktop** workflow — no version-bump commit needed:

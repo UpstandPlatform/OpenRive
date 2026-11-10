@@ -10,6 +10,7 @@ it and working on it.
 | [Running locally](running-locally.md) | Run OpenRive on your own computer with Bun |
 | [Self-hosting](self-hosting.md) | Run it for a team with Docker / Docker Desktop, PostgreSQL, a reverse proxy and backups |
 | [Desktop app](desktop.md) | Install or build the macOS / Windows / Linux app |
+| [Signing the desktop app](signing.md) | Get past the macOS / Windows first-launch warning, and sign releases with a developer certificate |
 | [Configuration](configuration.md) | Every environment variable |
 | [Storage & PostgreSQL](storage.md) | Embedded vs. server PostgreSQL, Drizzle migrations, backups |
 
