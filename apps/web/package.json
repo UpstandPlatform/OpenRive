@@ -22,7 +22,7 @@
     "@openrive/shared": "workspace:*",
     "@openrive/storage": "workspace:*",
     "@openrive/ui": "workspace:*",
-    "@rive-app/canvas-advanced": "^2.44.2",
+    "@rive-app/canvas-advanced": "^2.50.0",
     "better-auth": "1.7.7",
     "gifenc": "^1.0.3",
     "immer": "^11.1.18",
