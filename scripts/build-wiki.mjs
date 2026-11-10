@@ -21,6 +21,7 @@ const PAGES = {
   'docs/running-locally.md': 'Running-Locally',
   'docs/self-hosting.md': 'Self-Hosting',
   'docs/desktop.md': 'Desktop-App',
+  'docs/signing.md': 'Signing-the-Desktop-App',
   'docs/configuration.md': 'Configuration',
   'docs/storage.md': 'Storage-and-PostgreSQL',
   'docs/user-guide.md': 'User-Guide',

@@ -151,9 +151,89 @@ jobs:
       - name: Build the web server bundle
         run: bun run --cwd apps/desktop build:server
 
+      # Developer ID signing and notarization are optional: they turn on only when the repository has the
+      # secrets listed in docs/signing.md. Without them the macOS bundle gets an ad-hoc seal instead
+      # (apps/desktop/scripts/sign-macos.ts), which is valid but still asks users to approve the app once.
+      - name: Import the Developer ID certificate
+        id: mac-signing
+        if: runner.os == 'macOS'
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_DEVELOPER_ID: ${{ secrets.MACOS_DEVELOPER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${MACOS_CERTIFICATE}" ] || [ -z "${MACOS_DEVELOPER_ID}" ] || [ -z "${APPLE_TEAM_ID}" ] \
+            || [ -z "${APPLE_ID}" ] || [ -z "${APPLE_APP_PASSWORD}" ]; then
+            echo "No complete set of Apple signing secrets: building with the ad-hoc seal."
+            echo "mode=adhoc" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          keychain="${RUNNER_TEMP}/openrive-signing.keychain-db"
+          keychain_password="$(uuidgen)"
+          echo "${MACOS_CERTIFICATE}" | base64 --decode > "${RUNNER_TEMP}/certificate.p12"
+          security create-keychain -p "${keychain_password}" "${keychain}"
+          security set-keychain-settings -lut 21600 "${keychain}"
+          security unlock-keychain -p "${keychain_password}" "${keychain}"
+          security import "${RUNNER_TEMP}/certificate.p12" -P "${MACOS_CERTIFICATE_PASSWORD}" -A -t cert -f pkcs12 -k "${keychain}"
+          security set-key-partition-list -S apple-tool:,apple: -k "${keychain_password}" "${keychain}" >/dev/null
+          security list-keychains -d user -s "${keychain}" login.keychain-db
+          rm -f "${RUNNER_TEMP}/certificate.p12"
+          security find-identity -v -p codesigning "${keychain}"
+          echo "mode=developer-id" >> "$GITHUB_OUTPUT"
+
       - name: Build the desktop app
         working-directory: apps/desktop
+        env:
+          OPENRIVE_MAC_SIGNING: ${{ steps.mac-signing.outputs.mode || 'adhoc' }}
+          # read by Electrobun when mac.codesign / mac.notarize are on (apps/desktop/electrobun.config.ts)
+          ELECTROBUN_DEVELOPER_ID: ${{ secrets.MACOS_DEVELOPER_ID }}
+          ELECTROBUN_TEAMID: ${{ secrets.APPLE_TEAM_ID }}
+          ELECTROBUN_APPLEID: ${{ secrets.APPLE_ID }}
+          ELECTROBUN_APPLEIDPASS: ${{ secrets.APPLE_APP_PASSWORD }}
         run: bunx electrobun build --env=${{ inputs.channel || 'stable' }}
+
+      # Proves what is actually shipped: the app inside the DMG (the one a browser download is quarantined and
+      # assessed by Gatekeeper for) must have a valid signature. A bundle that fails this is the one macOS reports as
+      # "damaged" without an Open Anyway button (issue #12). The updater archive's app is only reported: it is
+      # installed by the app itself, not quarantined, and Electrobun rewrites its version.json after signing.
+      - name: Verify the macOS signature
+        if: runner.os == 'macOS'
+        working-directory: apps/desktop
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          dmgs=(artifacts/*.dmg)
+          archives=(artifacts/*.app.tar.zst)
+          if [ ${#dmgs[@]} -eq 0 ] || [ ${#archives[@]} -eq 0 ]; then
+            echo "::error::expected a .dmg and a .app.tar.zst in apps/desktop/artifacts"; ls -la artifacts; exit 1
+          fi
+          show() {
+            echo "--- $1"
+            codesign -dv --verbose=2 "$1" 2>&1 | grep -E "Identifier|Signature|Authority|TeamIdentifier|Info.plist|Sealed Resources" || true
+          }
+          check() {
+            show "$1"
+            codesign --verify --deep --strict --verbose=2 "$1"
+          }
+          mount="$(mktemp -d)"
+          hdiutil attach "${dmgs[0]}" -mountpoint "${mount}" -nobrowse -quiet
+          app="$(find "${mount}" -maxdepth 2 -name '*.app' | head -1)"
+          check "${app}"
+          hdiutil detach "${mount}" -quiet
+          extract="$(mktemp -d)"
+          tar --zstd -xf "${archives[0]}" -C "${extract}" 2>/dev/null || (zstd -dc "${archives[0]}" | tar -xf - -C "${extract}")
+          update_app="$(find "${extract}" -maxdepth 3 -name '*.app' | head -1)"
+          show "${update_app}"
+          if [ "${OPENRIVE_MAC_SIGNING:-adhoc}" = "developer-id" ]; then
+            check "${update_app}"
+            spctl --assess --type execute --verbose=2 "${update_app}"
+          fi
+        env:
+          OPENRIVE_MAC_SIGNING: ${{ steps.mac-signing.outputs.mode || 'adhoc' }}
 
       # everything, including update.json, the .tar.zst bundles and the delta
       # patches: the in-app updater downloads them straight from the release
@@ -251,4 +331,10 @@ jobs:
             Already running OpenRive? It updates itself: **user menu → Check for updates**. The `update.json`,
             `.tar.zst` and `.patch` files attached here are what that uses.
 
-            These builds are not code-signed yet, so macOS and Windows will warn on first launch.
+            These builds are not yet signed with a developer certificate, so macOS and Windows warn on first launch
+            (see [Signing](https://github.com/${{ github.repository }}/blob/main/docs/signing.md)):
+
+            - **macOS:** open the app once with right-click → **Open**, or approve it in **System Settings → Privacy &
+              Security → Open Anyway**. If macOS says the app is damaged and offers no button (builds up to 0.2.7), run
+              `xattr -dr com.apple.quarantine /Applications/OpenRive.app` once.
+            - **Windows:** **SmartScreen → More info → Run anyway**.
