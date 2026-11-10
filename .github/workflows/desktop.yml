@@ -196,9 +196,10 @@ jobs:
           ELECTROBUN_APPLEIDPASS: ${{ secrets.APPLE_APP_PASSWORD }}
         run: bunx electrobun build --env=${{ inputs.channel || 'stable' }}
 
-      # Proves what is actually shipped: the app inside the DMG and inside the updater archive must both have a
-      # valid signature. A bundle that fails this is the one macOS reports as "damaged" without an Open Anyway
-      # button (issue #12).
+      # Proves what is actually shipped: the app inside the DMG (the one a browser download is quarantined and
+      # assessed by Gatekeeper for) must have a valid signature. A bundle that fails this is the one macOS reports as
+      # "damaged" without an Open Anyway button (issue #12). The updater archive's app is only reported: it is
+      # installed by the app itself, not quarantined, and Electrobun rewrites its version.json after signing.
       - name: Verify the macOS signature
         if: runner.os == 'macOS'
         working-directory: apps/desktop
@@ -210,9 +211,12 @@ jobs:
           if [ ${#dmgs[@]} -eq 0 ] || [ ${#archives[@]} -eq 0 ]; then
             echo "::error::expected a .dmg and a .app.tar.zst in apps/desktop/artifacts"; ls -la artifacts; exit 1
           fi
-          check() {
+          show() {
             echo "--- $1"
             codesign -dv --verbose=2 "$1" 2>&1 | grep -E "Identifier|Signature|Authority|TeamIdentifier|Info.plist|Sealed Resources" || true
+          }
+          check() {
+            show "$1"
             codesign --verify --deep --strict --verbose=2 "$1"
           }
           mount="$(mktemp -d)"
@@ -222,10 +226,11 @@ jobs:
           hdiutil detach "${mount}" -quiet
           extract="$(mktemp -d)"
           tar --zstd -xf "${archives[0]}" -C "${extract}" 2>/dev/null || (zstd -dc "${archives[0]}" | tar -xf - -C "${extract}")
-          app="$(find "${extract}" -maxdepth 3 -name '*.app' | head -1)"
-          check "${app}"
+          update_app="$(find "${extract}" -maxdepth 3 -name '*.app' | head -1)"
+          show "${update_app}"
           if [ "${OPENRIVE_MAC_SIGNING:-adhoc}" = "developer-id" ]; then
-            spctl --assess --type execute --verbose=2 "${app}"
+            check "${update_app}"
+            spctl --assess --type execute --verbose=2 "${update_app}"
           fi
         env:
           OPENRIVE_MAC_SIGNING: ${{ steps.mac-signing.outputs.mode || 'adhoc' }}

@@ -46,11 +46,11 @@ export default {
     win: { bundleCEF: false, icon: 'assets/icon-win.png' },
     linux: { bundleCEF: false, icon: 'assets/icon.png' },
   },
+  // seals the macOS installer bundle before the DMG is made (no-op on Windows and Linux). Only postWrap: the app
+  // inside the update archive has its version.json rewritten after postBuild, which would break a seal made earlier
+  scripts: { postWrap: 'scripts/sign-macos.ts' },
   // the updater reads <baseUrl>/<platform>-update.json and the archives beside
   // it; GitHub's "latest" redirect always points at the newest release
-  // seals the macOS bundles: the app before it goes into the update archive, and the installer wrapper before the
-  // DMG is made (no-op on Windows and Linux)
-  scripts: { postBuild: 'scripts/sign-macos.ts', postWrap: 'scripts/sign-macos.ts' },
   release: { baseUrl: 'https://github.com/UpstandPlatform/OpenRive/releases/latest/download' },
   runtime: { exitOnLastWindowClosed: true },
 } satisfies ElectrobunConfig;

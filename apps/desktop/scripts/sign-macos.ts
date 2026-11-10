@@ -1,13 +1,14 @@
-// Electrobun build hook (`scripts.postBuild` and `scripts.postWrap`) that seals the macOS .app bundles.
+// Electrobun `scripts.postWrap` hook: seals the macOS .app that is installed from the DMG.
 //
 // Without it only Contents/MacOS/launcher is signed (ad-hoc, by the linker). The bundle's Info.plist and
 // Resources are then not covered, `codesign --verify` fails, and Gatekeeper reports the app as damaged with no
 // "Open Anyway" button. Sealing the whole bundle ad-hoc makes the signature valid, so macOS shows the normal
 // "unidentified developer" prompt instead (see docs/signing.md).
 //
-// Electrobun makes two bundles: the app itself, which goes into the update archive and the delta patches, and the
-// wrapper that is installed from the DMG. The hook runs at both points and seals every .app it finds, so each
-// artifact carries a valid signature. Sealing twice is harmless.
+// postWrap runs after the .app is wrapped and before the DMG is made from it. It is deliberately not also a postBuild
+// hook: the app inside the update archive gets its Resources/version.json rewritten after postBuild, which would
+// invalidate a seal made earlier (a seal that later breaks is worse than none). That app is installed by the updater
+// itself, never downloaded by a browser, so macOS does not quarantine it or run Gatekeeper on it.
 //
 // OPENRIVE_MAC_SIGNING selects the mode (set by electrobun.config.ts and the Desktop workflow):
 //   adhoc (default)  seal the bundles with an ad-hoc signature
@@ -63,9 +64,8 @@ const run = (args: string[]) => {
 
 const bundles = findBundles();
 if (!bundles.length) {
-  // an early hook can run before any bundle exists: nothing to seal yet
-  console.log('sign-macos: no .app bundle exists yet, nothing to seal at this point');
-  process.exit(0);
+  console.error('sign-macos: no .app bundle found to seal (ELECTROBUN_WRAPPER_BUNDLE_PATH / ELECTROBUN_BUILD_DIR)');
+  process.exit(1);
 }
 
 for (const bundle of bundles) {

@@ -44,13 +44,18 @@ every build:
 
 | Mode | When | What happens |
 | --- | --- | --- |
-| `adhoc` | No Apple secrets in the repository (the default) | [`apps/desktop/scripts/sign-macos.ts`](../apps/desktop/scripts/sign-macos.ts) runs as Electrobun's `postWrap` hook and seals the whole `.app` with an ad-hoc signature (`codesign --force --deep --sign -`), then verifies it. Everything packaged afterwards (DMG, update archive, delta patches) carries that signature. |
+| `adhoc` | No Apple secrets in the repository (the default) | [`apps/desktop/scripts/sign-macos.ts`](../apps/desktop/scripts/sign-macos.ts) runs as Electrobun's `postWrap` hook and seals the whole `.app` that goes into the DMG with an ad-hoc signature (`codesign --force --deep --sign -`), then verifies it. |
 | `developer-id` | All the secrets below are set | Electrobun signs with your Developer ID certificate (hardened runtime, entitlements from `electrobun.config.ts`) and notarizes with Apple. |
 
-Every macOS build then runs **Verify the macOS signature**, which mounts the produced DMG and unpacks the update archive
-and runs `codesign --verify --deep --strict` on the app inside each. A bundle that fails that check is exactly what
-macOS reports as damaged, so the workflow fails instead of publishing it. In `developer-id` mode it also runs
-`spctl --assess`, the same check Gatekeeper makes.
+Every macOS build then runs **Verify the macOS signature**, which mounts the produced DMG and runs
+`codesign --verify --deep --strict` on the app inside it. A bundle that fails that check is exactly what macOS reports
+as damaged, so the workflow fails instead of publishing it. In `developer-id` mode it also checks the update archive's
+app and runs `spctl --assess`, the same check Gatekeeper makes.
+
+The app inside the **update archive** is not sealed in `adhoc` mode. Electrobun rewrites its `version.json` after the
+hook point that could sign it, so a seal made earlier would be invalid, which is worse than none. That app is installed by
+the updater, never downloaded by a browser, so it is not quarantined and Gatekeeper does not assess it. Please report it
+if a launch after an in-app update ever shows the damaged-app message.
 
 Ad-hoc is a valid signature but has no identity, so macOS still asks users to approve the app once. Removing that
 prompt needs a paid Apple Developer account.
