@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.11 - 2026-11-12
+
+### Showcase templates
+
+- Add the **3D Isometric Hero Stack** (`isometric-hero-stack`) starter template with 5-layer cursor parallax, 2.5D isometric card extrusion, hover exploded view, streaming trim-path telemetry, and click shockwave.
+- Add the **Interactive Drone Companion** (`hero-bot-mascot`) starter template with a 7-layer 2.5D head-and-visor cursor tracking rig, autonomous eye blinks, happy hover expression morphing, and a 360° click boost jump.
+- Allow `fill: null` in `addPath` TypeScript typings to match runtime stroke-only path creation.
+
 ## 0.2.8 - 2026-11-09
 
 ### Shared UI and editor interactions

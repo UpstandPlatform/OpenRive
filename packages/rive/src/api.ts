@@ -174,7 +174,7 @@ export function addShape(doc: RiveDoc, s: ShapeInput): CoreObj {
 
 export function addPath(
   doc: RiveDoc,
-  p: { artboard?: string; parent?: string; name?: string; x?: number; y?: number; points: PenPoint[]; closed?: boolean; fill?: string | number; stroke?: string | number; strokeWidth?: number },
+  p: { artboard?: string; parent?: string; name?: string; x?: number; y?: number; points: PenPoint[]; closed?: boolean; fill?: string | number | null; stroke?: string | number; strokeWidth?: number },
 ): CoreObj {
   const ab = getArtboard(doc, p.artboard);
   const parentId = p.parent ? getObject(doc, p.parent, ab.id).o.id : ab.artboard.id;

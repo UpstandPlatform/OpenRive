@@ -8,6 +8,8 @@ ask an AI assistant via MCP (`create_project`). Each template is a small lesson 
 | `blank` | Blank | An empty 500×500 artboard with a timeline and a state machine |
 | `openrive-logo` | OpenRive Logo | **Mouse interaction.** The eye's iris and glint follow the cursor (listener align target plus distance constraints), dilate on hover, blink on their own, and bounce when clicked. Light and Dark themes. |
 | `upstand-logo` | Upstand Logo | **Brand intro.** The italic marks slide in, a clipped shine sweeps across the tile, then it floats. Hover lifts it, click replays. Blue and Mono themes. |
+| `isometric-hero-stack` | 3D Isometric Hero Stack | **2.5D hero stack.** Three isometric UI decks with extruded bevels, 5-layer cursor parallax, hover exploded view, trim-path data streams, and a click shockwave. Midnight and Daylight themes. |
+| `hero-bot-mascot` | Interactive Drone Companion | **2.5D character rig.** A hovering AI robot mascot whose helmet, curved visor, eyes, torso, and hologram bubble track the cursor at 7 depth layers, with autonomous blinks, happy hover eyes, and a 360° boost jump on click. Cyber Titanium and Solar Light themes. |
 | `bouncing-ball` | Bouncing Ball | Timelines, easing, squash & stretch |
 | `interactive-button` | Interactive Button | Hover and press states from pointer listeners |
 | `toggle-switch` | Toggle Switch | A boolean input driving two states |
