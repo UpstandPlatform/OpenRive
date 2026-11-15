@@ -19,6 +19,7 @@ import { newDoc, solidStroke, obj } from './factory';
 import { addTheme, applyTheme, setSwatchColor } from './theme';
 import { openriveLogo, upstandLogo } from './templates-brand';
 import { isometricHeroStack, heroBotMascot } from './templates-hero';
+import { quantumGyroLoader, cubeMatrixLoader, infinityPulseLoader } from './templates-loaders';
 
 export interface Font {
   name: string;
@@ -333,7 +334,22 @@ const helloText: Template = {
   },
 };
 
-export const TEMPLATES: Template[] = [blank, openriveLogo, upstandLogo, isometricHeroStack, heroBotMascot, bouncingBall, button, toggle, spinner, favorite, helloText];
+export const TEMPLATES: Template[] = [
+  blank,
+  openriveLogo,
+  upstandLogo,
+  isometricHeroStack,
+  heroBotMascot,
+  quantumGyroLoader,
+  cubeMatrixLoader,
+  infinityPulseLoader,
+  bouncingBall,
+  button,
+  toggle,
+  spinner,
+  favorite,
+  helloText,
+];
 
 export function getTemplate(id: string) {
   return TEMPLATES.find((t) => t.id === id);

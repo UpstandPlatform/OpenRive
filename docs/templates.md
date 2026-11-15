@@ -10,6 +10,9 @@ ask an AI assistant via MCP (`create_project`). Each template is a small lesson 
 | `upstand-logo` | Upstand Logo | **Brand intro.** The italic marks slide in, a clipped shine sweeps across the tile, then it floats. Hover lifts it, click replays. Blue and Mono themes. |
 | `isometric-hero-stack` | 3D Isometric Hero Stack | **2.5D hero stack.** Three isometric UI decks with extruded bevels, 5-layer cursor parallax, hover exploded view, trim-path data streams, and a click shockwave. Midnight and Daylight themes. |
 | `hero-bot-mascot` | Interactive Drone Companion | **2.5D character rig.** A hovering AI robot mascot whose helmet, curved visor, eyes, torso, and hologram bubble track the cursor at 7 depth layers, with autonomous blinks, happy hover eyes, and a 360° boost jump on click. Cyber Titanium and Solar Light themes. |
+| `quantum-gyro-loader` | 3D Gyroscope Loader | **3D orbital gyroscope.** Three counter-rotating orbital plasma rings with trim-path arcs and scaleY/rotation precession around a glowing energy nucleus, 4-layer cursor parallax, hover overdrive, and a click shockwave. Quantum Cyan and Solar Gold themes. |
+| `cube-matrix-loader` | 3D Cube Matrix Loader | **Isometric cube wave.** A 3×3 grid of 3D extruded cubes rippling in a diagonal harmonic wave, with cursor parallax, hover elevation, and a click cascade jump. Neon Matrix and Clean Studio themes. |
+| `infinity-pulse-loader` | Fluid Helix Capsule Loader | **Harmonic wave & double helix.** A glassmorphic capsule loader with 9 phase-shifted fluid equalizer bars, counter-weaving double-helix orbs, clipped glass sheen, cursor parallax, hover turbo mode, and a click sonic wave. Emerald Synth and Frost Mint themes. |
 | `bouncing-ball` | Bouncing Ball | Timelines, easing, squash & stretch |
 | `interactive-button` | Interactive Button | Hover and press states from pointer listeners |
 | `toggle-switch` | Toggle Switch | A boolean input driving two states |
