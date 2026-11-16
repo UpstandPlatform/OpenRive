@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.12 - 2026-11-16
+
+### Showcase templates
+
+- Add the **3D Gyroscope Loader** (`quantum-gyro-loader`) starter template with 3 counter-rotating orbital plasma rings, `TrimPath` energy arcs, oscillating plane precession, 4-layer cursor parallax, hover overdrive, and a click shockwave burst.
+- Add the **3D Cube Matrix Loader** (`cube-matrix-loader`) starter template with a 3×3 isometric grid of extruded 2.5D cubes rippling in a diagonal harmonic wave, cursor parallax, hover elevation, and a click cascade jump.
+- Add the **Fluid Helix Capsule Loader** (`infinity-pulse-loader`) starter template with a glassmorphic dock, 9 phase-shifted fluid equalizer bars, counter-weaving double-helix orbs, clipped glass sheen, cursor parallax, hover turbo mode, and a click sonic wave.
+
 ## 0.2.11 - 2026-11-12
 
 ### Showcase templates
