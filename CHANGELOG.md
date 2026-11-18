@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.13 - 2026-11-18
+
+### Security
+
+- Upgrade Next.js and `eslint-config-next` to 16.4.6, fixing the two Dependabot alerts for cross-root-parameter cache data disclosure.
+
 ## 0.2.12 - 2026-11-16
 
 ### Showcase templates

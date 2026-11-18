@@ -55,10 +55,9 @@ jobs:
         run: bun run build
 
       - name: Dependency security audit
-        # braces has no patched release yet and is reachable only through the
-        # development-only Next lint preset. Keep the audit failing on every
-        # actionable high/critical advisory while documenting this exception.
-        run: bun audit --audit-level=high --ignore GHSA-vfj7-8cjw-p6xm
+        # The two ignored advisories have no patched upstream versions yet.
+        # Keep the audit blocking on every other high/critical advisory.
+        run: bun audit --audit-level=high --ignore GHSA-vfj7-8cjw-p6xm --ignore GHSA-fc5q-39xc-vjpf
 
   database:
     runs-on: ubuntu-latest
