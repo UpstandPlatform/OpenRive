@@ -55,6 +55,15 @@ run it by hand with `openrive db import`. Nothing is deleted, so the folder is s
 The bundled server did not answer in time. Run the app from a terminal to see its output, and make sure no other
 process is using the same data folder.
 
+### The Linux installer says "Installation failed" (`error: TarUnsupportedFileType`)
+
+Running `./installer` from `linux-x64-OpenRive-Setup.tar.gz` printed `Extracting application files...`, then
+`Installation failed.` and `error: TarUnsupportedFileType`. Installers up to 0.2.13 carried the app as a GNU tar whose
+long-path records the installer's extractor cannot read ([issue #15](https://github.com/UpstandPlatform/OpenRive/issues/15)).
+It is not specific to a distribution or version. Newer installers are repacked as a plain POSIX tar and checked by the
+release workflow, so use the installer from the next release. Until then, run OpenRive from source
+([Running locally](running-locally.md)) or with Docker ([Self-hosting](self-hosting.md)).
+
 ### Keyboard shortcuts don't work
 
 Click the canvas first: shortcuts are ignored while typing in a text field. If a shortcut was rebound, open `?` and
