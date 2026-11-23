@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Fix the Linux installer failing with `Installation failed` / `TarUnsupportedFileType` (#15). Electrobun's GNU tar has long-path records the installer cannot read, so the Desktop workflow now repacks the Linux payload as ustar (`scripts/repack-linux-installer.ts`) and runs the installer as a smoke test before publishing. Linux updates download the full bundle instead of a delta patch.
+
 ## 0.2.13 - 2026-11-18
 
 ### Security

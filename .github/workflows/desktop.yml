@@ -196,6 +196,17 @@ jobs:
           ELECTROBUN_APPLEIDPASS: ${{ secrets.APPLE_APP_PASSWORD }}
         run: bunx electrobun build --env=${{ inputs.channel || 'stable' }}
 
+      # Electrobun packs the app as a GNU tar, and the Linux installer cannot read the long-path records in it
+      # ("Installation failed ... TarUnsupportedFileType", issue #15). Repack it as ustar, then really run the
+      # installer so a payload it cannot extract fails here instead of reaching users.
+      - name: Repack the Linux installer
+        if: runner.os == 'Linux'
+        run: bun scripts/repack-linux-installer.ts repack apps/desktop/artifacts
+
+      - name: Smoke-test the Linux installer
+        if: runner.os == 'Linux'
+        run: bun scripts/repack-linux-installer.ts smoke apps/desktop/artifacts
+
       # Proves what is actually shipped: the app inside the DMG (the one a browser download is quarantined and
       # assessed by Gatekeeper for) must have a valid signature. A bundle that fails this is the one macOS reports as
       # "damaged" without an Open Anyway button (issue #12). The updater archive's app is only reported: it is
