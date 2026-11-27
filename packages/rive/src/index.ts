@@ -16,3 +16,4 @@ export * from './presets';
 export * from './source';
 export * from './diagnostics';
 export * from './factory';
+export * from './rml';

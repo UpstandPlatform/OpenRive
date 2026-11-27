@@ -59,6 +59,7 @@ Scripts and pipes still get plain commands: with no TTY, `openrive` prints its h
 | `export <project> [out.zip] --bundle [--cdn]` | Write a standalone [preview bundle](preview-bundles.md): `index.html`, `index.js`, the `.riv` and (without `--cdn`) the Rive runtime |
 | `info <project \| file.riv\|file.oriv\|source-folder> [--json]` | Show artboards, objects, timelines, state machines and theme colors |
 | `delete <project>` | Delete a project |
+| `rml <project-folder\|file.rml> [out.riv] [--json]` | Compile Rive Markup Language (a Rive CLI project) to `.riv`; see [RML](rml.md) |
 | `validate <file.riv\|file.oriv\|source-folder…>` | Check files round-trip losslessly and validate editable sources |
 | `diagnose <file.riv\|file.oriv\|source-folder…> [--json]` | Explain missing assets, unknown objects, uneditable features and compatibility risks |
 | `source export <project\|file.riv> [out.oriv\|folder]` | Export a portable `.oriv` backup or a Git-friendly source folder |

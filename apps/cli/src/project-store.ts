@@ -1,11 +1,12 @@
 // Project access for the CLI, the TUI and the MCP server. Talks to the database
 // through @openrive/db, so it works with or without the web app running.
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import * as storage from '@openrive/db';
 import { exportRiv, importRiv, type RiveDoc } from '@openrive/rive/document';
 import { convertLottie, MAX_LOTTIE_INPUT_BYTES, MAX_TGS_COMPRESSED_BYTES } from '@openrive/lottie';
 import { EXAMPLES, getExample } from '@openrive/rive/examples';
+import { importRml, type RmlImportResult } from '@openrive/rive/rml';
 import { importSource, isOpenRiveSource } from '@openrive/rive/source';
 import { getTemplate, TEMPLATES } from '@openrive/rive/templates';
 import { isAdministratorRole, MAX_RIV_BYTES, type ProjectMeta } from '@openrive/shared';
@@ -185,8 +186,61 @@ export async function createProject(name: string, template = 'blank', ownerId?: 
   }, riv);
 }
 
+/** Name a project folder gives itself in rive.yaml, and its default artboard. */
+function readRiveYaml(dir: string): { name?: string; main?: string } {
+  const file = path.join(dir, 'rive.yaml');
+  if (!existsSync(file)) return {};
+  const out: Record<string, string> = {};
+  for (const line of readFileSync(file, 'utf8').split('\n')) {
+    const m = /^(name|main):\s*["']?([^"'#]*?)["']?\s*(#.*)?$/.exec(line);
+    if (m) out[m[1]] = m[2];
+  }
+  return out;
+}
+
+/**
+ * Loads Rive Markup Language: one .rml file, or a Rive CLI project folder whose
+ * .rml files compile together in path order (rive.yaml names the main artboard).
+ */
+export function loadRml(target: string, { keepAnimationNames = false } = {}): RmlImportResult & { name: string } {
+  const isDir = statSync(target).isDirectory();
+  const root = isDir ? target : path.dirname(target);
+  const files: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      if (entry.name.startsWith('.') || entry.name === 'build' || entry.name === 'node_modules') continue;
+      const p = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(p);
+      else if (entry.name.endsWith('.rml')) files.push(p);
+    }
+  };
+  if (isDir) walk(target);
+  else files.push(target);
+  if (!files.length) throw new StoreError(`No .rml files in ${target}`);
+  const yaml = isDir ? readRiveYaml(target) : {};
+  const result = importRml(
+    files.map((f) => readFileSync(f, 'utf8')),
+    {
+      main: yaml.main,
+      keepAnimationNames,
+      readFile: (rel) => {
+        const p = path.resolve(root, rel);
+        if (path.relative(root, p).startsWith('..')) return undefined; // stay inside the project
+        return existsSync(p) ? new Uint8Array(readFileSync(p)) : undefined;
+      },
+    },
+  );
+  return { ...result, name: yaml.name ?? path.basename(isDir ? path.resolve(target) : target, '.rml') };
+}
+
 export async function importFile(file: string, name?: string, ownerId?: string, organizationId?: string) {
   const extension = path.extname(file).toLowerCase();
+  if (extension === '.rml' || (statSync(file).isDirectory() && existsSync(path.join(file, 'rive.yaml')))) {
+    // the editor shows animation and layer names, so keep them in projects
+    const rml = loadRml(file, { keepAnimationNames: true });
+    for (const w of rml.warnings) console.warn(`warning: ${w}`);
+    return importDoc(rml.doc, name ?? rml.name, ownerId, organizationId);
+  }
   if (extension === '.json' || extension === '.tgs') {
     const maxBytes = extension === '.tgs' ? MAX_TGS_COMPRESSED_BYTES : MAX_LOTTIE_INPUT_BYTES;
     if (statSync(file).size > maxBytes) throw new StoreError(`${path.basename(file)} exceeds the ${Math.round(maxBytes / (1024 * 1024))} MB import limit`);

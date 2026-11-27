@@ -21,7 +21,8 @@ Projects
   list                                             List projects
   new <name> [--template <id>]                     Create a project (see: templates)
   templates                                        List starter templates and example files
-  import <file...> [--name <name>]                Import .riv, .oriv, Lottie .json, or .tgs files as projects
+  import <file...> [--name <name>]                Import .riv, .oriv, .rml, Lottie .json, or .tgs files as projects
+  rml <folder|file.rml> [out.riv] [--json]         Compile Rive Markup Language (a Rive CLI project) to .riv
   export <project> [out.riv]                       Export a project to a .riv file
   render <project|file.riv> [out.png]              Render a still frame (images/meshes use local Chromium)
        [--renderer browser|software] [--browser <executable>]
@@ -112,6 +113,8 @@ async function main() {
       return commands.deleteProject(args);
     case 'validate':
       return commands.validate(args);
+    case 'rml':
+      return commands.rmlCommand(args, options);
     case 'source':
       return commands.sourceCommand(args);
     case 'diagnose':
