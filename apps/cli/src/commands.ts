@@ -19,6 +19,7 @@ import {
   EXAMPLES,
   importFile,
   importDoc,
+  loadRml,
   loadDoc,
   PROJECT_ROOT,
   resolveProject,
@@ -197,6 +198,18 @@ export async function deleteProject(args: string[]) {
   const meta = await resolveProject(args[0] ?? '');
   await deleteStoredProject(meta.id);
   console.log(`Deleted "${meta.name}" (${meta.id})`);
+}
+
+/** Compiles Rive Markup Language to a .riv without a Rive account, like `rive <dir> --unsigned-riv`. */
+export function rmlCommand(args: string[], opts: Options = {}) {
+  if (!args[0]) throw new StoreError('Usage: rml <project-folder|file.rml> [out.riv] [--json]');
+  const { doc, warnings, name } = loadRml(args[0]);
+  const riv = exportRiv(doc);
+  const out = args[1] ?? `${name}.riv`;
+  writeFileSync(out, riv);
+  if (opts.json) return console.log(JSON.stringify({ out, bytes: riv.length, artboards: doc.artboards.length, warnings }, null, 2));
+  for (const w of warnings) console.warn(`warning: ${w}`);
+  console.log(`Wrote ${out} (${riv.length} bytes, ${doc.artboards.length} artboard${doc.artboards.length === 1 ? '' : 's'})`);
 }
 
 export function validate(args: string[]) {

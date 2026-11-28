@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+
+- Import Rive Markup Language (#17): `openrive rml <folder|file.rml> [out.riv]` compiles RML scenes and Rive CLI project folders to `.riv`, and `openrive import` opens them as projects. Scenes built by the current Rive CLI in rive-runtime's tests compile byte-identically (`bun run test:rml-corpus -- <rive-runtime>/tests`). See [docs/rml.md](docs/rml.md).
+- Regenerate the format definitions from rive-runtime main (adds `TextStyleDecoration` and `ScriptInputComponent`).
+
 ### Fixed
 
 - Fix the Linux installer failing with `Installation failed` / `TarUnsupportedFileType` (#15). Electrobun's GNU tar has long-path records the installer cannot read, so the Desktop workflow now repacks the Linux payload as ustar (`scripts/repack-linux-installer.ts`) and runs the installer as a smoke test before publishing. Linux updates download the full bundle instead of a delta patch.
