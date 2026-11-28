@@ -41,8 +41,12 @@ const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"'
 
 function decodeEntities(s: string): string {
   return s.replace(/&(#x[0-9a-fA-F]+|#\d+|\w+);/g, (m, e: string) => {
-    if (e[0] === '#') return String.fromCodePoint(e[1] === 'x' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10));
-    return ENTITIES[e] ?? m;
+    if (e[0] === '#') {
+      const code = e[1] === 'x' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+      // a reference outside Unicode (&#99999999;) stays as written rather than throwing
+      return code <= 0x10ffff ? String.fromCodePoint(code) : m;
+    }
+    return Object.hasOwn(ENTITIES, e) ? ENTITIES[e]! : m;
   });
 }
 
@@ -73,7 +77,10 @@ export function parseRml(src: string): RmlElement {
       i = end + 2;
     } else if (src.startsWith('</', i)) {
       const end = src.indexOf('>', i);
+      // without this a closing tag that never ends would set the cursor back to the start and loop forever
+      if (end < 0) fail('unterminated closing tag');
       const tag = src.slice(i + 2, end).trim();
+      if (stack.length === 1) fail(`</${tag}> has no matching opening tag`);
       const open = stack.pop()!;
       if (open.tag !== tag) fail(`</${tag}> closes <${open.tag}>`);
       i = end + 1;

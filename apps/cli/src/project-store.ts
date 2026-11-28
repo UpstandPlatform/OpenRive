@@ -1,6 +1,6 @@
 // Project access for the CLI, the TUI and the MCP server. Talks to the database
 // through @openrive/db, so it works with or without the web app running.
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 import * as storage from '@openrive/db';
 import { exportRiv, importRiv, type RiveDoc } from '@openrive/rive/document';
@@ -198,6 +198,12 @@ function readRiveYaml(dir: string): { name?: string; main?: string } {
   return out;
 }
 
+/** True when `candidate` is `base` or somewhere below it (not a sibling, a parent, or another drive). */
+function isInside(base: string, candidate: string): boolean {
+  const relative = path.relative(base, candidate);
+  return relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+}
+
 /**
  * Loads Rive Markup Language: one .rml file, or a Rive CLI project folder whose
  * .rml files compile together in path order (rive.yaml names the main artboard).
@@ -224,9 +230,11 @@ export function loadRml(target: string, { keepAnimationNames = false } = {}): Rm
       main: yaml.main,
       keepAnimationNames,
       readFile: (rel) => {
+        // an asset must be a file inside the project: no absolute paths, no `..`, and no symlink that leads out
         const p = path.resolve(root, rel);
-        if (path.relative(root, p).startsWith('..')) return undefined; // stay inside the project
-        return existsSync(p) ? new Uint8Array(readFileSync(p)) : undefined;
+        if (!isInside(root, p) || !existsSync(p) || !statSync(p).isFile()) return undefined;
+        if (!isInside(realpathSync(root), realpathSync(p))) return undefined;
+        return new Uint8Array(readFileSync(p));
       },
     },
   );

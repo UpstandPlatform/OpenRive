@@ -26,6 +26,24 @@ try {
 }
 assert(rejected, 'rejects mismatched tags');
 
+// malformed input must fail with an error, never hang or throw something obscure
+const rejects = (src: string, pattern: RegExp, message: string) => {
+  try {
+    parseRml(src);
+  } catch (error) {
+    assert(pattern.test((error as Error).message), `${message}: got "${(error as Error).message}"`);
+    return;
+  }
+  throw new Error(`${message}: was accepted`);
+};
+// a closing tag that never ends used to send the cursor back to the start and loop forever
+rejects('<a></aa', /unterminated closing tag/, 'an unterminated closing tag');
+rejects('<a></a', /unterminated closing tag/, 'an unterminated closing tag at the end');
+rejects('</Rive>', /no matching opening tag/, 'a closing tag with nothing open');
+rejects('<Rive><A/></Rive></Rive>', /no matching opening tag/, 'an extra closing tag');
+assert(parseRml('<Rive><A x="&#99999999;&#x1F600;&#65;"/></Rive>').children[0].attrs.x === '&#99999999;😀A', 'character references outside Unicode stay as written');
+assert(parseRml('<Rive><A x="&constructor;&toString;"/></Rive>').children[0].attrs.x === '&constructor;&toString;', 'unknown entity names stay as written');
+
 // --- a small animated scene --------------------------------------------------
 
 const scene = `<Rive version="1" kind="fragment">
